@@ -33,17 +33,30 @@ ChatGPT id token) as T3 already reads it, and for Claude the SDK's `Claude Max` 
 rate-limit tier (`default_claude_max_20x`) in Claude Code's own profile file `.claude.json` (no
 credentials). An unknown tier shows the plan without one.
 
-**Move to another machine** (`apps/web/src/fork/moveThread/`). The thread title menu has
-**Move to another machine**, and the command palette **Move thread to another machine...**, both
-listing the machines that have the project, Auto's pick first. The
-move commits everything in the thread's worktree (untracked files included) as
-`WIP: move to <machine>` and pushes the branch, then starts a thread on the target in a fresh
-worktree of that branch from origin, on the same model and the account Auto would use there.
+**Move to another machine** (`apps/web/src/fork/moveThread/`, `apps/server/src/fork/moveThread.ts`).
+The thread title menu has **Move to another machine**, and the command palette **Move thread to
+another machine...**, both listing the machines that have the project, Auto's pick first. The
+branch travels machine to machine over the fleet channel (below), never through GitHub or any
+other git remote, in every direction, MacBook included:
+
+```
+client ── fork.moveReceive (WS RPC) ──▶ target server
+target ── POST <source>/fork/fleet/move/pack  {worktree, branch, the target's ref tips} ──▶ source
+source: git add -A; commit "WIP: move to <machine>" (--no-verify) if anything is uncommitted;
+        answer with `git bundle` of the branch minus every commit the target already has
+target: git bundle unbundle into the project checkout (no ref changes); branch name = the
+        source's, or <branch>-2, -3... when the target already has that branch
+client: start a thread on the target in a new worktree on that branch from the moved commit
+```
+
+The new thread runs on the same model and the account Auto would use there.
 Its first message carries the conversation: the original request plus the most recent messages
 within T3's portable-handoff budget (16,000 bytes, `T3CODE_CONTEXT_HANDOFF_TOKEN_CAP`'s
 default). The source thread is renamed `Moved to <machine> · <title>`, settled, and shows a
 banner with **Open**. Threads that are working, or that run in the project checkout instead of
-their own worktree branch, are refused, so a shared branch such as main is never pushed.
+their own worktree branch, are refused (the source server checks too), so a shared branch such as
+main is never committed to. A move needs the fleet hub's index to find the source machine's URL;
+the uncommitted work arrives on the target committed, as the latest commit.
 
 **Machine names** (`apps/server/src/fork/environmentLabel.ts`). A one-line file
 `~/.t3/userdata/environment-label` names the environment for every client (`MacBook`, `mac-a`,
@@ -134,6 +147,10 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   large enough to read.
 - `apps/web/src/components/usage/UsageLimits.tsx`: renders the by-account view.
 - `apps/web/src/hooks/useThreadActionMenu.ts`: adds the Move items to the thread menu.
+- `packages/contracts/src/rpc.ts`, `packages/contracts/src/index.ts`: the `fork.moveReceive` RPC
+  (schemas in `packages/contracts/src/forkMoveThread.ts`).
+- `apps/server/src/auth/RpcAuthorization.ts`: `fork.moveReceive` needs the orchestration operate scope.
+- `apps/server/src/ws.ts`: the `fork.moveReceive` handler (calls `fork/moveThread.ts`).
 - `apps/web/src/components/CommandPalette.tsx`: the same Move choices in the command palette.
 - `apps/desktop/src/main.ts`: imports `fork/keychain.ts` first (see Keychain).
 - `apps/desktop/src/app/DesktopStatePaths.ts`: the fork app's state directory.
@@ -144,7 +161,8 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
 (2; Usage reuses Auto's `chooseAutoAccount`), move to another machine (1; reuses Auto's rules),
-machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1).
+machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
+the fleet instead of GitHub (1; the move feature now depends on fleet awareness).
 
 ## Sync, build, deploy
 
@@ -265,10 +283,10 @@ Each series is independent of the packaging and tooling commits.
 - **Usage by account**: propose as a "Group by: window / account" toggle on Limits; the flags
   reuse the account rule. The Claude tier label is a standalone fix ("show Max 5x/20x").
 - **Move to another machine**: upstream tracks this as an open request (discussion #6874). The
-  git half uses only upstream RPCs (commit & push, launch a thread in a worktree from origin).
-  What is missing is a server-to-server way to carry history: propose `thread.export` /
-  `thread.import` so the target server runs its own portable handoff instead of the client-built
-  first message.
+  git half needs a server-to-server channel (the fork uses the fleet secret); upstream would want
+  it over its own environment connections. Also missing is a server-to-server way to carry
+  history: propose `thread.export` / `thread.import` so the target server runs its own portable
+  handoff instead of the client-built first message.
 - **Fleet awareness**: the record model, overlap rule and toolkit are generic; upstream would
   want the hub replaced by T3's own environment connections (each client already talks to every
   machine) rather than a fork-only shared secret, and the Acme path meanings left out.
