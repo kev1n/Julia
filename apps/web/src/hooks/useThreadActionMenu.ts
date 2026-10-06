@@ -54,6 +54,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import { isMoveMenuId, useMoveThread } from "../fork/moveThread/useMoveThread";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -100,6 +101,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const moveThread = useMoveThread(threadRef);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -384,9 +386,11 @@ export function useThreadActionMenu(input: {
         );
         return;
       }
-      const clicked = await settlePromise(() => api.contextMenu.show(menu.items, position, source));
+      const items = [...menu.items, ...moveThread.menuItems()];
+      const clicked = await settlePromise(() => api.contextMenu.show(items, position, source));
       if (clicked._tag === "Failure" || clicked.value === null) return;
-      await menu.run(clicked.value);
+      if (isMoveMenuId(clicked.value)) return void (await moveThread.move(clicked.value));
+      await menu.run(clicked.value as ThreadActionMenuId);
     })();
   };
 
