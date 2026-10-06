@@ -15,6 +15,7 @@ import { usePreparedConnection } from "~/state/session";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { m, type MessageResolver } from "../../i18n/messages";
+import { machineRowIconClassName } from "../../fork/machinePictures/MachinePictures";
 
 const T3_CONNECT_NAME = "T3 Connect";
 
@@ -104,7 +105,10 @@ export function EnvironmentRow({
       <EnvironmentMachineIcon
         aria-hidden
         kind={kind}
-        className={cn("size-4 text-muted-foreground", dimmed && "opacity-60")}
+        className={cn(
+          machineRowIconClassName(kind, "size-4 text-muted-foreground"),
+          dimmed && "opacity-60",
+        )}
       />
       <div className={cn("min-w-0", dimmed && "opacity-60")}>
         <p className="truncate text-sm font-medium text-foreground">{label}</p>
