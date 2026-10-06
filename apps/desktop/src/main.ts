@@ -1,4 +1,5 @@
 import * as MacPermissions from "./permissions/MacPermissions.ts";
+import "./fork/keychain.ts";
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code !== "EPIPE") throw err;
