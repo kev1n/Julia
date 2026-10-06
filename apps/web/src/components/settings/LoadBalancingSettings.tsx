@@ -1,5 +1,5 @@
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
-import { msg, T, useGT, useMessages } from "gt-react";
+import { msg, useGT, useMessages } from "gt-react";
 
 import {
   useClientSettings,
@@ -8,6 +8,10 @@ import {
 } from "~/hooks/useSettings";
 import type { MessageResolver } from "~/i18n/messages";
 import type { EnvironmentPresentation } from "~/state/environments";
+import {
+  AUTO_PLACEMENT_DESCRIPTION,
+  effectiveAutoWeights,
+} from "~/fork/autoPlacement/machineChoice";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { EnvironmentRow, EnvironmentTransportLabel } from "./EnvironmentRow";
@@ -65,6 +69,7 @@ export function LoadBalancingSettings({
   const items = preferences.map((entry) => ({ ...entry, label: m(entry.label) }));
 
   if (environments.length < 2) return null;
+  const weights = effectiveAutoWeights(environments, settings.loadBalancingWeights);
 
   const { id, title } = searchableSetting("load-balancing");
   return (
@@ -73,7 +78,7 @@ export function LoadBalancingSettings({
       title={title}
       summary={
         settings.loadBalancingEnabled
-          ? summarizeLoadPreferences(environments, settings.loadBalancingWeights, m)
+          ? summarizeLoadPreferences(environments, weights, m)
           : gt("Off", { $context: "load balancing is turned off" })
       }
       control={
@@ -86,10 +91,7 @@ export function LoadBalancingSettings({
       }
     >
       <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
-        <T>
-          New threads in shared projects start on the machine with the most free CPU and memory,
-          weighted by each machine's preference.
-        </T>
+        {AUTO_PLACEMENT_DESCRIPTION}
       </p>
       {environments.map((environment) => (
         <EnvironmentRow
@@ -100,9 +102,7 @@ export function LoadBalancingSettings({
         >
           <Select
             items={items}
-            value={loadPreferenceForWeight(
-              settings.loadBalancingWeights[environment.environmentId],
-            )}
+            value={loadPreferenceForWeight(weights[environment.environmentId])}
             disabled={!settingsHydrated || !settings.loadBalancingEnabled}
             onValueChange={(value) => {
               if (value === null) return;

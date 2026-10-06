@@ -23,6 +23,8 @@ import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 
 interface BranchToolbarEnvironmentSelectorProps {
   autoEnvironmentLabel?: string | undefined;
+  /** Fork (Owner): why Auto chose this machine and account; the tooltip. */
+  autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   envLocked: boolean;
   environmentId: EnvironmentId;
@@ -38,6 +40,7 @@ const environmentValue = (id: EnvironmentId) => `env:${id}`;
 
 export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvironmentSelector({
   autoEnvironmentLabel,
+  autoEnvironmentDetail,
   onAutoEnvironment,
   envLocked,
   environmentId,
@@ -112,7 +115,10 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
         }
         label={
           <>
-            {autoEnvironmentLabel ?? activeEnvironment?.label ?? gt("Run on")}
+            {autoEnvironmentDetail ??
+              autoEnvironmentLabel ??
+              activeEnvironment?.label ??
+              gt("Run on")}
             {shortcutLabel ? ` · ${shortcutLabel}` : null}
           </>
         }
