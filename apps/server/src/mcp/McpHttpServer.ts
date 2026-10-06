@@ -118,6 +118,7 @@ import {
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { MessageToolkit } from "./toolkits/message/tools.ts";
 import * as MessageHandlers from "./toolkits/message/handlers.ts";
+import * as ForkFleet from "../fork/fleet/index.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { MCP_HTTP_PATH } from "../httpCors.ts";
 import { requestUrl } from "../requestUrl.ts";
@@ -1871,5 +1872,10 @@ export const layerMilestoneEvents = Layer.effectDiscard(
 );
 
 export const layer = layerMcpTransport(
-  Layer.mergeAll(layerTools, layerToolSearch, layerMilestoneEvents),
+  Layer.mergeAll(
+    layerTools,
+    layerToolSearch,
+    layerMilestoneEvents,
+    ForkFleet.layer(toolkitRegistration),
+  ),
 );
