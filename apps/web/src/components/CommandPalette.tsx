@@ -1,3 +1,4 @@
+import { useMoveThread } from "../fork/moveThread/useMoveThread";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -51,6 +52,7 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowRightLeftIcon,
   ArrowLeftIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
@@ -442,6 +444,9 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
+  const moveThread = useMoveThread(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
+  );
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
@@ -1335,6 +1340,32 @@ function OpenCommandPaletteDialog(props: {
       run: async () => {
         openGuestShareDialog(threadRef);
       },
+    });
+  }
+
+  if (moveThread.choices.length > 0) {
+    // Fork (Owner): see fork/moveThread.
+    actionItems.push({
+      kind: "submenu",
+      value: "action:fork-move-thread",
+      searchTerms: ["move thread to another machine", "move", "machine", "mini", "handoff"],
+      title: "Move thread to another machine...",
+      icon: <ArrowRightLeftIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <ArrowRightLeftIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "machines",
+          label: "Machines",
+          items: moveThread.choices.map(({ menuId, label }) => ({
+            kind: "action" as const,
+            value: `action:${menuId}`,
+            searchTerms: [label],
+            title: label,
+            icon: <ArrowRightLeftIcon className={ITEM_ICON_CLASS} />,
+            run: () => moveThread.move(menuId),
+          })),
+        },
+      ],
     });
   }
 

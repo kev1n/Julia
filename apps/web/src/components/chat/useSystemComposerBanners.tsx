@@ -1,5 +1,5 @@
 import { useStableCallback } from "../../hooks/useStableCallback";
-import { type EnvironmentId } from "@t3tools/contracts";
+import { type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
 import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
@@ -25,6 +25,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { ServerUpdateAction, serverUpdateStageLabel } from "../ServerUpdateAction";
 import { useAutoBalanceUpdateBanner } from "./useAutoBalanceUpdateBanner";
+import { useMovedThreadBanner } from "../../fork/moveThread/movedThreads";
 import { ComposerServerUpdateIcon } from "./ComposerServerUpdateStatus";
 import {
   dismissServerUpdateFailure,
@@ -49,6 +50,7 @@ interface SystemComposerBannersInput {
   readonly hasMultipleRegisteredEnvironments: boolean;
   readonly automaticEnvironment: boolean;
   readonly autoUpdateEnvironments: ReadonlyArray<EnvironmentPresentation>;
+  readonly movedThreadRef: ScopedThreadRef | null;
 }
 
 /**
@@ -65,6 +67,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     hasMultipleRegisteredEnvironments,
     automaticEnvironment,
     autoUpdateEnvironments,
+    movedThreadRef,
   } = input;
   const navigate = useNavigate();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
@@ -131,6 +134,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     handleDisconnectActiveEnvironment,
   );
   const autoBalanceUpdateBanner = useAutoBalanceUpdateBanner(autoUpdateEnvironments);
+  const movedThreadBanner = useMovedThreadBanner(movedThreadRef);
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchServerLabel =
     hasMultipleRegisteredEnvironments && activeThreadEnvironmentId !== null
@@ -256,6 +260,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
       });
     }
     if (autoBalanceUpdateBanner) items.push(autoBalanceUpdateBanner);
+    if (movedThreadBanner) items.push(movedThreadBanner);
     return items;
   })() as ComposerBannerStackItem[];
 }
