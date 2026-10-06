@@ -13,6 +13,7 @@ import type { EnvironmentPresentation } from "~/state/environments";
 import { usePreparedConnection } from "~/state/session";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { machineRowIconClassName } from "../../fork/machinePictures/MachinePictures";
 
 export function formatDesktopSshTarget(target: DesktopSshEnvironmentTarget): string {
   const authority = target.username ? `${target.username}@${target.hostname}` : target.hostname;
@@ -95,7 +96,10 @@ export function EnvironmentRow({
       <EnvironmentMachineIcon
         aria-hidden
         kind={kind}
-        className={cn("size-4 text-muted-foreground", dimmed && "opacity-60")}
+        className={cn(
+          machineRowIconClassName(kind, "size-4 text-muted-foreground"),
+          dimmed && "opacity-60",
+        )}
       />
       <div className={cn("min-w-0", dimmed && "opacity-60")}>
         <p className="truncate text-sm font-medium text-foreground">{label}</p>
