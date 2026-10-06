@@ -93,6 +93,8 @@ interface BranchToolbarProps {
   startFromOrigin: boolean;
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   autoEnvironmentLabel?: string | undefined;
+  /** Fork (Owner): why Auto chose this machine and account; the chip's tooltip. */
+  autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   envLocked: boolean;
   onCheckoutPullRequestRequest?: (reference: string) => void;
@@ -144,6 +146,7 @@ interface RunContextSelectorProps {
   workspaceRoot?: string;
   forceNewWorktree: boolean;
   autoEnvironmentLabel?: string | undefined;
+  autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   envLocked: boolean;
   envModeLocked: boolean;
@@ -167,6 +170,7 @@ const RunContextSelector = memo(function RunContextSelector({
   workspaceRoot,
   forceNewWorktree,
   autoEnvironmentLabel,
+  autoEnvironmentDetail,
   onAutoEnvironment,
   envLocked,
   envModeLocked,
@@ -243,7 +247,9 @@ const RunContextSelector = memo(function RunContextSelector({
           />
         )}
       </TooltipTrigger>
-      <TooltipPopup>{autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}</TooltipPopup>
+      <TooltipPopup>
+        {autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}
+      </TooltipPopup>
     </Tooltip>
   );
   const icon = showEnvironmentIndicator ? environmentIcon : workspaceIcon;
@@ -611,6 +617,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   startFromOrigin,
   onStartFromOriginChange,
   autoEnvironmentLabel,
+  autoEnvironmentDetail,
   onAutoEnvironment,
   envLocked,
   onCheckoutPullRequestRequest,
@@ -747,6 +754,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           <RunContextSelector
             forceNewWorktree={forceNewWorktree}
             autoEnvironmentLabel={autoEnvironmentLabel}
+            autoEnvironmentDetail={autoEnvironmentDetail}
             onAutoEnvironment={onAutoEnvironment}
             envLocked={envLocked}
             envModeLocked={envModeLocked}
@@ -778,6 +786,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             <>
               <BranchToolbarEnvironmentSelector
                 autoEnvironmentLabel={autoEnvironmentLabel}
+                autoEnvironmentDetail={autoEnvironmentDetail}
                 onAutoEnvironment={onAutoEnvironment}
                 envLocked={envLocked}
                 environmentId={environmentId}

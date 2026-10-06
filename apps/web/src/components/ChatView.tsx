@@ -41,6 +41,7 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
+import { autoPlacementLabel, useAutoAccount } from "../fork/autoPlacement/useAutoAccount";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -1796,7 +1797,6 @@ export default function ChatView(props: ChatViewProps) {
     needsLoadBalancing,
     loadBalancing,
     onAutoEnvironmentStable,
-    autoEnvironmentLabel,
     isEnvironmentChanging,
     readPendingEnvironmentChange,
     onEnvironmentChangeStable,
@@ -1810,7 +1810,6 @@ export default function ChatView(props: ChatViewProps) {
     providersByEnvironment,
     loadBalancingSettings,
     referencedThreadContexts,
-    activeProviderInstanceId,
     selectedProvider,
     composerHasAttachments,
     activeProjectKey,
@@ -2875,6 +2874,37 @@ export default function ChatView(props: ChatViewProps) {
     setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   });
+  // Fork (Owner): Auto picks the account too; see fork/autoPlacement.
+  const autoEnvironmentId = automaticEnvironment
+    ? (draftThread?.loadBalancedEnvironmentId ?? null)
+    : null;
+  const onAutoAccountSelect = (instanceId: ProviderInstanceId) => {
+    const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+    const current =
+      (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
+      activeThread?.modelSelection;
+    if (current) onProviderModelSelectStable(instanceId, current.model, { focusComposer: false });
+  };
+  const onAutoAccountSelectStable = useStableCallback(onAutoAccountSelect);
+  const autoAccount = useAutoAccount({
+    enabled: automaticEnvironment,
+    environmentId: autoEnvironmentId,
+    providers:
+      (autoEnvironmentId && providersByEnvironment.get(autoEnvironmentId)) || EMPTY_PROVIDERS,
+    driver: selectedProvider,
+    currentInstanceId: activeProviderInstanceId,
+    select: onAutoAccountSelectStable,
+  });
+  const autoPlacement = automaticEnvironment
+    ? autoPlacementLabel({
+        placement: loadBalancing,
+        environmentId: autoEnvironmentId,
+        environments: logicalProjectEnvironments,
+        driver: selectedProvider,
+        account: autoAccount,
+      })
+    : undefined;
+  const autoEnvironmentLabel = autoPlacement?.chip;
   const { onResume, isResuming } = useComposerResume({
     environmentId,
     routeThreadKey,
@@ -3783,6 +3813,7 @@ export default function ChatView(props: ChatViewProps) {
                                     ? { onEnvironmentChange: onEnvironmentChangeStable }
                                     : {})}
                                   autoEnvironmentLabel={autoEnvironmentLabel}
+                                  autoEnvironmentDetail={autoPlacement?.detail}
                                   onAutoEnvironment={
                                     draftId &&
                                     !envLocked &&
