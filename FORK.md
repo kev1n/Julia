@@ -52,7 +52,9 @@ client: start a thread on the target in a new worktree on that branch from the m
 The new thread runs on the same model and the account Auto would use there.
 Its first message carries the conversation: the original request plus the most recent messages
 within T3's portable-handoff budget (16,000 bytes, `T3CODE_CONTEXT_HANDOFF_TOKEN_CAP`'s
-default). The source thread is renamed `Moved to <machine> · <title>`, settled, and shows a
+default). The app opens the new thread once the target's thread list has it (a thread route
+whose thread is unknown redirects to an empty new draft). The source thread is renamed
+`Moved to <machine> · <title>`, settled, and shows a
 banner with **Open**. Threads that are working, or that run in the project checkout instead of
 their own worktree branch, are refused (the source server checks too), so a shared branch such as
 main is never committed to. A move needs the fleet hub's index to find the source machine's URL;
@@ -180,8 +182,8 @@ Commit series on `owner` (oldest first), one series per feature so each can be d
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
 (2; Usage reuses Auto's `chooseAutoAccount`), move to another machine (1; reuses Auto's rules),
 machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
-the fleet instead of GitHub (1; the move feature now depends on fleet awareness), and overlap alerts
-(1).
+the fleet instead of GitHub (1; the move feature now depends on fleet awareness), overlap alerts
+(1), and opening the moved thread once the client knows it (1).
 
 ## Sync, build, deploy
 
