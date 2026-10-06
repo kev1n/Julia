@@ -39,7 +39,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
-import { UsageLimitsPooled } from "./UsageLimitsPooled";
+import { UsageLimitsByAccount } from "../../fork/usageByAccount/UsageLimitsByAccount";
 import { formatResetsIn, resetCreditChoices } from "@t3tools/shared/usageLimitsCopy";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
@@ -423,5 +423,5 @@ export function UsageLimitsSection({
       ];
     }),
   );
-  return <UsageLimitsPooled presentations={selected} now={now} />;
+  return <UsageLimitsByAccount presentations={selected} now={now} />;
 }
