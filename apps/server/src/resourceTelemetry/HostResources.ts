@@ -10,6 +10,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { readFreeDiskBytes } from "../fork/freeDisk.ts";
+
 export class HostResources extends Context.Service<
   HostResources,
   { readonly read: Effect.Effect<HostResourcesSnapshot> }
@@ -172,7 +174,9 @@ const make = Effect.fn("makeHostResources")(function* () {
         memoryMax - (memoryCurrent - reclaimable),
       );
     }
+    const freeDiskBytes = yield* readFreeDiskBytes;
     return {
+      ...(freeDiskBytes === null ? {} : { freeDiskBytes }),
       sampledAt: DateTime.toEpochMillis(yield* DateTime.now),
       cpuUtilization,
       cpuCount,
