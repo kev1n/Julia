@@ -38,8 +38,9 @@ import {
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
-import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
-import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import { readClaudeTierMultiplier, withClaudeTier } from "../fork/claudePlanTier.ts";
+import type { ProviderWorkspaceSnapshot } from "./ProviderDriver.ts";
+import { makeUnavailableUsageLimits } from "./providerUsageLimits.ts";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,
@@ -628,7 +629,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   const authMetadata =
     claudeAuthMetadata({
-      subscriptionType: capabilities.subscriptionType,
+      subscriptionType: withClaudeTier(
+        capabilities.subscriptionType,
+        yield* readClaudeTierMultiplier(resolvedEnvironment),
+      ),
       authMethod: capabilities.tokenSource,
     }) ??
     apiProviderAuthMetadata(capabilities.apiProvider) ??
