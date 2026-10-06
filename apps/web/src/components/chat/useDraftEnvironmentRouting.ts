@@ -1,12 +1,10 @@
-import { useLoadBalancedEnvironment } from "../../hooks/useLoadBalancedEnvironment";
+import { isAutoCandidate, useAutoPlacement } from "../../fork/autoPlacement/useAutoPlacement";
 import { useLogicalProjectEnvironments } from "../../hooks/useLogicalProjectEnvironments";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import {
   type EnvironmentId,
   type ProviderDriverKind,
-  ProviderInstanceId,
-  resolveProjectProviderInstanceEnabled,
   type ThreadContextRecord,
 } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -33,7 +31,6 @@ interface DraftEnvironmentRoutingInput {
     readonly loadBalancingWeights: Readonly<Record<string, number>>;
   };
   readonly referencedThreadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly activeProviderInstanceId: ProviderInstanceId | null;
   readonly selectedProvider: ProviderDriverKind;
   readonly composerHasAttachments: boolean;
   readonly activeProjectKey: string | null;
@@ -58,7 +55,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     providersByEnvironment,
     loadBalancingSettings,
     referencedThreadContexts,
-    activeProviderInstanceId,
     selectedProvider,
     composerHasAttachments,
     activeProjectKey,
@@ -74,43 +70,30 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
   const allProjects = useProjects();
   const { openScratchProject } = useScratchProject();
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
-  const loadBalancingCandidates = needsLoadBalancing
+  // Fork (Owner): kept while Auto is on, so a resolved draft can still say why.
+  const loadBalancingCandidates = automaticEnvironment
     ? logicalProjectEnvironments
         .filter((candidate) => {
           const environment = environmentById.get(candidate.environmentId);
           return (
-            environment?.connection.phase === "connected" &&
-            (loadBalancingSettings.loadBalancingWeights[candidate.environmentId] ?? 50) > 0 &&
+            isAutoCandidate({
+              environmentId: candidate.environmentId,
+              connected: environment?.connection.phase === "connected",
+              serverConfig: environment?.serverConfig,
+              providers: providersByEnvironment.get(candidate.environmentId),
+              projectId: candidate.projectId,
+              kind: candidate.machine,
+              weights: loadBalancingSettings.loadBalancingWeights,
+              driver: selectedProvider,
+            }) &&
             referencedThreadContexts.every(
               (record) => record.environmentId === candidate.environmentId,
-            ) &&
-            providersByEnvironment
-              .get(candidate.environmentId)
-              ?.some(
-                (provider) =>
-                  (activeProviderInstanceId === null ||
-                    provider.instanceId === activeProviderInstanceId) &&
-                  provider.driver === selectedProvider &&
-                  (environment.serverConfig?.settings
-                    ? resolveProjectProviderInstanceEnabled(
-                        environment.serverConfig.settings,
-                        candidate.projectId,
-                        provider.instanceId,
-                      )
-                    : provider.enabled) &&
-                  provider.installed &&
-                  provider.status !== "error" &&
-                  provider.auth.status !== "unauthenticated" &&
-                  provider.availability !== "unavailable",
-              )
+            )
           );
         })
-        .map((candidate) => candidate.environmentId)
+        .map(({ environmentId, label }) => ({ environmentId, label }))
     : [];
-  const loadBalancing = useLoadBalancedEnvironment(
-    loadBalancingCandidates,
-    loadBalancingSettings.loadBalancingWeights,
-  );
+  const loadBalancing = useAutoPlacement(loadBalancingCandidates, draftId);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the resolved load-balanced environment into the draft store once the async pick settles
   useEffect(() => {
     if (!needsLoadBalancing || loadBalancing.pending || !draftId || sendInFlightRef.current) return;
@@ -155,15 +138,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     });
   };
   const onAutoEnvironmentStable = useStableCallback(onAutoEnvironment);
-  const autoEnvironmentLabel = automaticEnvironment
-    ? draftThread?.loadBalancedEnvironmentId
-      ? "Auto balance"
-      : loadBalancing.pending
-        ? "Checking machines…"
-        : loadBalancing.failed
-          ? "Auto balance unavailable"
-          : "Auto balance"
-    : undefined;
 
   // A change in flight belongs to the draft and project it started on.
   const environmentChangeScope = `${draftId ?? ""}:${activeProjectKey ?? ""}`;
@@ -263,7 +237,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     needsLoadBalancing,
     loadBalancing,
     onAutoEnvironmentStable,
-    autoEnvironmentLabel,
     isEnvironmentChanging,
     readPendingEnvironmentChange,
     onEnvironmentChangeStable,

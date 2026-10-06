@@ -6,6 +6,10 @@ import {
   updateClientSettings,
 } from "~/hooks/useSettings";
 import type { EnvironmentPresentation } from "~/state/environments";
+import {
+  AUTO_PLACEMENT_DESCRIPTION,
+  effectiveAutoWeights,
+} from "~/fork/autoPlacement/machineChoice";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { EnvironmentRow, EnvironmentTransportLabel } from "./EnvironmentRow";
@@ -56,6 +60,7 @@ export function LoadBalancingSettings({
   const settingsHydrated = useClientSettingsHydrated();
 
   if (environments.length < 2) return null;
+  const weights = effectiveAutoWeights(environments, settings.loadBalancingWeights);
 
   const { id, title } = searchableSetting("load-balancing");
   return (
@@ -63,9 +68,7 @@ export function LoadBalancingSettings({
       id={id}
       title={title}
       summary={
-        settings.loadBalancingEnabled
-          ? summarizeLoadPreferences(environments, settings.loadBalancingWeights)
-          : "Off"
+        settings.loadBalancingEnabled ? summarizeLoadPreferences(environments, weights) : "Off"
       }
       control={
         <Switch
@@ -77,8 +80,7 @@ export function LoadBalancingSettings({
       }
     >
       <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
-        New threads in shared projects start on the machine with the most free CPU and memory,
-        weighted by each machine's preference.
+        {AUTO_PLACEMENT_DESCRIPTION}
       </p>
       {environments.map((environment) => (
         <EnvironmentRow
@@ -89,9 +91,7 @@ export function LoadBalancingSettings({
         >
           <Select
             items={preferences}
-            value={loadPreferenceForWeight(
-              settings.loadBalancingWeights[environment.environmentId],
-            )}
+            value={loadPreferenceForWeight(weights[environment.environmentId])}
             disabled={!settingsHydrated || !settings.loadBalancingEnabled}
             onValueChange={(value) => {
               if (value === null) return;

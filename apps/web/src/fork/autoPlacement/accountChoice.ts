@@ -1,0 +1,102 @@
+/**
+ * Fork (Owner): which subscription account Auto uses for a provider. The one
+ * owner of this rule; the composer's Auto and the Usage screen's "Use now"
+ * flag both call `chooseAutoAccount`.
+ *
+ * Rule: skip limited accounts (a window with nothing left), then the most
+ * remaining in the current session (five-hour) window, then the most remaining
+ * weekly. Accounts that report no usage rank after accounts that do; equal
+ * accounts keep the caller's order. No thresholds.
+ */
+import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
+
+/** Percent left in a window. A window whose reset time has passed is full again. */
+export function windowRemainingPercent(window: ServerProviderUsageWindow, now: number): number {
+  const resetsAt = window.resetsAt === undefined ? Number.NaN : Date.parse(window.resetsAt);
+  if (Number.isFinite(resetsAt) && resetsAt <= now) return 100;
+  return Math.max(0, Math.min(100, 100 - window.usedPercent));
+}
+
+export interface AccountStanding {
+  /** Percent left in the session window; null when the account reports none. */
+  readonly sessionLeft: number | null;
+  /** Percent left in the tightest weekly window; null when the account reports none. */
+  readonly weeklyLeft: number | null;
+  /** Some reported window has nothing left. */
+  readonly limited: boolean;
+}
+
+export function accountStanding(
+  limits: ServerProviderUsageLimits | undefined,
+  now: number,
+): AccountStanding {
+  const windows = limits?.windows ?? [];
+  const session = windows.find((window) => window.kind === "session");
+  const weekly = windows
+    .filter((window) => window.kind === "weekly")
+    .map((window) => windowRemainingPercent(window, now));
+  return {
+    sessionLeft: session ? windowRemainingPercent(session, now) : null,
+    weeklyLeft: weekly.length > 0 ? Math.min(...weekly) : null,
+    limited: windows.some((window) => windowRemainingPercent(window, now) <= 0),
+  };
+}
+
+/** Descending, with unknown (null) after every known value. */
+function compareLeft(left: number | null, right: number | null): number {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return right - left;
+}
+
+export interface AccountChoice<T> {
+  readonly account: T;
+  readonly standing: AccountStanding;
+}
+
+/**
+ * The account Auto would use right now, or null when every account is
+ * limited (or there are none).
+ */
+export function chooseAutoAccount<T>(
+  accounts: ReadonlyArray<T>,
+  limitsOf: (account: T) => ServerProviderUsageLimits | undefined,
+  now: number,
+): AccountChoice<T> | null {
+  const ranked = accounts
+    .map((account, index) => ({
+      account,
+      index,
+      standing: accountStanding(limitsOf(account), now),
+    }))
+    .filter((entry) => !entry.standing.limited)
+    .sort(
+      (left, right) =>
+        compareLeft(left.standing.sessionLeft, right.standing.sessionLeft) ||
+        compareLeft(left.standing.weeklyLeft, right.standing.weeklyLeft) ||
+        left.index - right.index,
+    );
+  const best = ranked[0];
+  return best ? { account: best.account, standing: best.standing } : null;
+}
+
+/**
+ * The account whose session window resets soonest (still in the future), so
+ * what it has left can be spent before the reset. Null when no account
+ * reports a future session reset.
+ */
+export function soonestSessionReset<T>(
+  accounts: ReadonlyArray<T>,
+  limitsOf: (account: T) => ServerProviderUsageLimits | undefined,
+  now: number,
+): { readonly account: T; readonly resetsAt: number } | null {
+  let soonest: { account: T; resetsAt: number } | null = null;
+  for (const account of accounts) {
+    const session = limitsOf(account)?.windows.find((window) => window.kind === "session");
+    const resetsAt = session?.resetsAt === undefined ? Number.NaN : Date.parse(session.resetsAt);
+    if (!Number.isFinite(resetsAt) || resetsAt <= now) continue;
+    if (soonest === null || resetsAt < soonest.resetsAt) soonest = { account, resetsAt };
+  }
+  return soonest;
+}
