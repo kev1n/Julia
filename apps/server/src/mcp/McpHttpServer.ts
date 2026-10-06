@@ -77,6 +77,7 @@ import {
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
+import * as ForkFleet from "../fork/fleet/index.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { requestUrl } from "../requestUrl.ts";
 
@@ -1262,4 +1263,6 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerMcpTransport(layerTools);
+export const layer = layerMcpTransport(
+  Layer.mergeAll(layerTools, ForkFleet.layer(toolkitRegistration)),
+);
