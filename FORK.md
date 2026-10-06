@@ -111,10 +111,28 @@ environment and thread id plus the repository's canonical key; paths are reposit
   source thread. Any holder of the secret can speak for any machine; all three are Owner's.
 - Acme meaning (`acmePaths.ts`): SKU manifests and schemas report their SKU, the deepline and
   rapidapi packages their provider; every other path stays unknown rather than guessed.
-- Not in v1: no automatic notifications, locks, agent-to-agent protocol or transcript copying.
-  Phase 2, after looking at real overlap data: one deduplicated alert per overlap episode for an
-  exact-path write/write between two active threads, everything else as a passive notice on the
-  next turn (needs a small pending-notice seam; T3's queue mode would wake an idle agent).
+- Overlap alerts (`alerts.ts`, `alertHub.ts`, `notices.ts`): after every accepted publish the hub
+  looks up the publishing machine's active threads in its index (the `t3_who_else` lookup) and
+  notes each overlap to both threads. It **interrupts** (steers the running turn, T3's own steer)
+  only when both threads are running, both machines are fresh, and both write the exact same file
+  (observed in the checkout, or declared write on that path). Every other overlap (one side idle,
+  a declared directory or a read, a stale machine) is a **passive note**: the owning server keeps
+  it in `~/.t3/userdata/fork-fleet-notices.json` and steers it into the thread's next turn (a note
+  that arrives mid-turn waits for the turn after; nothing ever starts a turn). Each direction of a
+  pair is told once per file set: again only when the set of paths changes or the same set
+  escalates to an interrupt; when the overlap ends a waiting note is withdrawn. Every note names
+  the other chat, its machine and link, each file with declared/observed evidence, the data's
+  time and every machine's heartbeat age. Notes only: nothing is stopped, merged or redirected.
+  The hub keeps who-was-told in `fork-fleet-alerts-state.json` and logs every decision (notify,
+  defer for a stale machine, withdraw, delivery outcome) to `~/.t3/userdata/logs/fork-fleet-alerts.jsonl`
+  on mac-a. No locks, agent-to-agent protocol or transcript copying.
+
+  ```
+  publish ─▶ hub: decideAlerts(index, state) ─▶ POST <owner>/fork/fleet/notice
+                                                 interrupt: steer now (no running turn: wait)
+                                                 passive:   wait for the next turn, then steer
+                                                 withdraw:  drop the waiting note
+  ```
 
 **Packaging** (`apps/desktop/src/fork/`, `fork/scripts/`). The desktop app is
 **T3 Code (Owner)** (`com.example.julia`) with its own profile
@@ -162,7 +180,8 @@ Commit series on `owner` (oldest first), one series per feature so each can be d
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
 (2; Usage reuses Auto's `chooseAutoAccount`), move to another machine (1; reuses Auto's rules),
 machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
-the fleet instead of GitHub (1; the move feature now depends on fleet awareness).
+the fleet instead of GitHub (1; the move feature now depends on fleet awareness), and overlap alerts
+(1).
 
 ## Sync, build, deploy
 
