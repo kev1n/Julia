@@ -1,4 +1,5 @@
 import * as MacPermissions from "./permissions/MacPermissions.ts";
+import "./fork/keychain.ts";
 import { handleStdioError } from "./app/stdioErrors.ts";
 
 for (const stream of [process.stdout, process.stderr]) {
