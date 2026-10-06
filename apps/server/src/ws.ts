@@ -232,6 +232,9 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
+// Fork (Owner): move a thread to another machine.
+import { receiveMove } from "./fork/moveThread.ts";
+import { ForkMoveError } from "@t3tools/contracts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
 import type { TelemetryOwner } from "./telemetry/Identify.ts";
@@ -2518,6 +2521,14 @@ export const layerWsRpc = (
           }),
         [WS_METHODS.serverGetProcessDiagnostics]: (_input) => processDiagnostics.read,
         [WS_METHODS.serverGetHostResources]: (_input) => hostResources.read,
+        [WS_METHODS.forkMoveReceive]: (input) =>
+          Effect.tryPromise({
+            try: () => receiveMove(input),
+            catch: (cause) =>
+              new ForkMoveError({
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          }),
         [WS_METHODS.serverGetProcessResourceHistory]: (input) =>
           processResourceMonitor.readHistory(input),
         [WS_METHODS.serverGetResourceTelemetryHistory]: (input) =>

@@ -6,6 +6,8 @@
  * tailnet through each Mac's Tailscale Serve.
  *
  * - POST hub/publish, GET hub/index: the hub (only where fork-fleet.json says "hub": true).
+ * - POST move/pack: another server taking a moved thread's branch as a git
+ *   bundle (../moveThread.ts).
  * - POST peer/read, peer/send: another server's agent reading or messaging a
  *   thread here. The source server vouches for the calling thread; this server
  *   acts for it as a client whose permission ceiling is that thread's runtime
@@ -27,6 +29,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import type { McpInvocationScope } from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
+import { MoveFailure, packBranch } from "../moveThread.ts";
 import { authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
@@ -52,7 +55,15 @@ const PeerSend = Schema.Struct({
   }),
 });
 
+const MovePack = Schema.Struct({
+  worktreePath: Schema.String,
+  branch: Schema.String,
+  commitMessage: Schema.String,
+  haves: Schema.Array(Schema.String),
+});
+
 const decodeSnapshot = Schema.decodeUnknownEffect(FleetSnapshot);
+const decodeMovePack = Schema.decodeUnknownEffect(MovePack);
 const decodePeerRead = Schema.decodeUnknownEffect(PeerRead);
 const decodePeerSend = Schema.decodeUnknownEffect(PeerSend);
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
@@ -110,6 +121,28 @@ const handle = (
       const snapshot = yield* decodeSnapshot(yield* request.json).pipe(Effect.result);
       if (snapshot._tag === "Failure") return json({ error: "invalid snapshot" }, 400);
       return json(hubPublish(snapshot.success, Date.now()));
+    }
+    if (path === "move/pack" && request.method === "POST") {
+      const decoded = yield* decodeMovePack(yield* request.json).pipe(Effect.result);
+      if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
+      const packed = yield* Effect.tryPromise(() => packBranch(decoded.success)).pipe(
+        Effect.result,
+      );
+      if (packed._tag === "Failure") {
+        const cause = packed.failure.cause;
+        return HttpServerResponse.text(
+          cause instanceof MoveFailure ? cause.message : `move failed: ${String(cause)}`,
+          { status: cause instanceof MoveFailure ? 409 : 500 },
+        );
+      }
+      const { head, bundle } = packed.success;
+      const headers = { "x-fork-move-head": head };
+      return bundle === null
+        ? HttpServerResponse.empty({ status: 204, headers })
+        : HttpServerResponse.uint8Array(bundle, {
+            headers,
+            contentType: "application/x-git-bundle",
+          });
     }
     if (request.method !== "POST" || (path !== "peer/read" && path !== "peer/send")) {
       return HttpServerResponse.text("Not Found", { status: 404 });

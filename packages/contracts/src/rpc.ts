@@ -34,6 +34,8 @@ import {
   ChatGptHandoffState,
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
+// Fork (Owner): move a thread to another machine.
+import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -515,6 +517,7 @@ export const WS_METHODS = {
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
+  forkMoveReceive: "fork.moveReceive",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
@@ -900,6 +903,12 @@ const WsServerGetHostResourcesRpc = Rpc.make(WS_METHODS.serverGetHostResources, 
   payload: Schema.Struct({}),
   success: HostResourcesSnapshot,
   error: EnvironmentAuthorizationError,
+});
+
+const WsForkMoveReceiveRpc = Rpc.make(WS_METHODS.forkMoveReceive, {
+  payload: ForkMoveReceiveInput,
+  success: ForkMoveReceiveResult,
+  error: Schema.Union([ForkMoveError, EnvironmentAuthorizationError]),
 });
 
 const WsServerGetProcessResourceHistoryRpc = Rpc.make(WS_METHODS.serverGetProcessResourceHistory, {
@@ -1971,6 +1980,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,
+  WsForkMoveReceiveRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,

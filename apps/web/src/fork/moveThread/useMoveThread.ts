@@ -1,29 +1,30 @@
 /**
- * Fork (Owner): "Move to <machine>" for a thread. One action hands the thread
- * to another environment that has the same project:
- *
- *   source machine                         target machine
- *   commit everything (incl. untracked) ─▶ origin/<branch> ─▶ new worktree on <branch>
- *   conversation (moveContext.ts) ───────────────────────▶ first message of a new thread
- *   source thread renamed "Moved to …" and settled; this client shows a banner linking over
- *
- * Built only from T3's own RPCs (source-control commit & push, thread launch
- * with a worktree from origin, metadata, settle), so the servers need nothing
- * new. A thread that is working, or that runs in the project checkout rather
- * than its own worktree branch, is refused: the move never pushes a shared
- * branch such as main.
+ * Fork (Owner): "Move to <machine>". The branch travels as a git bundle over the fleet
+ * (`fork.moveReceive`), the conversation becomes the new thread's first message, and the source is
+ * renamed "Moved to …" and settled. A working thread, or one in the project checkout rather than
+ * its own worktree, is refused, so a move never commits to a shared branch.
  */
 import { RegistryContext } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ModelSelection, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  createEnvironmentRpcCommand,
+  runAtomCommand,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import {
+  WS_METHODS,
+  type EnvironmentId,
+  type ModelSelection,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { useCallback, useContext, useMemo } from "react";
 
+import { connectionAtomRuntime } from "../../connection/runtime";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
-import { newMessageId, newThreadId, randomUUID } from "../../lib/utils";
+import { newMessageId, newThreadId } from "../../lib/utils";
 import {
   deriveLogicalProjectKeyFromSettings,
   selectProjectGroupingSettings,
@@ -31,7 +32,6 @@ import {
 import { readProjects, readThreadShell } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
-import { vcsActionManager } from "../../state/vcs";
 import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { chooseAutoInstance } from "../autoPlacement/useAutoAccount";
@@ -40,6 +40,12 @@ import { buildMoveMessage } from "./moveContext";
 import { recordMovedThread } from "./movedThreads";
 
 const MENU_PREFIX = "fork-move:";
+
+/** On the target: take the thread's branch from the source machine (see the header). */
+const moveReceive = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "fork:move-thread:receive",
+  tag: WS_METHODS.forkMoveReceive,
+});
 
 export function isMoveMenuId(id: string): boolean {
   return id.startsWith(MENU_PREFIX);
@@ -170,30 +176,33 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
         }
         if (!current.worktreePath || !current.branch) {
           throw new MoveRefused(
-            "Only threads in their own worktree can move: the move pushes the thread's branch, never the project checkout's branch.",
+            "Only threads in their own worktree can move: the move commits to the thread's branch, never the project checkout's branch.",
           );
         }
         const branch = current.branch;
         const toMachine = target.environment.label;
-        toast(`Moving to ${toMachine}…`, `Committing and pushing ${branch}.`, "info");
+        toast(`Moving to ${toMachine}…`, `Sending ${branch} to ${toMachine}.`, "info");
 
-        // 1. Everything in the worktree, untracked files included, onto the branch and origin.
-        const pushed = await runAtomCommand(
+        // 1. Everything in the worktree, untracked files included, committed on the
+        //    source and taken by the target straight from the source machine.
+        const received = await runAtomCommand(
           registry,
-          vcsActionManager.runStackedAction({
-            environmentId: threadRef.environmentId,
-            cwd: current.worktreePath,
-          }),
+          moveReceive,
           {
-            actionId: randomUUID(),
-            action: "commit_push",
-            commitMessage: `WIP: move to ${toMachine}`,
-            threadId: current.id,
-            projectId: current.projectId,
+            environmentId: target.environment.environmentId,
+            input: {
+              sourceEnvironmentId: threadRef.environmentId,
+              sourceWorktreePath: current.worktreePath,
+              branch,
+              projectRoot: target.project.workspaceRoot,
+              commitMessage: `WIP: move to ${toMachine}`,
+            },
           },
-          { label: "fork:move-thread:push", reportFailure: false, reportDefect: true },
+          { label: "fork:move-thread:receive", reportFailure: false, reportDefect: true },
         );
-        if (pushed._tag === "Failure") throw squashAtomCommandFailure(pushed);
+        if (received._tag === "Failure") throw squashAtomCommandFailure(received);
+        // The source's branch name unless the target already has that branch.
+        const taken = received.value;
 
         // 2. The conversation, as the new thread's first message.
         const projection = Option.getOrNull(
@@ -203,7 +212,7 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
           title: current.title,
           fromMachine: sourceEnvironment.label,
           toMachine,
-          branch,
+          branch: taken.branch,
           messages: (projection?.messages ?? []).map(({ role, text }) => ({ role, text })),
         });
 
@@ -235,16 +244,16 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
                   modelSelection,
                   runtimeMode: current.runtimeMode,
                   interactionMode: "default",
-                  branch,
+                  branch: taken.branch,
                   worktreePath: null,
                   createdAt,
                 },
                 prepareWorktree: {
                   projectCwd: target.project.workspaceRoot,
-                  baseBranch: branch,
-                  branch,
+                  baseBranch: taken.commit,
+                  branch: taken.branch,
                   requireWorktree: true,
-                  startFromOrigin: true,
+                  startFromOrigin: false,
                 },
                 runSetupScript: true,
               },
