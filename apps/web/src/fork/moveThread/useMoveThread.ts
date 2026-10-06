@@ -31,13 +31,18 @@ import {
 } from "../../logicalProject";
 import { readProjects, readThreadShell } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
-import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
+import {
+  environmentThreadDetails,
+  environmentThreadShells,
+  threadEnvironment,
+} from "../../state/threads";
 import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { chooseAutoInstance } from "../autoPlacement/useAutoAccount";
 import { isAutoCandidate, useAutoPlacement } from "../autoPlacement/useAutoPlacement";
 import { buildMoveMessage } from "./moveContext";
 import { recordMovedThread } from "./movedThreads";
+import { openMovedThread } from "./openMovedThread";
 
 const MENU_PREFIX = "fork-move:";
 
@@ -287,10 +292,22 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
           { label: "fork:move-thread:rename", reportFailure: false, reportDefect: true },
         );
         await settleThread(threadRef);
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: { environmentId: moved.environmentId, threadId: moved.threadId },
+        const opened = await openMovedThread({
+          registry,
+          shell: environmentThreadShells.threadShellAtom(moved),
+          navigate: () =>
+            navigate({
+              to: "/$environmentId/$threadId",
+              params: { environmentId: moved.environmentId, threadId: moved.threadId },
+            }),
         });
+        if (!opened) {
+          toast(
+            `Moved to ${toMachine}`,
+            "The new thread has not reached this app yet. Open it from the banner or the sidebar once it appears.",
+            "info",
+          );
+        }
       } catch (error) {
         toast(
           error instanceof MoveRefused ? "Cannot move this thread" : "Move failed",
