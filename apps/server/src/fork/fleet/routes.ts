@@ -6,6 +6,7 @@
  * tailnet through each Mac's Tailscale Serve.
  *
  * - POST hub/publish, GET hub/index: the hub (only where fork-fleet.json says "hub": true).
+ * - POST notice: an overlap note from the hub for a thread here (notices.ts).
  * - POST move/pack: another server taking a moved thread's branch as a git
  *   bundle (../moveThread.ts).
  * - POST peer/read, peer/send: another server's agent reading or messaging a
@@ -29,10 +30,13 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import type { McpInvocationScope } from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
+import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import { MoveFailure, packBranch } from "../moveThread.ts";
+import { scheduleAlerts } from "./alertHub.ts";
 import { FleetOperationError, authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
+import { NoticeRequest, receiveNotice } from "./notices.ts";
 import { fleetConfig } from "./publisher.ts";
 
 export const PeerSource = Schema.Struct({
@@ -67,6 +71,7 @@ const decodeMovePack = Schema.decodeUnknownEffect(MovePack);
 const isMoveFailure = Schema.is(MoveFailure);
 const decodePeerRead = Schema.decodeUnknownEffect(PeerRead);
 const decodePeerSend = Schema.decodeUnknownEffect(PeerSend);
+const decodeNotice = Schema.decodeUnknownEffect(NoticeRequest);
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
 
 const json = (body: unknown, status = 200) => HttpServerResponse.jsonUnsafe(body, { status });
@@ -102,13 +107,15 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service));
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service, threads));
   }),
 );
 
 const handle = (
   environment: ServerEnvironment.ServerEnvironment["Service"],
   service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+  threads: ThreadManagementService.ThreadManagementService["Service"],
 ) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -121,7 +128,19 @@ const handle = (
     if (path === "hub/publish" && config.hub && request.method === "POST") {
       const snapshot = yield* decodeSnapshot(yield* request.json).pipe(Effect.result);
       if (snapshot._tag === "Failure") return json({ error: "invalid snapshot" }, 400);
-      return json(hubPublish(snapshot.success, Date.now()));
+      const published = hubPublish(snapshot.success, Date.now());
+      if (published.accepted) {
+        scheduleAlerts(config, () => hubIndex(Date.now()), snapshot.success.environmentId);
+      }
+      return json(published);
+    }
+    if (path === "notice" && request.method === "POST") {
+      const decoded = yield* decodeNotice(yield* request.json).pipe(Effect.result);
+      if (decoded._tag === "Failure") return json({ error: "invalid notice" }, 400);
+      const outcome = yield* receiveNotice(threads, decoded.success).pipe(Effect.result);
+      return outcome._tag === "Success"
+        ? json({ outcome: outcome.success })
+        : json({ error: String(outcome.failure) }, 500);
     }
     if (path === "move/pack" && request.method === "POST") {
       const decoded = yield* decodeMovePack(yield* request.json).pipe(Effect.result);
