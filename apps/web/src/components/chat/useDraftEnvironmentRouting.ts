@@ -1,15 +1,14 @@
-import { msg, useGT } from "gt-react";
+import { msg } from "gt-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m } from "~/i18n/messages";
-import { useLoadBalancedEnvironment } from "../../hooks/useLoadBalancedEnvironment";
+import { isAutoCandidate, useAutoPlacement } from "../../fork/autoPlacement/useAutoPlacement";
 import { useLogicalProjectEnvironments } from "../../hooks/useLogicalProjectEnvironments";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import {
   type EnvironmentId,
   type ProviderDriverKind,
-  ProviderInstanceId,
-  resolveProjectProviderInstanceEnabled,
+  type ProviderInstanceId,
   type ThreadContextRecord,
 } from "@t3tools/contracts";
 import {
@@ -83,7 +82,6 @@ function carryFanoutSelections(
  * target machine prepares one, and the playbook link follows.
  */
 export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) {
-  const gt = useGT();
   const {
     draftId,
     draftThread,
@@ -113,44 +111,34 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
   const allProjects = useProjects();
   const { openScratchProject } = useScratchProject();
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
+  // Fork (Owner): kept while Auto is on, so a resolved draft can still say why.
   const loadBalancingCandidates = automaticEnvironment
     ? logicalProjectEnvironments
         .filter((candidate) => {
           const environment = environmentById.get(candidate.environmentId);
           return (
-            environment?.connection.phase === "connected" &&
-            (loadBalancingSettings.loadBalancingWeights[candidate.environmentId] ?? 50) > 0 &&
+            isAutoCandidate({
+              environmentId: candidate.environmentId,
+              connected: environment?.connection.phase === "connected",
+              serverConfig: environment?.serverConfig,
+              providers: providersByEnvironment.get(candidate.environmentId),
+              projectId: candidate.projectId,
+              kind: candidate.machine,
+              weights: loadBalancingSettings.loadBalancingWeights,
+              driver: selectedProvider,
+            }) &&
             referencedThreadContexts.every(
               (record) => record.environmentId === candidate.environmentId,
-            ) &&
-            providersByEnvironment
-              .get(candidate.environmentId)
-              ?.some(
-                (provider) =>
-                  (activeProviderInstanceId === null ||
-                    provider.instanceId === activeProviderInstanceId) &&
-                  provider.driver === selectedProvider &&
-                  (environment.serverConfig?.settings
-                    ? resolveProjectProviderInstanceEnabled(
-                        environment.serverConfig.settings,
-                        candidate.projectId,
-                        provider.instanceId,
-                      )
-                    : provider.enabled) &&
-                  provider.installed &&
-                  provider.status !== "error" &&
-                  provider.auth.status !== "unauthenticated" &&
-                  provider.availability !== "unavailable",
-              )
+            )
           );
         })
-        .map((candidate) => candidate.environmentId)
+        .map(({ environmentId, label }) => ({ environmentId, label }))
     : [];
-  const loadBalancing = useLoadBalancedEnvironment(
-    needsLoadBalancing ? loadBalancingCandidates : [],
-    loadBalancingSettings.loadBalancingWeights,
+  const loadBalancing = useAutoPlacement(loadBalancingCandidates, draftId);
+  const loadBalancingCandidateIds = loadBalancingCandidates.map(
+    (candidate) => candidate.environmentId,
   );
-  const readRouting = useStableCallback(() => ({ input, loadBalancingCandidates }));
+  const readRouting = useStableCallback(() => ({ input, loadBalancingCandidateIds }));
   const refreshBeforeSend = () => {
     if (
       !automaticEnvironment ||
@@ -162,7 +150,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
       return null;
     const originalDraft = getDraftSession(draftId);
     const composerDraft = useComposerDraftStore.getState().getComposerDraft(draftId);
-    return loadBalancing.refreshSelection(loadBalancingCandidates).then((environmentId) => {
+    return loadBalancing.refreshSelection(loadBalancingCandidateIds).then((environmentId) => {
       const current = readRouting();
       if (
         current.input.draftId !== draftId ||
@@ -173,7 +161,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
         current.input.activeProviderInstanceId !== activeProviderInstanceId ||
         current.input.loadBalancingSettings.loadBalancingWeights !==
           loadBalancingSettings.loadBalancingWeights ||
-        current.loadBalancingCandidates.join("\n") !== loadBalancingCandidates.join("\n") ||
+        current.loadBalancingCandidateIds.join("\n") !== loadBalancingCandidateIds.join("\n") ||
         getDraftSession(draftId) !== originalDraft ||
         useComposerDraftStore.getState().getComposerDraft(draftId) !== composerDraft
       )
@@ -187,7 +175,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
           ...loadBalancingSendWarning({
             pending: false,
             threadContexts: referencedThreadContexts,
-            candidateEnvironmentIds: loadBalancingCandidates,
+            candidateEnvironmentIds: loadBalancingCandidateIds,
           }),
         });
         return false;
@@ -256,15 +244,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     });
   };
   const onAutoEnvironmentStable = useStableCallback(onAutoEnvironment);
-  const autoEnvironmentLabel = automaticEnvironment
-    ? draftThread?.loadBalancedEnvironmentId
-      ? gt("Auto balance")
-      : loadBalancing.pending
-        ? gt("Checking machines…")
-        : loadBalancing.failed
-          ? gt("Auto balance unavailable")
-          : gt("Auto balance")
-    : undefined;
 
   // A change in flight belongs to the draft and project it started on.
   const environmentChangeScope = `${draftId ?? ""}:${activeProjectKey ?? ""}`;
@@ -398,7 +377,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     loadBalancing,
     refreshBeforeSend,
     onAutoEnvironmentStable,
-    autoEnvironmentLabel,
     isEnvironmentChanging,
     readPendingEnvironmentChange,
     onEnvironmentChangeStable,
