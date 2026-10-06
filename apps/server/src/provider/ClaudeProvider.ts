@@ -50,6 +50,7 @@ import {
   discoverClaudeSkills,
   readClaudeSettingsEnv,
 } from "./Drivers/ClaudeSkills.ts";
+import { readClaudeTierMultiplier, withClaudeTier } from "../fork/claudePlanTier.ts";
 import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
@@ -706,7 +707,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     apiProviderAuthMetadata(capabilities.apiProvider) ??
     (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined) ??
     claudeAuthMetadata({
-      subscriptionType: capabilities.subscriptionType,
+      subscriptionType: withClaudeTier(
+        capabilities.subscriptionType,
+        yield* readClaudeTierMultiplier(resolvedEnvironment),
+      ),
       authMethod: capabilities.tokenSource,
     });
   const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
