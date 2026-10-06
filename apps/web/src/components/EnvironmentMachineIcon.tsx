@@ -1,6 +1,7 @@
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import { CloudIcon, LaptopIcon, MonitorIcon, ServerIcon, type LucideProps } from "lucide-react";
 import type { FunctionComponent, SVGProps } from "react";
+import { machinePicture, PICTURE_BY_KIND } from "../fork/machinePictures/MachinePictures";
 import { LinuxIcon } from "./Icons";
 
 function LucideLike(props: SVGProps<SVGSVGElement>) {
@@ -61,13 +62,13 @@ export const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, str
 export function environmentMachineIcon(
   kind: EnvironmentMachineKind,
 ): FunctionComponent<LucideProps> {
-  return ICON_BY_KIND[kind];
+  return machinePicture(kind) ?? ICON_BY_KIND[kind];
 }
 
 export function EnvironmentMachineIcon({
   kind,
   ...props
 }: LucideProps & { readonly kind: EnvironmentMachineKind }) {
-  const Icon = ICON_BY_KIND[kind];
+  const Icon = PICTURE_BY_KIND[kind] ?? ICON_BY_KIND[kind];
   return <Icon {...props} />;
 }
