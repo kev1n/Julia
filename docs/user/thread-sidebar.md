@@ -5,6 +5,10 @@ need a separate branch and working directory.
 
 ## Start a thread
 
+The sidebar groups compact thread rows under their projects. Collapse a project to
+hide its rows, or use its **+** action to start a thread there. Pinned threads and
+the Working, Snoozed, and Settled shelves keep their separate lifecycle sections.
+
 On web and desktop, a new thread keeps the current project and carries your model
 and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
@@ -18,6 +22,20 @@ machine, the thread starts on a connected one if any is connected.
 
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
+
+### Chats in one workspace
+
+On web and desktop, chats in the same working directory appear as tabs above the
+conversation. **New chat in this workspace** keeps that directory and branch.
+Closing a tab does not delete, archive, or stop its thread; reopen it from the tab
+menu or sidebar.
+
+Use **Fork chat with final replies only**, or the fork action on a finished
+response, to continue in a new conversation with your user messages and the last
+finished agent reply from each turn. Reasoning, tool activity, and intermediate
+updates stay in the original thread. The fork shares the workspace but starts a
+fresh provider session. Mobile's response-fork action carries the same compact
+history. Portable context limits still apply; see [Context in portable handoffs](./portable-handoffs.md).
 
 ### Start without a project
 

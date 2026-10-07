@@ -52,8 +52,38 @@ import {
   pendingSidebarRouteReveal,
   resolveSidebarRouteReveal,
 } from "./sidebar/routeReveal";
+import {
+  buildSidebarProjectSnapshots,
+  groupSidebarThreadsByProject,
+} from "../sidebarProjectGrouping";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+it("groups thread navigation by project while preserving each project's row order", () => {
+  const projects = [
+    makeProject({ id: ProjectId.make("a"), workspaceRoot: "/repo/a" }),
+    makeProject({ id: ProjectId.make("b"), workspaceRoot: "/repo/b" }),
+    makeProject({ id: ProjectId.make("empty"), workspaceRoot: "/repo/empty" }),
+  ];
+  const snapshots = buildSidebarProjectSnapshots({
+    projects,
+    settings: { sidebarProjectGroupingMode: "separate", sidebarProjectGroupingOverrides: {} },
+    primaryEnvironmentId: localEnvironmentId,
+    resolveEnvironmentLabel: () => null,
+  });
+  const rows = ["b", "a", "b", "unknown"].map((projectId, index) => ({
+    environmentId: localEnvironmentId,
+    projectId: ProjectId.make(projectId),
+    id: index,
+  }));
+  const grouped = groupSidebarThreadsByProject(rows, snapshots);
+  expect(grouped.groups.map((group) => group.threads.map((row) => row.id))).toEqual([
+    [1],
+    [0, 2],
+    [],
+  ]);
+  expect(grouped.ungrouped.map((row) => row.id)).toEqual([3]);
+});
 
 describe("deleteSelectedThreadEntries", () => {
   const entries = [{ threadKey: "one" }, { threadKey: "two" }, { threadKey: "three" }] as const;

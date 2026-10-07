@@ -41,18 +41,44 @@ describe("filesystem read access", () => {
     },
   );
 
-  it.each([
-    { authenticated: true, scopes: [AuthOrchestrationReadScope], auth: SPLIT_SCOPES_SERVER },
-    { authenticated: false, scopes: [AuthFilesystemReadScope], auth: SPLIT_SCOPES_SERVER },
-  ] as const)("does not infer file access from an ungranted session", (session) => {
+  it("explains how to replace a grant that lacks file access without expanding it", () => {
     expect(
       resolveFilesystemReadAccess({
         isCatalogReady: true,
         connection: { phase: "connected", error: null },
-        session,
+        session: {
+          authenticated: true,
+          scopes: [AuthOrchestrationReadScope],
+          permissions: [AuthOrchestrationReadScope],
+          auth: SPLIT_SCOPES_SERVER,
+        },
         sessionError: null,
       }),
-    ).toEqual({ canReadFiles: false, isPending: false, error: null });
+    ).toEqual({
+      canReadFiles: false,
+      isPending: false,
+      error:
+        "This connection does not have Read files permission. Pair this environment again with Read files enabled to view host images, files, and local diffs.",
+    });
+  });
+
+  it("requires authentication even when file access appears in the scopes", () => {
+    expect(
+      resolveFilesystemReadAccess({
+        isCatalogReady: true,
+        connection: { phase: "connected", error: null },
+        session: {
+          authenticated: false,
+          scopes: [AuthFilesystemReadScope],
+          auth: SPLIT_SCOPES_SERVER,
+        },
+        sessionError: null,
+      }),
+    ).toEqual({
+      canReadFiles: false,
+      isPending: false,
+      error: "Sign in to this environment to view host images, files, and local diffs.",
+    });
   });
 
   it("falls back to the orchestration grant on a server that predates filesystem:read", () => {

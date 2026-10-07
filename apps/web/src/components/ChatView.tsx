@@ -93,6 +93,7 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   getUserQueuedThreadRuns,
+  threadSupportsCompactFork,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
@@ -206,6 +207,7 @@ import {
 import { useNowMinute } from "../hooks/useNowMinute";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { WorkspaceChatTabs } from "./chat/WorkspaceChatTabs";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { focusTerminalOnThreadEnter, getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -2104,7 +2106,7 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
-      focusComposerStable();
+      if (!document.activeElement?.closest("[data-workspace-chat-tabs]")) focusComposerStable();
     });
     return () => {
       window.cancelAnimationFrame(frame);
@@ -3288,6 +3290,38 @@ export default function ChatView(props: ChatViewProps) {
               : {})}
           />
         </header>
+
+        <WorkspaceChatTabs
+          activeThread={activeThread}
+          isServerThread={isServerThread}
+          canCreate={!activeEnvironmentUnavailable && canOperateThread}
+          canFork={
+            isServerThread &&
+            !activeEnvironmentUnavailable &&
+            !isWorking &&
+            threadSupportsCompactFork(serverProjection) &&
+            activeLatestRun !== null &&
+            ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(
+              activeLatestRun.status,
+            ) &&
+            canOperateThread
+          }
+          onNewChat={() => {
+            if (!activeProjectRef) return;
+            void handleNewThread(activeProjectRef, {
+              branch: activeThread.branch,
+              worktreePath: activeThread.worktreePath,
+              envMode: activeThread.worktreePath ? "worktree" : "local",
+            });
+          }}
+          onForkChat={async () => {
+            if (!activeLatestRun) return;
+            await onForkFromRunStable({
+              sourceThreadId: activeThread.id,
+              runId: activeLatestRun.runId,
+            });
+          }}
+        />
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas

@@ -45,10 +45,15 @@ export function resolveFilesystemReadAccess(input: {
       error: isPending ? null : (input.connection?.error ?? "This environment is not connected."),
     };
   }
+  const canReadFiles = sessionGrantsScope(input.session, AuthFilesystemReadScope);
   return {
-    canReadFiles: sessionGrantsScope(input.session, AuthFilesystemReadScope),
+    canReadFiles,
     isPending: false,
-    error: null,
+    error: canReadFiles
+      ? null
+      : input.session.authenticated
+        ? "This connection does not have Read files permission. Pair this environment again with Read files enabled to view host images, files, and local diffs."
+        : "Sign in to this environment to view host images, files, and local diffs.",
   };
 }
 

@@ -17,7 +17,13 @@ import type { MenuAction } from "@react-native-menu/menu";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useRef, useState } from "react";
 import type { LayoutChangeEvent, TextInputInstance } from "react-native";
-import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
+import {
+  groupThreadSidebarItems,
+  type GroupedSidebarRow,
+  type SidebarRow,
+} from "./threadSidebarGroups";
 import { GestureDetector, useNativeGesture } from "react-native-gesture-handler";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useEnabledNavigationTabs } from "../workspace/navigation-tabs";
@@ -79,19 +85,11 @@ import {
   threadListV2ListItemsAreEqual,
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
-  type ThreadListV2ListItem,
 } from "./threadListV2";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 
-type SidebarListItem =
-  | ThreadListV2ListItem
-  | {
-      readonly type: "v2-show-more";
-      readonly key: string;
-      readonly hiddenCount: number;
-      readonly state?: "loading" | "failed";
-    };
+type SidebarListItem = GroupedSidebarRow;
 
 const SIDEBAR_STICKY_HEADER_HEIGHT = 106;
 
@@ -148,6 +146,7 @@ function ThreadNavigationSidebarPane(
   const floatingTabs = floatingTabsMetrics(enabledTabs.length + 1, scale, fabSize, props.width);
   const projects = useProjects();
   const threads = useNavigationThreadShells();
+  const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<ReadonlySet<string>>(new Set());
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const searchInputRef = useRef<TextInputInstance>(null);
@@ -317,7 +316,7 @@ function ThreadNavigationSidebarPane(
     settledShelfExpanded,
     selectedThreadKey: props.selectedThreadKey ?? null,
   });
-  const listItems: readonly SidebarListItem[] =
+  const ungroupedListItems: readonly SidebarRow[] =
     settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0
       ? [
           ...threadListV2Items,
@@ -333,6 +332,15 @@ function ThreadNavigationSidebarPane(
           },
         ]
       : threadListV2Items;
+  const listItems: readonly SidebarListItem[] =
+    props.searchQuery.trim().length > 0
+      ? ungroupedListItems
+      : groupThreadSidebarItems({
+          items: ungroupedListItems,
+          scopes: projectScopes,
+          collapsedKeys: collapsedProjectKeys,
+          selectedThreadKey: props.selectedThreadKey,
+        });
   const listMenuActions = [
     {
       id: "environment",
@@ -470,7 +478,10 @@ function ThreadNavigationSidebarPane(
     threadSearchMatchByKey,
     workingShelfEnabled,
   };
-  useThreadJumpShortcuts(listItems, handleSelectThread);
+  useThreadJumpShortcuts(
+    listItems.filter((item) => item.type !== "project-header"),
+    handleSelectThread,
+  );
   const sidebarItemsAreEqual = (previous: SidebarListItem, item: SidebarListItem): boolean => {
     if (isThreadListV2ListItem(previous) && isThreadListV2ListItem(item)) {
       return threadListV2ListItemsAreEqual(previous, item);
@@ -500,6 +511,62 @@ function ThreadNavigationSidebarPane(
   useHardwareKeyboardCommand("focusSearch", focusSearch);
   const renderListItem = ({ item }: { readonly item: SidebarListItem }) => {
     switch (item.type) {
+      case "project-header": {
+        const project = item.scope.representative;
+        return (
+          <View className="mt-2 flex-row items-center px-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${item.scope.title}, ${item.count} threads`}
+              accessibilityState={{ expanded: item.expanded }}
+              onPress={() =>
+                setCollapsedProjectKeys((keys) => {
+                  const next = new Set(keys);
+                  if (item.expanded) next.add(item.scope.key);
+                  else next.delete(item.scope.key);
+                  return next;
+                })
+              }
+              className="min-h-[44px] min-w-0 flex-1 flex-row items-center gap-2 px-2"
+            >
+              <SymbolView
+                name={item.expanded ? "chevron.down" : "chevron.right"}
+                size={12}
+                tintColor={materialTheme["--color-drawer-foreground-muted"]}
+              />
+              <ProjectFavicon
+                environmentId={project.environmentId}
+                faviconPath={project.faviconPath}
+                projectIcon={project.projectIcon}
+                projectTitle={project.title}
+                workspaceRoot={project.workspaceRoot}
+                size={16}
+              />
+              <Text
+                className="min-w-0 flex-1 text-sm font-t3-medium text-drawer-foreground"
+                numberOfLines={1}
+              >
+                {item.scope.title}
+              </Text>
+              <Text className="text-xs tabular-nums text-drawer-foreground-muted">
+                {item.count}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`New thread in ${item.scope.title}`}
+              onPress={() => props.onNewThreadInProject(project)}
+              className="size-11 items-center justify-center"
+            >
+              <SymbolView
+                name="plus"
+                size={16}
+                tintColor={materialTheme["--color-drawer-foreground-muted"]}
+              />
+            </Pressable>
+          </View>
+        );
+      }
       case "v2-pending": {
         const pendingScopeKey = scopedProjectKey(
           item.pendingTask.environmentId,
@@ -543,6 +610,7 @@ function ThreadNavigationSidebarPane(
             onNewThreadOnBranch={props.onNewThreadOnBranch}
             thread={thread}
             variant={item.item.variant}
+            compact
             hasQueuedMessages={item.hasQueuedMessages}
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}

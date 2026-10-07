@@ -278,8 +278,9 @@ export function ThreadMarkdownImage(props: {
       }
       unavailable={assetUrl._tag === "Failure"}
       unavailableDetail={
-        assetUrl._tag === "Failure" && assetUrl.reason === "missing-file-access"
-          ? MISSING_FILE_ACCESS_MESSAGE
+        assetUrl._tag === "Failure"
+          ? (assetUrl.message ??
+            (assetUrl.reason === "missing-file-access" ? MISSING_FILE_ACCESS_MESSAGE : undefined))
           : undefined
       }
       knownSize={assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined}

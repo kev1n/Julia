@@ -367,6 +367,20 @@ describe("thread workflows", () => {
     expect(canForkProjectedAssistantItem({ projectedItem })).toBe(true);
     expect(
       canForkProjectedAssistantItem({
+        projectedItem,
+        contextMode: "final_messages",
+        capabilities: capabilities({ nativeFork: true }),
+      }),
+    ).toBe(false);
+    expect(
+      canForkProjectedAssistantItem({
+        projectedItem,
+        contextMode: "final_messages",
+        capabilities: capabilities({ portableFork: true }),
+      }),
+    ).toBe(true);
+    expect(
+      canForkProjectedAssistantItem({
         projectedItem: {
           item: { type: "assistant_message", runId: "run", status: "running" },
         } as never,

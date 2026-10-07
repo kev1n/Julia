@@ -58,6 +58,7 @@ export interface ThreadForkServiceV2Shape {
     readonly transferId: ContextTransferId;
     readonly targetThreadId: ThreadId;
     readonly title?: string;
+    readonly contextMode?: "full" | "final_messages";
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
     readonly createdAt: DateTime.Utc;
@@ -100,6 +101,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
           type: "run",
           threadId: input.sourceProjection.thread.id,
           runId: input.sourceRun.id,
+          ...(input.contextMode === undefined ? {} : { contextMode: input.contextMode }),
         },
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
