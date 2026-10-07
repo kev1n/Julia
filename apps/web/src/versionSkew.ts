@@ -4,7 +4,6 @@ import type {
   ServerInstallation,
   ServerSelfUpdateCapability,
 } from "@t3tools/contracts";
-import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 
@@ -18,16 +17,6 @@ export interface VersionMismatch {
 }
 
 const VERSION_MISMATCH_DISMISSALS_STORAGE_KEY = "t3code:version-mismatch-dismissals:v1";
-
-const dismissedServerUpdateFailures = new WeakSet<ServerUpdateState>();
-
-export function isServerUpdateFailureDismissed(state: ServerUpdateState): boolean {
-  return state.status === "failed" && dismissedServerUpdateFailures.has(state);
-}
-
-export function dismissServerUpdateFailure(state: ServerUpdateState): void {
-  if (state.status === "failed") dismissedServerUpdateFailures.add(state);
-}
 
 const VersionMismatchDismissalsSchema = Schema.Struct({
   keys: Schema.Array(Schema.String),

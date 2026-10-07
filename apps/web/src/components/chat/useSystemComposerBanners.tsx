@@ -23,17 +23,7 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ENVIRONMENT_RECONNECT_WARNING_GRACE_MS } from "../ChatView.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
-import { ServerUpdateAction, serverUpdateStageLabel } from "../ServerUpdateAction";
-import { useAutoBalanceUpdateBanner } from "./useAutoBalanceUpdateBanner";
 import { useMovedThreadBanner } from "../../fork/moveThread/movedThreads";
-import { ComposerServerUpdateIcon } from "./ComposerServerUpdateStatus";
-import {
-  dismissServerUpdateFailure,
-  isServerUpdateFailureDismissed,
-  resolveServerConfigVersionMismatch,
-  resolveServerSelfUpdateCapability,
-  supportsDesktopAppUpdate,
-} from "../../versionSkew";
 
 export type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
@@ -46,10 +36,6 @@ interface SystemComposerBannersInput {
   readonly activeEnvironmentUnavailable: boolean;
   readonly activeEnvironmentUnavailableState: EnvironmentUnavailableState | null;
   readonly activeThreadEnvironmentId: EnvironmentId | null;
-  readonly serverConfig: EnvironmentPresentation["serverConfig"] | null;
-  readonly hasMultipleRegisteredEnvironments: boolean;
-  readonly automaticEnvironment: boolean;
-  readonly autoUpdateEnvironments: ReadonlyArray<EnvironmentPresentation>;
   readonly movedThreadRef: ScopedThreadRef | null;
 }
 
@@ -63,10 +49,6 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     activeEnvironmentUnavailable,
     activeEnvironmentUnavailableState,
     activeThreadEnvironmentId,
-    serverConfig,
-    hasMultipleRegisteredEnvironments,
-    automaticEnvironment,
-    autoUpdateEnvironments,
     movedThreadRef,
   } = input;
   const navigate = useNavigate();
@@ -137,26 +119,10 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
   const handleDisconnectActiveEnvironmentStable = useStableCallback(
     handleDisconnectActiveEnvironment,
   );
-  const autoBalanceUpdateBanner = useAutoBalanceUpdateBanner(autoUpdateEnvironments);
   const movedThreadBanner = useMovedThreadBanner(movedThreadRef);
-  const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
-  const versionMismatchServerLabel =
-    hasMultipleRegisteredEnvironments && activeThreadEnvironmentId !== null
-      ? `${activeEnvironment?.label ?? serverConfig?.environment.label ?? activeThreadEnvironmentId} server`
-      : "server";
-  const serverUpdateEnvironmentId = activeThreadEnvironmentId;
-  const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
-  const versionMismatchInstallation = serverConfig?.environment.capabilities.serverInstallation;
-  const versionMismatchDesktopAppUpdate = supportsDesktopAppUpdate(serverConfig);
   const serverUpdateState = useAtomValue(
-    serverEnvironment.updateStateAtom(serverUpdateEnvironmentId),
+    serverEnvironment.updateStateAtom(activeThreadEnvironmentId),
   );
-  const [dismissedServerUpdateState, setDismissedServerUpdateState] = useState<
-    typeof serverUpdateState | null
-  >(null);
-  const serverUpdateFailureDismissed =
-    serverUpdateState === dismissedServerUpdateState ||
-    isServerUpdateFailureDismissed(serverUpdateState);
   return (() => {
     const items: ComposerBannerStackItem[] = [];
     const updateRunning = serverUpdateState.status === "running";
@@ -217,53 +183,6 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         ),
       });
     }
-    // An available update is offered by the sidebar's update pill; the composer only shows one
-    // that is running or failed, since either explains what this thread's server is doing.
-    if (
-      !automaticEnvironment &&
-      serverUpdateEnvironmentId &&
-      serverUpdateState.status !== "idle" &&
-      !serverUpdateFailureDismissed
-    ) {
-      const updateFailed = serverUpdateState.status === "failed";
-      items.push({
-        id: `server-version:${serverUpdateEnvironmentId}`,
-        variant: updateFailed ? "error" : "default",
-        group: "environment",
-        icon: <ComposerServerUpdateIcon status={serverUpdateState.status} />,
-        title: `${updateFailed ? "Could not update" : "Updating"} ${versionMismatchServerLabel}`,
-        description:
-          serverUpdateState.status === "failed"
-            ? serverUpdateState.message
-            : serverUpdateStageLabel(serverUpdateState.stage),
-        actions: !updateFailed ? (
-          disconnectAction
-        ) : !versionMismatch ||
-          (versionMismatchSelfUpdate === "desktop-managed" &&
-            !versionMismatchDesktopAppUpdate) ? undefined : (
-          <ServerUpdateAction
-            environmentId={serverUpdateEnvironmentId}
-            serverLabel={versionMismatchServerLabel}
-            selfUpdate={versionMismatchSelfUpdate}
-            installation={versionMismatchInstallation}
-            desktopAppUpdate={versionMismatchDesktopAppUpdate}
-            targetVersion={versionMismatch.clientVersion}
-            label="Retry"
-            variant="ghost"
-          />
-        ),
-        ...(updateFailed
-          ? {
-              dismissLabel: "Dismiss update notice",
-              onDismiss: () => {
-                dismissServerUpdateFailure(serverUpdateState);
-                setDismissedServerUpdateState(serverUpdateState);
-              },
-            }
-          : {}),
-      });
-    }
-    if (autoBalanceUpdateBanner) items.push(autoBalanceUpdateBanner);
     if (movedThreadBanner) items.push(movedThreadBanner);
     return items;
   })() as ComposerBannerStackItem[];

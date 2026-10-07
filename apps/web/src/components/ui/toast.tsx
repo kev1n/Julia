@@ -105,7 +105,16 @@ function createBufferedToastManager(): BaseToastManager {
 const toastManager = createBufferedToastManager();
 const anchoredToastManager = createBufferedToastManager();
 type ToastId = ReturnType<typeof toastManager.add>;
-const threadToastVisibleTimeoutRemainingMs = new Map<ToastId, number>();
+const visibleTimeoutsByManager = new WeakMap<typeof toastManager, Map<ToastId, number>>();
+
+function visibleTimeouts(manager: typeof toastManager) {
+  let timeouts = visibleTimeoutsByManager.get(manager);
+  if (!timeouts) {
+    timeouts = new Map<ToastId, number>();
+    visibleTimeoutsByManager.set(manager, timeouts);
+  }
+  return timeouts;
+}
 
 const TOAST_ICONS = {
   error: CircleAlertIcon,
@@ -454,6 +463,7 @@ type ToastPosition =
 
 interface ToastProviderProps extends Toast.Provider.Props {
   position?: ToastPosition;
+  toastManager?: typeof toastManager;
 }
 
 function useActiveThreadRefFromRoute(): ScopedThreadRef | null {
@@ -475,9 +485,11 @@ function useActiveThreadRefFromRoute(): ScopedThreadRef | null {
 }
 
 function ThreadToastVisibleAutoDismiss({
+  manager,
   toastId,
   dismissAfterVisibleMs,
 }: {
+  manager: typeof toastManager;
   toastId: ToastId;
   dismissAfterVisibleMs: number | undefined;
 }) {
@@ -486,6 +498,7 @@ function ThreadToastVisibleAutoDismiss({
     if (!dismissAfterVisibleMs || dismissAfterVisibleMs <= 0) return;
     if (typeof window === "undefined" || typeof document === "undefined") return;
 
+    const threadToastVisibleTimeoutRemainingMs = visibleTimeouts(manager);
     let remainingMs = threadToastVisibleTimeoutRemainingMs.get(toastId) ?? dismissAfterVisibleMs;
     let startedAtMs: number | null = null;
     let timeoutId: number | null = null;
@@ -501,7 +514,7 @@ function ThreadToastVisibleAutoDismiss({
       if (closed) return;
       closed = true;
       threadToastVisibleTimeoutRemainingMs.delete(toastId);
-      toastManager.close(toastId);
+      manager.close(toastId);
     };
 
     const pause = () => {
@@ -548,21 +561,26 @@ function ThreadToastVisibleAutoDismiss({
       pause();
       clearTimer();
     };
-  }, [dismissAfterVisibleMs, toastId]);
+  }, [dismissAfterVisibleMs, manager, toastId]);
 
   return null;
 }
 
-function ToastProvider({ children, position = "top-right", ...props }: ToastProviderProps) {
+function ToastProvider({
+  children,
+  position = "top-right",
+  toastManager: manager = toastManager,
+  ...props
+}: ToastProviderProps) {
   return (
-    <Toast.Provider toastManager={toastManager} {...props}>
+    <Toast.Provider toastManager={manager} {...props}>
       {children}
-      <Toasts position={position} />
+      <Toasts position={position} manager={manager} />
     </Toast.Provider>
   );
 }
 
-function Toasts({ position }: { position: ToastPosition }) {
+function Toasts({ position, manager }: { position: ToastPosition; manager: typeof toastManager }) {
   const { toasts } = Toast.useToastManager<ThreadToastData>();
   const activeThreadRef = useActiveThreadRefFromRoute();
   const isTop = position.startsWith("top");
@@ -573,13 +591,14 @@ function Toasts({ position }: { position: ToastPosition }) {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- prunes the module-level remaining-time map of toasts the manager has dropped
   useEffect(() => {
+    const threadToastVisibleTimeoutRemainingMs = visibleTimeouts(manager);
     const activeToastIds = new Set(toasts.map((toast) => toast.id));
     for (const toastId of threadToastVisibleTimeoutRemainingMs.keys()) {
       if (!activeToastIds.has(toastId)) {
         threadToastVisibleTimeoutRemainingMs.delete(toastId);
       }
     }
-  }, [toasts]);
+  }, [manager, toasts]);
 
   return (
     <Toast.Portal data-slot="toast-portal">
@@ -667,6 +686,7 @@ function Toasts({ position }: { position: ToastPosition }) {
               toast={toast}
             >
               <ThreadToastVisibleAutoDismiss
+                manager={manager}
                 dismissAfterVisibleMs={toast.data?.dismissAfterVisibleMs}
                 toastId={toast.id}
               />
@@ -675,9 +695,7 @@ function Toasts({ position }: { position: ToastPosition }) {
                   aria-label="Dismiss notification"
                   className={toastCornerOrbClass}
                   data-slot="toast-close"
-                  onClick={() =>
-                    handleToastDismissClick(toastManager, toast.id, toast.data?.onClose)
-                  }
+                  onClick={() => handleToastDismissClick(manager, toast.id, toast.data?.onClose)}
                   type="button"
                 >
                   <XIcon className="size-3" strokeWidth={2.25} />
