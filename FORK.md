@@ -289,7 +289,8 @@ under the project `t3code-fork` on build-mac. The chat works in the git worktree
 rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
 `build.sh` and `build-mobile.sh build`, and writes `~/t3-fork/autofix/<stamp>/report.md`
 (`RESOLVED` or `UNRESOLVED`, what conflicted and how it was resolved). The sync waits for the
-chat to finish, then accepts its branch only if the report says `RESOLVED`, no rebase is left
+chat to finish, at most one hour (Owner's choice): after that it stops the chat's turn, as the
+Stop button does, and treats it as unresolved. It then accepts its branch only if the report says `RESOLVED`, no rebase is left
 in progress, the branch sits on the upstream ref, the fork's commit subjects are unchanged in
 order and number (no "fix conflicts" commit), nothing under `fork/` changed, the fork's test
 cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable count
@@ -298,8 +299,8 @@ only if they pass does the normal push and release happen, and the release notes
 chat link and the agent's report (what conflicted, how it was resolved) for audit. The chat's
 worktree is removed then; the chat itself stays in T3 Code.
 
-**Where a failure shows up:** if the agent cannot get everything green (or its branch fails
-the guards or the rerun), nothing is released, so nothing deploys, and the job opens (or
+**Where a failure shows up:** if the agent cannot get everything green, times out ("timed
+out after 1 hour"), or its branch fails the guards or the rerun, nothing is released, so nothing deploys, and the job opens (or
 comments on) the issue **"Fork sync failed"** on `owner/t3code` with the step, conflicting
 files, the chat link, the agent's report and verdict, and the log tail. The agent's worktree is
 kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub notifies Owner as the
@@ -317,7 +318,8 @@ ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run upstrea
 
 Resolving a conflict by hand (after the auto-fix gave up): `cd ~/src/t3code-fork && git rebase
 <tag>` on build-mac, fix the hook in the listed upstream file, `git rebase --continue`, then run
-`fork/scripts/sync.sh`. A dry run with a failure also starts a real auto-fix chat (it publishes
+`fork/scripts/sync.sh`. `sync.sh --dry-run <ref> <seconds>` shortens the one-hour limit for a test; only a dry run
+accepts it, and the 05:00 job passes no arguments. A dry run with a failure also starts a real auto-fix chat (it publishes
 nothing and prints the issue body or release notes it would have used). `sync.sh` works on the
 clone it lives in, so a test can run from a scratch clone whose `origin`/`upstream` are local.
 
