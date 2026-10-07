@@ -20,7 +20,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 const usageCommandOrder = new Map<KeybindingCommand, number>(
   [
     "usage.open" as const,
-    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option) => option.command),
+    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].flatMap((option) =>
+      option.command ? [option.command] : [],
+    ),
   ].map((command, index) => [command, index]),
 );
 
