@@ -18,6 +18,8 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../provi
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
+import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { useNowMinute } from "../../hooks/useNowMinute";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -169,9 +171,19 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
+  // Fork (Owner): the subscription the selected model runs on and what it has left.
+  const nowMinute = useNowMinute();
+  const accountSummary =
+    activeEntry && !selectedEntries && props.triggerLabel === undefined
+      ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
+      : null;
+  const triggerTooltipBase = props.triggerLabel ?? allModelNames ?? triggerLabel;
+  const triggerTooltipText = accountSummary
+    ? `${triggerTooltipBase} · ${activeEntry?.displayName} · ${accountSummary}`
+    : triggerTooltipBase;
   const triggerTooltipContent = shortcutLabel
-    ? `${props.triggerLabel ?? allModelNames ?? triggerLabel} · ${shortcutLabel}`
-    : (props.triggerLabel ?? allModelNames ?? triggerLabel);
+    ? `${triggerTooltipText} · ${shortcutLabel}`
+    : triggerTooltipText;
 
   return (
     <Popover
