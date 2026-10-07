@@ -1,6 +1,7 @@
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import { msg, useMessages } from "gt-react-native";
 
+import { hasMachinePicture, MachinePicture } from "../fork/machinePictures";
 import { SymbolView, type AppSymbolName } from "./ui/AppSymbol";
 
 export const ENVIRONMENT_MACHINE_SYMBOLS = {
@@ -29,6 +30,16 @@ export function EnvironmentMachineSymbol(props: {
   readonly tintColorClassName: string;
 }) {
   const m = useMessages();
+  if (hasMachinePicture(props.kind)) {
+    // Fork (Owner): machine pictures
+    return (
+      <MachinePicture
+        kind={props.kind}
+        size={props.size}
+        accessibilityLabel={m(ENVIRONMENT_MACHINE_KIND_LABELS[props.kind])}
+      />
+    );
+  }
   return (
     <SymbolView
       accessibilityLabel={m(ENVIRONMENT_MACHINE_KIND_LABELS[props.kind])}
