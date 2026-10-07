@@ -54,6 +54,7 @@ import { ProviderWizardAuthenticationStep } from "./ProviderWizardAuthentication
 import { resolveOfficialAcpRegistryIconUrl } from "./AcpRegistryIcon";
 import { AddManagedCodexAccountDialog } from "./CodexSetupSection";
 import { MultipleAccountsNote } from "./MultipleAccountsNote";
+import { AddEverywhereRow, useAddProviderEverywhere } from "./addProviderEverywhere";
 import { ProviderEnvironmentSection } from "./ProviderInstanceCard";
 
 /** Limit the slug to 48 chars so the composed ProviderInstanceId fits its 64-char cap. */
@@ -162,6 +163,7 @@ export function AddProviderInstanceDialog({
   const settings = useEnvironmentSettings(environmentId);
   const persistProviderInstance = usePersistEnvironmentProviderInstanceMutation(environmentId);
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
+  const everywhere = useAddProviderEverywhere(environmentId);
 
   const [wizardStep, setWizardStep] = useState(0);
   const [addingChatGptAccount, setAddingChatGptAccount] = useState(false);
@@ -398,6 +400,14 @@ export function AddProviderInstanceDialog({
       return;
     }
     onCreated?.(brandedId);
+    // ACP agents are prepared per machine, so only built-in providers fan out.
+    if (!isAcpRegistry) {
+      void everywhere.addToOtherMachines(brandedId, nextInstance).then((elsewhere) => {
+        if (elsewhere) {
+          toastManager.add({ type: "success", title: "Other machines", description: elsewhere });
+        }
+      });
+    }
     if (isAcpRegistry && !isLocalAcp) {
       setCreatedInstanceId(brandedId);
       setIsSaving(false);
@@ -658,6 +668,13 @@ export function AddProviderInstanceDialog({
                     />
                   }
                 />
+                {isAcpRegistry ? null : (
+                  <AddEverywhereRow
+                    enabled={everywhere.enabled}
+                    onEnabledChange={everywhere.setEnabled}
+                    otherLabels={everywhere.otherLabels}
+                  />
+                )}
                 <SettingsRow
                   title="Accent color"
                   description="Optional marker shown in the picker."
