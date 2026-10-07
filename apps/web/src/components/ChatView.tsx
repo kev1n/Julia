@@ -36,7 +36,11 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
-import { autoPlacementLabel, useAutoAccount } from "../fork/autoPlacement/useAutoAccount";
+import {
+  autoPlacementLabel,
+  useAutoAccount,
+  useLimitedAccountSwitch,
+} from "../fork/autoPlacement/useAutoAccount";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -2779,6 +2783,13 @@ export default function ChatView(props: ChatViewProps) {
     driver: selectedProvider,
     currentInstanceId: activeProviderInstanceId,
     select: onAutoAccountSelectStable,
+  });
+  useLimitedAccountSwitch({
+    draftId: automaticEnvironment || envLocked ? null : draftId,
+    providers: providerStatuses,
+    driver: selectedProvider,
+    currentInstanceId: activeProviderInstanceId,
+    select: onAutoAccountSelect,
   });
   const autoPlacement = automaticEnvironment
     ? autoPlacementLabel({

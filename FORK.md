@@ -16,12 +16,18 @@ limited accounts. The composer's existing machine chip shows the choice as machi
 session left (`build-mac · alice · 88%`, the design Owner picked from three on 2026-10-06), and
 its tooltip says why (`Auto chose build-mac: most free memory · Claude alice (Pro): 88% session
 left`). With no eligible machine the chip says so and sending asks you to pick one.
-The account rule (`packages/shared/src/accountChoice.ts`) also runs in two places without the
-machine rule: a new task on the phone moves its default model to the account Auto would use
+The account rule (`packages/shared/src/accountChoice.ts`) also runs in three places without the
+machine rule: a new chat on a machine picked by hand moves off an account with no limit left,
+once per draft (`useLimitedAccountSwitch`; picking that account again then sticks), a new task on
+the phone moves its default model to the account Auto would use
 (`apps/mobile/src/fork/autoAccount.ts`; a model picked in the draft stays), and a scheduled run
 that starts a new thread moves off its saved account when that account is limited or signed out
 (`apps/server/src/fork/scheduledRunAccount.ts`). A scheduled task bound to a thread keeps the
 thread's account.
+
+**Codex default** (`apps/server/src/fork/codexDefaults.ts`). Codex's catalog marks GPT-6.1-Sol as
+its default model and High as that model's default reasoning, so a new Codex chat on any
+client starts there. A model you already chose for Codex in a draft is kept.
 
 **Machine pictures** (`apps/web/src/fork/machinePictures/`). MacBook Pro 16 (space black) and
 Mac mini product pictures wherever T3 draws a laptop or Mac mini environment icon (environment
@@ -42,7 +48,8 @@ credentials). An unknown tier shows the plan without one.
 The model pickers say the same per account (`accountLimitSummary`): each model row in the
 composer's picker ends with the account, plan and what is left
 (`owner · Max 20x · 88% session · 61% week`), as do the provider rail's tooltips and the
-composer model chip's tooltip. On the phone the model sheet puts that line on each provider's
+composer model chip's tooltip. An account with no limit left says when it comes back instead
+(`Max 20x · no limit left · back 3:40 PM`) and its icon in the rail is dimmed. On the phone the model sheet puts that line on each provider's
 header and names the machine under its title (`Runs on build-mac`).
 
 **Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
@@ -288,6 +295,11 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   `withAutoAccount`.
 - `apps/server/src/scheduledTasks/ScheduledTaskService.ts`: a new-thread run goes through
   `scheduledRunModelSelection`.
+- `apps/web/src/components/ChatView.tsx` (again): `useLimitedAccountSwitch` outside Auto.
+- `apps/web/src/components/chat/ModelPickerContent.tsx`, `ModelPickerSidebar.tsx`: dims limited
+  instances in the rail.
+- `apps/server/src/provider/CodexProvider.ts`: the Codex default model and effort from
+  `fork/codexDefaults.ts`.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -298,7 +310,8 @@ the fleet instead of GitHub (1; the move feature now depends on fleet awareness)
 pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1),
 then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
 machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
-in scheduled runs (1; moves the account rule to `packages/shared`).
+in scheduled runs (1; moves the account rule to `packages/shared`), then limited accounts on
+desktop and the Codex default (1).
 
 ## Sync, build, deploy
 
