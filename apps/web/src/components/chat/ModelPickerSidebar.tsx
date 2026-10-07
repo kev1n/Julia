@@ -58,6 +58,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
   /** Fork (Owner): subscription and limits left, shown in each instance's tooltip. */
   accountSummaryByInstanceId?: ReadonlyMap<ProviderInstanceId, string | null>;
+  /** Fork (Owner): instances with no limit left draw dimmed (still selectable). */
+  limitedInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
   const m = useMessages();
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
@@ -167,6 +169,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 className={cn(
                   "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
                   isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
+                  !isDisabled && props.limitedInstanceIds?.has(entry.instanceId) && "opacity-40",
                 )}
                 data-provider-accent-color={entry.accentColor}
                 onClick={() => !isDisabled && handleSelect(entry.instanceId)}
