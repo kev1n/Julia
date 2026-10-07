@@ -23,7 +23,7 @@ To free a default shortcut, choose **Unassign** from its row menu (**Reset to de
 
 Configure whether `Enter` sends or requires `mod+Enter` in **Settings → Chat → Send shortcut** (`Shift+Enter` always inserts a newline).
 
-In the model picker, use `Left`/`Shift+Tab` to move to the provider list, `Right` to return to search or move into effort levels, and `Up`/`Down`/`Enter` to select.
+In the model picker, use Up/Down to highlight a model and Enter to choose it. Right expands its subscriptions and, once they are open, moves to the model's effort levels; Left comes back and folds them. Choosing a model keeps the picker open on its effort. `mod+shift+up` and `mod+shift+down` choose the previous or next compatible subscription for the highlighted model. These subscription shortcuts can also be changed in Settings.
 
 ## Copy pull request and thread references
 

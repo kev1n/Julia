@@ -16,6 +16,19 @@ The composer renders Markdown live as you type and reveals raw markers when your
 - In lists/quotes, `Shift+Enter` continues (or exits on an empty line), and `Tab` / `Shift+Tab` indents or outdents.
 - In code blocks, `Enter` keeps indentation, `Tab` / `Shift+Tab` indents selected lines, and closing ` ``` ` + Enter (or two blank lines) exits the block.
 
+## Choose a model
+
+The model picker opens to your default models. Search or choose **All models** to
+browse the full catalog. Choose **Edit** to star additional defaults. Opus 5.5,
+GPT-6.1 Sol, and GPT-6 Astra lead the list when available.
+
+Each model shows the subscription it will use and its remaining usage. Expand the
+subscriptions to choose another account. Models you have not selected use the
+compatible account with the most capacity; an existing selection keeps its account.
+When a subscription does not report usage, the picker says **Usage unavailable**.
+Choose the model’s effort and speed in the same menu. Speed starts at **Normal**;
+turn on **Fast** when supported. Explicit saved speed choices are remembered.
+
 ## Attach files
 
 Attach up to **100 files** per message:
@@ -79,6 +92,15 @@ Mobile keeps local copies of draft attachments so you can preview them and queue
   }
 }
 ```
+
+## Model defaults
+
+T3 Code remembers your provider, model, and model options for new threads. A
+project's configured model takes precedence; resetting that project setting
+returns to the remembered selection.
+
+Leaving reasoning level unset uses the provider's own configuration. Speed defaults
+to Normal unless you have explicitly saved another choice.
 
 ## Quote an assistant response
 
