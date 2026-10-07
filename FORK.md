@@ -136,6 +136,62 @@ environment and thread id plus the repository's canonical key; paths are reposit
                                                  withdraw:  drop the waiting note
   ```
 
+**Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
+`fork/scripts/artifacts-server.py`). An Android build, **T3 Code (Owner)**
+(`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
+the three servers like the official one. Where the phone has the matching screen it shows the
+fork: machine names (server side, so any app shows them after pairing), machine pictures wherever
+it draws an environment's machine glyph, and on Usage > Limits the **Use now** and **Resets next**
+marks per provider (the web fork's `buildAccountCards`, so phone and desktop always mark the same
+account) beside the plan tier the servers already report (`Claude Max 20x`). Fleet awareness is
+agent-side, so the phone sees it only in the agents' transcripts. Not on the phone, because it has
+no matching screen: the Auto chip (the phone's new-thread flow has no machine balancing at all),
+Move to another machine (no such item in its thread menu), and the large environment-list
+pictures (the phone's environment rows draw the glyph at 14 pt, and the picture keeps that
+height). No push notifications (the fork build has no Firebase project) and no T3 Connect (no
+Clerk keys); pairing is direct over the tailnet.
+
+The phone stays current without reinstalling. The app is Expo with `expo-updates`, and its runtime
+version is the native fingerprint (`runtimeVersion.policy: fingerprint` in `app.config.ts`), so a
+JavaScript-only change can be delivered over the air to every binary with the same native code,
+and a native change cannot. The fork serves the Expo Updates protocol itself from build-mac instead of
+EAS (no Expo account, nothing leaves the tailnet):
+
+```
+sync.sh ─▶ build-mobile.sh build: runtime = fingerprint of apps/mobile (expo-updates CLI)
+           APK for that runtime already published? no ─▶ expo prebuild + gradle assembleRelease
+                                                         (arm64 only), signed with the fork key
+           always ─▶ expo export (Hermes bundle + assets) + manifest.json (id = hash of the files)
+        ─▶ build-mobile.sh publish ─▶ ~/t3-fork/out/mobile/android/<runtime>/
+                                       updates/<id>/..., manifest.json (written last), *.apk
+phone, every launch ── GET /mobile/manifest  (expo-platform, expo-runtime-version headers) ──▶
+        artifacts-server.py: that runtime's manifest.json, or 204 = no update
+        newer id ─▶ download in the background; T3's own update flow applies it at the next
+        backgrounding (or asks, if the app stays in front)
+```
+
+On a day whose upstream nightly changes native code the fingerprint changes: the sync builds a new
+APK (about 7 minutes on build-mac, versus about 1 minute for a JavaScript update), the installed app
+keeps its last update, and the sync opens (or comments on) the issue **"Install the new phone app
+build"** on `owner/t3code` with the link. Owner taps it once on the phone; the APK is signed with
+the same key, so it installs over the old one and keeps the pairings.
+
+- Install link (tailnet only): `https://build-mac-host.example.ts.net:8444/mobile/T3-Code-Owner.apk`
+  (Android asks once to allow installs from the browser). Pair: on a Mac, `t3 pair` (minis) or
+  `t3 pair --tailscale` (MacBook), then in the app Settings > Environments > + : host
+  `https://<host>.example.ts.net`, the code is the `token=` part of the printed link (or scan
+  the QR with the camera button).
+- Signing key: `~/t3-fork/keys/julia-fork-release.jks` (PKCS12, alias `julia-fork`) and its
+  password file `julia-fork-release.pass`, both mode 600 in a 700 directory on build-mac, made
+  2026-10-06, never in git. Losing it means every later APK needs an uninstall first (Android
+  refuses a different key), which loses the app's pairings. Back it up if build-mac is ever rebuilt.
+- Toolchain on build-mac (no Homebrew there): Temurin JDK 21 in `~/t3-fork/toolchain/jdk21`, Android
+  SDK in `~/Library/Android/sdk` (cmdline-tools, platform-tools, platforms 36 and 37.0,
+  build-tools 36/37, NDK 27.1.12297006, CMake 3.22.1; the versions React Native's
+  `libs.versions.toml` pins).
+- Manual: `fork/scripts/build-mobile.sh build <version> <out> ~/t3-fork/out/mobile` then
+  `fork/scripts/build-mobile.sh publish <out> ~/t3-fork/out/mobile`.
+
 **Packaging** (`apps/desktop/src/fork/`, `fork/scripts/`). The desktop app is
 **T3 Code (Owner)** (`com.example.julia`) with its own profile
 (`~/Library/Application Support/julia-fork`) and state (`~/.t3-owner-app`), no keychain use,
@@ -177,13 +233,17 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/desktop/src/app/DesktopUserData.ts`: the fork app's Electron profile directory.
 - `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment.
 - `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, routes, publisher) to the MCP server.
+- `apps/mobile/app.config.ts`: `withOwnerFork(config)` (identity and update URL, only with `T3CODE_MOBILE_OWNER=1`).
+- `apps/mobile/src/components/EnvironmentMachineSymbol.tsx`: looks up a machine picture before T3's glyph.
+- `apps/mobile/src/features/usage/UsageLimitsPooled.tsx`: the Use now / Resets next marks under each account.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
 (2; Usage reuses Auto's `chooseAutoAccount`), move to another machine (1; reuses Auto's rules),
 machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
 the fleet instead of GitHub (1; the move feature now depends on fleet awareness), overlap alerts
-(1), and opening the moved thread once the client knows it (1).
+(1), opening the moved thread once the client knows it (1), then the phone app: its identity (1),
+pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1).
 
 ## Sync, build, deploy
 
@@ -193,10 +253,16 @@ build-mac 05:00  com.example.t3code-fork.sync    fork/scripts/sync.sh
              -> fork/scripts/checks.sh (typecheck of contracts/web/server/desktop/scripts,
                 lint of every file the fork touches, fork tests + tests beside touched files)
              -> fork/scripts/build.sh (server runtime archive + T3 Code (Owner).app)
+             -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
              -> push owner, GitHub release owner-<version>-<sha> on owner/t3code
                 (VERSION, SHA256SUMS, install scripts)
-build-mac always com.example.t3code-fork.artifacts  ~/t3-fork/out served to the tailnet at
-             https://build-mac-host.example.ts.net:8444 (Tailscale Serve -> 127.0.0.1:8790)
+             -> build-mobile.sh publish (into ~/t3-fork/out/mobile); a new APK opens the issue
+                "Install the new phone app build"
+build-mac always com.example.t3code-fork.artifacts  ~/t3-fork/artifacts-server.py: ~/t3-fork/out served
+             to the tailnet at https://build-mac-host.example.ts.net:8444 (Tailscale Serve
+             -> 127.0.0.1:8790), plus /mobile/manifest for the phone
+phone  every launch  T3 Code (Owner) asks /mobile/manifest for its runtime; downloads a newer
+             update in the background and applies it at the next backgrounding
 every Mac 05:45 com.example.t3code-fork.deploy ~/t3-fork/pull-deploy.sh
              newest release not yet running -> download its artifacts from build-mac, check
              SHA256SUMS -> install-runtime.sh (and install-desktop.sh on the MacBook);
@@ -212,8 +278,8 @@ Login off, so a pull from each Mac replaces a push from build-mac. The large art
 the tailnet from build-mac, not through GitHub: uploading them from build-mac failed about one time in
 three on 2026-10-06 (broken pipe and TLS errors on 80-150 MB uploads).
 
-**Where a failure shows up:** on a rebase conflict or a failed check/build/publish nothing is
-released, so nothing deploys, and the job opens (or comments on) the issue **"Fork sync
+**Where a failure shows up:** on a rebase conflict or a failed check/build/publish (the phone
+build included) nothing is released, so nothing deploys, and the job opens (or comments on) the issue **"Fork sync
 failed"** on `owner/t3code` with the step, conflicting files and log tail. GitHub notifies
 Owner as the repo owner; the MacBook's daily deploy job also raises a macOS notification while
 that issue is open. The next successful sync closes it. Logs: `~/t3-fork/logs/` on each Mac.
@@ -343,7 +409,15 @@ Each series is independent of the packaging and tooling commits.
   official app's keychain item), so it has its own pairing records on each server.
 - Desktop updates install into /Applications without quitting a running app; the new build runs
   at the next launch.
-- Mobile is out of scope; the Android app talks to the fork servers unchanged.
+- The phone app is Android only (Owner's phone); the iOS config is untouched. Its build is part
+  of the sync, so a phone build failure holds back that day's server and desktop release too, the
+  same rule as every other failed step. If that proves too strict, the phone step can report on
+  the same issue without stopping the release.
+- The phone app rides upstream's `preview` variant (Nightly icon and label) rather than a new
+  variant, and overrides only name, package, scheme and update URL.
+- The phone's pictures and account marks import the desktop's files across apps
+  (`apps/web/src/fork/...`) rather than copying them, so there is one owner of each; the account
+  rule's files import only types.
 - Moving a thread carries the conversation as the new thread's first message, built by the client
   from the messages it has loaded, because T3's portable handoff runs on the server that owns the
   history and the target server has none of it. Reasoning, tool-call state and attachments do not
