@@ -39,10 +39,12 @@ for job in "$@"; do
       cp "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
       install_job com.example.t3code-fork.deploy "$state/pull-deploy.sh" 5 45 ;;
     artifacts)
-      # A static file server on localhost, published to the tailnet only by Tailscale
-      # Serve (the macOS Tailscale app cannot serve a directory itself).
+      # A static file server on localhost (plus the phone app's update manifest),
+      # published to the tailnet only by Tailscale Serve (the macOS Tailscale app
+      # cannot serve a directory itself).
       plist="$HOME/Library/LaunchAgents/com.example.t3code-fork.artifacts.plist"
       mkdir -p "$state/out"
+      cp "$here/artifacts-server.py" "$state/"
       cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -50,9 +52,8 @@ for job in "$@"; do
 <dict>
   <key>Label</key><string>com.example.t3code-fork.artifacts</string>
   <key>ProgramArguments</key>
-  <array><string>/usr/bin/python3</string><string>-m</string><string>http.server</string>
-    <string>8790</string><string>--bind</string><string>127.0.0.1</string>
-    <string>--directory</string><string>$state/out</string></array>
+  <array><string>/usr/bin/python3</string><string>$state/artifacts-server.py</string>
+    <string>8790</string><string>$state/out</string></array>
   <key>KeepAlive</key><true/>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>$state/logs/artifacts.log</string>

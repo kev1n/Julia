@@ -1,7 +1,8 @@
 #!/bin/bash
 # Daily on the build Mac (build-mac, LaunchAgent com.example.t3code-fork.sync):
 # rebase the fork onto the newest upstream nightly tag, check, build, and
-# publish a GitHub release on owner/t3code that every Mac's pull job installs.
+# publish a GitHub release on owner/t3code that every Mac's pull job installs,
+# plus the phone app's update (build-mobile.sh) that the phone pulls itself.
 # On a conflict or a failed step nothing is published (so nothing deploys) and
 # the open "Fork sync failed" issue on owner/t3code gets the details.
 #   fork/scripts/sync.sh            rebase, check, build, push, release
@@ -15,6 +16,7 @@ if [ "${1:-}" = "--dry-run" ]; then dry_run=true; onto=${2:-}; fi
 repo="$HOME/src/t3code-fork"
 state="$HOME/t3-fork"
 fork_repo="owner/t3code"
+artifacts_url="https://build-mac-host.example.ts.net:8444" # com.example.t3code-fork.artifacts
 mkdir -p "$state/logs" "$state/out"
 log="$state/logs/sync-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$log") 2>&1
@@ -25,8 +27,10 @@ echo "== fork sync $(date) dry_run=$dry_run"
 notify_failure() {
   local title="Fork sync failed"
   local body
-  body=$(printf '%s\n\nUpstream: %s\nFork head before sync: %s\nHost: %s\nLog: %s\n\nNothing was published, so nothing was deployed; every Mac keeps running %s.\n\nLast lines:\n```\n%s\n```\n' \
-    "$1" "${latest:-unknown}" "${before:-unknown}" "$(hostname -s)" "$log" "${current_release:-the last release}" "$(tail -40 "$log")")
+  local outcome="Nothing was published, so nothing was deployed; every Mac keeps running ${current_release:-the last release}."
+  [ -n "${released:-}" ] && outcome="Release $tag is out and the Macs will deploy it; only the phone keeps its last update."
+  body=$(printf '%s\n\nUpstream: %s\nFork head before sync: %s\nHost: %s\nLog: %s\n\n%s\n\nLast lines:\n```\n%s\n```\n' \
+    "$1" "${latest:-unknown}" "${before:-unknown}" "$(hostname -s)" "$log" "$outcome" "$(tail -40 "$log")")
   if $dry_run; then echo "(dry run: no issue opened)"; return; fi
   local number
   number=$(gh issue list -R "$fork_repo" --state open --search "\"$title\" in:title" --json number -q '.[0].number' 2>/dev/null)
@@ -81,6 +85,8 @@ fork/scripts/checks.sh "$latest" || fail "Checks failed on $version (typecheck, 
 out="$state/out/$version"
 rm -rf "$out"
 fork/scripts/build.sh "$version" "$out" || fail "Build failed for $version."
+fork/scripts/build-mobile.sh build "$version" "$out" "$state/out/mobile" ||
+  fail "Phone app build failed for $version."
 tar -czf "$out/fork-scripts.tar.gz" -C fork/scripts .
 
 if $dry_run; then
@@ -105,8 +111,23 @@ publish || {
   gh release delete "$tag" -R "$fork_repo" --yes --cleanup-tag >/dev/null 2>&1
   fail "Publishing release $tag failed (the partial release was removed)."
 }
+released=1
+fork/scripts/build-mobile.sh publish "$out" "$state/out/mobile" ||
+  fail "Publishing the phone app update for $version failed."
+if ls "$out"/mobile/*.apk >/dev/null 2>&1; then
+  # A new native fingerprint: over-the-air updates cannot reach the installed app
+  # any more, so Owner installs this APK once (it keeps his pairings).
+  apk_title="Install the new phone app build"
+  apk_body="T3 Code (Owner) $version changed native code, so the phone needs this APK once; daily updates then resume over the air. On the phone (on the tailnet): $artifacts_url/mobile/T3-Code-Owner.apk"
+  apk_issue=$(gh issue list -R "$fork_repo" --state open --search "\"$apk_title\" in:title" --json number -q '.[0].number' 2>/dev/null)
+  if [ -n "$apk_issue" ]; then
+    gh issue comment "$apk_issue" -R "$fork_repo" --body "$apk_body" >/dev/null
+  else
+    gh issue create -R "$fork_repo" --title "$apk_title" --body "$apk_body" >/dev/null
+  fi
+fi
 open_issue=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync failed\" in:title" --json number -q '.[0].number' 2>/dev/null)
 [ -n "$open_issue" ] && gh issue close "$open_issue" -R "$fork_repo" --comment "Fixed: $tag published." >/dev/null
 # Keep the output of this build and the one before it on disk.
-ls -1dt "$state/out"/*/ 2>/dev/null | tail -n +3 | xargs rm -rf
+ls -1dt "$state/out"/*/ 2>/dev/null | grep -v '/mobile/$' | tail -n +3 | xargs rm -rf
 echo "Published $tag"
