@@ -10,6 +10,7 @@ import type {
   ProjectId,
   RuntimeMode,
   ServerConfig as T3ServerConfig,
+  ServerProviderUsageLimits,
 } from "@t3tools/contracts";
 import {
   disallowedProviderMessage,
@@ -20,6 +21,7 @@ import {
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
+  withNormalSpeedDefault,
 } from "@t3tools/shared/model";
 import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
 
@@ -35,6 +37,7 @@ export type ModelOption = {
   /** Fork (Owner): the instance's subscription and what it has left. */
   readonly providerDetail?: string | undefined;
   readonly providerDriver: string;
+  readonly usageLimits?: ServerProviderUsageLimits | undefined;
   readonly supportedRuntimeModes?: ReadonlyArray<RuntimeMode>;
   readonly providerIconUrl?: string | undefined;
   readonly providerBadge?: {
@@ -146,15 +149,16 @@ function normalizeSelectionOptions(
   if (!capabilities) {
     return selection;
   }
-  if (!selection.options?.length) {
+  const selections = withNormalSpeedDefault(capabilities, selection.options);
+  if (!selections?.length) {
     return { instanceId: selection.instanceId, model: selection.model };
   }
   const options = buildExplicitProviderOptionSelectionsFromDescriptors(
     getProviderOptionDescriptors({
       caps: capabilities,
-      selections: selection.options,
+      selections,
     }),
-    selection.options,
+    selections,
   );
   return options
     ? { ...selection, options }
@@ -381,6 +385,7 @@ export function buildModelOptions(
         ...(providerDetail ? { providerDetail } : {}),
         providerDriver: provider.driver,
         providerBadge,
+        usageLimits: provider.usageLimits,
         ...(provider.supportedRuntimeModes === undefined
           ? {}
           : { supportedRuntimeModes: provider.supportedRuntimeModes }),

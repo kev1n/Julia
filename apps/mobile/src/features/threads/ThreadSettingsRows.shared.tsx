@@ -19,10 +19,10 @@ export type ModelRowProps = {
 };
 
 export type ChoiceRowProps = {
+  readonly disabled?: boolean | undefined;
   readonly label: string;
   readonly description?: string;
   readonly selected: boolean;
-  readonly disabled?: boolean;
   readonly onPress: () => void;
   readonly isLast: boolean;
 };

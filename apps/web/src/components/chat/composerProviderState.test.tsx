@@ -230,6 +230,36 @@ describe("withImplicitFastModeDefault", () => {
       ),
     ).toEqual(selections(["fastMode", true]));
   });
+
+  it("dispatches Normal for a provider's Fast-default tier, without overriding a saved Fast choice", () => {
+    const caps = {
+      optionDescriptors: [
+        {
+          id: "serviceTier",
+          label: "Speed",
+          type: "select" as const,
+          currentValue: "priority",
+          options: [
+            { id: "default", label: "Standard" },
+            { id: "priority", label: "Fast", isDefault: true },
+          ],
+        },
+      ],
+    };
+    expect(withImplicitFastModeDefault(caps, undefined)).toEqual(
+      selections(["serviceTier", "default"]),
+    );
+    expect(withImplicitFastModeDefault(caps, selections(["serviceTier", "priority"]))).toEqual(
+      selections(["serviceTier", "priority"]),
+    );
+    const state = getComposerProviderState({
+      provider: ProviderDriverKind.make("codex"),
+      model: MODEL,
+      models: modelWith(caps.optionDescriptors),
+      modelOptions: undefined,
+    });
+    expect(state.modelOptionsForDispatch).toContainEqual({ id: "serviceTier", value: "default" });
+  });
 });
 
 describe("readPromptUltrathink", () => {
