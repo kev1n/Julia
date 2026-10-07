@@ -17,7 +17,13 @@ const account = {
       email: "owner@gmail.com",
     },
   } as unknown as ServerProvider,
-  standing: { sessionLeft: 92, weeklyLeft: 40, limited: false },
+  standing: {
+    sessionLeft: 92,
+    weeklyLeft: 40,
+    monthlyLeft: null,
+    tightestLeft: 40,
+    limited: false,
+  },
 };
 
 describe("autoPlacementLabel", () => {
@@ -35,8 +41,8 @@ describe("autoPlacementLabel", () => {
         account,
       }),
     ).toEqual({
-      chip: "build-mac · owner · 92%",
-      detail: "Auto chose build-mac: most free memory · Claude owner (Max 20x): 92% session left",
+      chip: "build-mac · owner · 40%",
+      detail: "Auto chose build-mac: most free memory · Claude owner (Max 20x): 40% left",
     });
   });
 
