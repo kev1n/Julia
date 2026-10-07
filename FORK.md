@@ -110,6 +110,20 @@ the uncommitted work arrives on the target committed, as the latest commit.
 `build-mac`), instead of the computer name ("Mac Mini"). Clients store the name when they
 pair, so a client paired before the file existed keeps the old name until it is paired again.
 
+**Providers on every machine** (`apps/web/src/components/settings/addProviderEverywhere.tsx`,
+`apps/server/src/fork/claudeAuth.ts`, `apps/server/src/fork/pairedOperatorScopes.ts`). Adding a
+provider in Settings > Providers (any built-in driver, or a ChatGPT account for Codex) also adds it
+to every other paired machine under the same instance ID; **Add to all machines** is on by default
+and the toast names machines skipped as offline, without permission, or already having that ID.
+ACP registry agents are prepared per machine and do not fan out. Only the entry is copied: each
+machine signs in itself, from that machine's tab on the Providers page, because a login copied
+between machines breaks (Codex refresh tokens are single use). Claude now has **Sign in** there
+too: it runs `claude auth login` in the in-app sign-in terminal with the instance's
+`CLAUDE_CONFIG_DIR`, so a new Claude account never needs a shell. A client paired by link or QR
+with run access (`orchestration:operate`) also gets every standard permission at read time, so
+clients paired before `providers:manage` existed see the add and sign-in controls without pairing
+again; read-only pairings, agent MCP tokens and CLI-issued sessions keep exactly their grant.
+
 **Fleet awareness** (`apps/server/src/fork/fleet/`). Agents can see what agents on the other
 machines are doing. Each server rebuilds a snapshot of its own threads and checkouts from its
 projections (never from the live-tail event stream, so a restart or reconnect always yields a
@@ -304,6 +318,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   instances in the rail.
 - `apps/server/src/provider/CodexProvider.ts`: the Codex default model and effort from
   `fork/codexDefaults.ts`.
+- `apps/server/src/auth/SessionStore.ts`: session scopes go through `fork/pairedOperatorScopes.ts`.
+- `apps/server/src/provider/Drivers/ClaudeDriver.ts`: the Claude instance gets `fork/claudeAuth.ts`
+  as its sign-in and advertises it.
+- `apps/web/src/components/settings/AddProviderInstanceDialog.tsx`, `AddCodexAccountDialog.tsx`:
+  the Add to all machines switch and the fan-out after a successful add.
+- `apps/web/src/components/settings/AddProviderInstanceDialog.environment.test.tsx`: mocks the fan-out.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -315,7 +335,7 @@ pictures and account marks (1), sync and update serving (1), and its layout fix 
 then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
 machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
 in scheduled runs (1; moves the account rule to `packages/shared`), then limited accounts on
-desktop and the Codex default (1).
+desktop and the Codex default (1), then providers on every machine (1).
 
 ## Sync, build, deploy
 
