@@ -156,7 +156,8 @@ export function useThreadActionMenu(input: {
           canShareWithGuest,
           canTurnIntoProject: canTurnThreadIntoProject(threadRef),
         }),
-        ...moveThread.menuItems(),
+        // Only wait on the machines' usage when there is a machine to move to.
+        ...(moveThread.choices.length > 0 ? await moveThread.menuItems() : []),
       ];
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;

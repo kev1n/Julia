@@ -26,6 +26,8 @@ export interface Meter {
   /** 0 to 100, rounded. */
   readonly percent: number;
   readonly detail: string;
+  /** The same reading in a few characters, for one-line machine lists: `37%`, `24/32 GB`. */
+  readonly short: string;
 }
 
 export type MachineCard =
@@ -60,9 +62,16 @@ function trim(value: number): string {
 
 function usedMeter(used: number, total: number, unit: "memory" | "disk"): Meter {
   const clamped = Math.min(total, Math.max(0, used));
+  const usedText = formatSize(clamped, unit);
+  const totalText = formatSize(total, unit);
+  const [usedNumber, usedUnit] = usedText.split(" ");
   return {
     percent: total > 0 ? Math.round((clamped / total) * 100) : 0,
-    detail: `${formatSize(clamped, unit)} of ${formatSize(total, unit)}`,
+    detail: `${usedText} of ${totalText}`,
+    // `24/32 GB`, or both units when they differ: `600 GB/1 TB`.
+    short: totalText.endsWith(` ${usedUnit}`)
+      ? `${usedNumber}/${totalText}`
+      : `${usedText}/${totalText}`,
   };
 }
 
@@ -81,16 +90,14 @@ export function machineCard(
     return { kind: "offline", lastSeenAt: lastSeenAt >= 0 ? lastSeenAt : null };
   }
   if (resources === null) return { kind: "loading" };
-  const { totalDiskBytes, freeDiskBytes } = resources;
+  const { totalDiskBytes, freeDiskBytes, cpuUtilization } = resources;
+  const cpuPercent = cpuUtilization === null ? null : Math.round(cpuUtilization * 100);
   return {
     kind: "online",
     cpu:
-      resources.cpuUtilization === null
+      cpuPercent === null
         ? null
-        : {
-            percent: Math.round(resources.cpuUtilization * 100),
-            detail: `${resources.cpuCount} cores`,
-          },
+        : { percent: cpuPercent, detail: `${resources.cpuCount} cores`, short: `${cpuPercent}%` },
     memory: usedMeter(
       resources.totalMemoryBytes - resources.availableMemoryBytes,
       resources.totalMemoryBytes,
@@ -110,4 +117,16 @@ export function offlineText(lastSeenAt: number | null, now: number): string {
   return ago < 60_000
     ? "Offline · last seen just now"
     : `Offline · last seen ${formatDuration(ago)} ago`;
+}
+
+/**
+ * One machine on one line, for the places a machine is picked (the composer's
+ * machine menu, Move to another machine, the phone's environment picker):
+ * `CPU 8% · Mem 9.6/16 GB · Disk 107/245 GB`. A reading the server does not
+ * report is `-`, as on the Machines cards.
+ */
+export function machineSummary(card: MachineCard, now: number): string {
+  if (card.kind === "offline") return offlineText(card.lastSeenAt, now);
+  if (card.kind === "loading") return "Reading host resources...";
+  return `CPU ${card.cpu?.short ?? "-"} · Mem ${card.memory.short} · Disk ${card.disk?.short ?? "-"}`;
 }

@@ -40,6 +40,7 @@ import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { chooseAutoInstance } from "../autoPlacement/useAutoAccount";
 import { isAutoCandidate, useAutoPlacement } from "../autoPlacement/useAutoPlacement";
+import { readMachineSummaries } from "../machines/useMachineCards";
 import { buildMoveMessage } from "./moveContext";
 import { recordMovedThread } from "./movedThreads";
 import { openMovedThread } from "./openMovedThread";
@@ -139,6 +140,7 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
         Number(left.environment.environmentId === auto.environmentId),
     );
     return sorted.map(({ environment }) => ({
+      environmentId: environment.environmentId,
       menuId: `${MENU_PREFIX}${environment.environmentId}`,
       label:
         environment.environmentId === auto.environmentId
@@ -147,20 +149,26 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
     }));
   }, [auto.environmentId, targets, thread]);
 
-  const menuItems = useCallback(
-    () =>
-      choices.length === 0
-        ? []
-        : [
-            {
-              id: `${MENU_PREFIX}menu`,
-              label: "Move to another machine",
-              separatorBefore: true,
-              children: choices.map(({ menuId, label }) => ({ id: menuId, label })),
-            },
-          ],
-    [choices],
-  );
+  // A native menu cannot change once shown, so each machine's CPU, memory and
+  // disk are read as the menu opens rather than polled.
+  const menuItems = useCallback(async () => {
+    if (choices.length === 0) return [];
+    const usage = await readMachineSummaries(
+      registry,
+      choices.map((choice) => choice.environmentId),
+    );
+    return [
+      {
+        id: `${MENU_PREFIX}menu`,
+        label: "Move to another machine",
+        separatorBefore: true,
+        children: choices.map(({ menuId, label, environmentId }) => ({
+          id: menuId,
+          label: `${label}  ·  ${usage.get(environmentId)}`,
+        })),
+      },
+    ];
+  }, [choices, registry]);
 
   const move = useCallback(
     async (menuId: string) => {
