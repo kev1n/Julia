@@ -33,6 +33,18 @@ ChatGPT id token) as T3 already reads it, and for Claude the SDK's `Claude Max` 
 rate-limit tier (`default_claude_max_20x`) in Claude Code's own profile file `.claude.json` (no
 credentials). An unknown tier shows the plan without one.
 
+**Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
+`apps/server/src/fork/freeDisk.ts`). Usage > **Machines**, beside Limits, shows one card per paired
+environment (respecting the page's environment filter) with its picture, name and three bars: CPU
+%, memory used of total, disk used of total (the home volume). The numbers are each server's own
+`server.getHostResources` snapshot, the same one Auto reads; the fork adds `totalDiskBytes` beside
+`freeDiskBytes` (statfs `blocks * bsize`, optional, so an older server shows disk as not reported).
+While the tab is open and the window visible (phone: screen focused and app in front) the client
+asks each connected server again every 5 seconds, the server's own snapshot cache; otherwise it
+asks nothing. A machine whose connection is down, or whose server stops answering, shows
+`Offline · last seen 12m ago` from the newest snapshot time this client saw. The phone has the
+same tab on its Usage screen, drawn from the same `machineCards.ts`.
+
 **Move to another machine** (`apps/web/src/fork/moveThread/`, `apps/server/src/fork/moveThread.ts`).
 The thread title menu has **Move to another machine**, and the command palette **Move thread to
 another machine...**, both listing the machines that have the project, Auto's pick first. The
@@ -141,7 +153,7 @@ environment and thread id plus the repository's canonical key; paths are reposit
 (`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
 the three servers like the official one. Where the phone has the matching screen it shows the
 fork: machine names (server side, so any app shows them after pairing), machine pictures wherever
-it draws an environment's machine glyph, and on Usage > Limits the **Use now** and **Resets next**
+it draws an environment's machine glyph, Usage > Machines (above), and on Usage > Limits the **Use now** and **Resets next**
 marks per provider (the web fork's `buildAccountCards`, so phone and desktop always mark the same
 account) beside the plan tier the servers already report (`Claude Max 20x`). Fleet awareness is
 agent-side, so the phone sees it only in the agents' transcripts. Not on the phone, because it has
@@ -207,8 +219,8 @@ upstream edit is a hook (an import plus a call), marked `Fork (Owner)` where it 
 git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/**' ':(glob,exclude)apps/*/src/fork/**'
 ```
 
-- `packages/contracts/src/resourceTelemetry.ts`: optional `freeDiskBytes` on `HostResourcesSnapshot`.
-- `apps/server/src/resourceTelemetry/HostResources.ts`: fills `freeDiskBytes` from `fork/freeDisk.ts`.
+- `packages/contracts/src/resourceTelemetry.ts`: optional `freeDiskBytes` and `totalDiskBytes` on `HostResourcesSnapshot`.
+- `apps/server/src/resourceTelemetry/HostResources.ts`: fills both from `fork/freeDisk.ts`.
 - `apps/server/src/provider/ClaudeProvider.ts`: passes the Max tier into T3's plan label.
 - `apps/server/src/environment/ServerEnvironment.ts`: the `environment-label` file wins over the computer name.
 - `packages/contracts/src/settings.ts`: Auto (`loadBalancingEnabled`) on by default.
@@ -223,6 +235,10 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/web/src/components/settings/EnvironmentRow.tsx`: environment lists draw the picture
   large enough to read.
 - `apps/web/src/components/usage/UsageLimits.tsx`: renders the by-account view.
+- `apps/web/src/components/usage/UsagePage.tsx`, `usageShortcuts.ts`, `usagePagePreferences.ts`: the
+  Machines tab (an option without a shortcut; period and refresh disabled as for Limits).
+- `apps/web/src/components/settings/KeybindingsSettings.logic.ts`: skips a Usage option without a
+  shortcut when ordering Usage bindings.
 - `apps/web/src/hooks/useThreadActionMenu.ts`: adds the Move items to the thread menu.
 - `packages/contracts/src/rpc.ts`, `packages/contracts/src/index.ts`: the `fork.moveReceive` RPC
   (schemas in `packages/contracts/src/forkMoveThread.ts`).
@@ -237,6 +253,7 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/mobile/app.config.ts`: `withOwnerFork(config)` (identity and update URL, only with `T3CODE_MOBILE_OWNER=1`).
 - `apps/mobile/src/components/EnvironmentMachineSymbol.tsx`: looks up a machine picture before T3's glyph.
 - `apps/mobile/src/features/usage/UsageLimitsPooled.tsx`: the Use now / Resets next marks under each account.
+- `apps/mobile/src/features/usage/UsageRouteScreen.tsx`: the Machines tab (no pull to refresh; it is live).
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -244,7 +261,8 @@ proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + U
 machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
 the fleet instead of GitHub (1; the move feature now depends on fleet awareness), overlap alerts
 (1), opening the moved thread once the client knows it (1), then the phone app: its identity (1),
-pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1).
+pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1),
+then Machines (1; adds total disk to the free disk commit's field and owner).
 
 ## Sync, build, deploy
 
@@ -419,6 +437,11 @@ Each series is independent of the packaging and tooling commits.
   choose both machine and account by hand, pick the machine; Auto then stays out.
 - Running threads per machine: thread shells in `preparing`, `starting` or `running`, from the
   shell stream every client already has.
+- Machines: memory used = total - T3's available memory (see Deviations); disk used = total - free
+  on the home volume, which on APFS counts every volume in the container, as Finder does. Memory
+  is shown in binary units and disk in decimal ones, as Activity Monitor and Finder do. The web and
+  phone hooks are two small copies because a file under `apps/web` imported by the phone must not
+  import `@effect/atom-react` (a second copy would miss the phone's registry context).
 
 ## Deviations
 
@@ -449,6 +472,10 @@ Each series is independent of the packaging and tooling commits.
   from the messages it has loaded, because T3's portable handoff runs on the server that owns the
   history and the target server has none of it. Reasoning, tool-call state and attachments do not
   move (as with T3's own handoffs); the work itself moves through git.
+- Usage > Machines has no keyboard shortcut (Cost, Tokens and Limits have C, T, L): one would need
+  a new keybinding command in contracts and shared defaults for a tab Owner opens by clicking.
+- A machine's "last seen" is what this client saw since it started; a machine already offline when
+  the app opens shows `not seen since the app opened`. No server keeps a history to ask.
 - The moved-thread banner is remembered by the client that did the move; other clients see the
   source thread's "Moved to ..." title.
 - Fleet lifecycle changes are noticed through the domain event stream only as a trigger to
