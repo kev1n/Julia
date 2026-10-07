@@ -16,6 +16,12 @@ limited accounts. The composer's existing machine chip shows the choice as machi
 session left (`build-mac · alice · 88%`, the design Owner picked from three on 2026-10-06), and
 its tooltip says why (`Auto chose build-mac: most free memory · Claude alice (Pro): 88% session
 left`). With no eligible machine the chip says so and sending asks you to pick one.
+The account rule (`packages/shared/src/accountChoice.ts`) also runs in two places without the
+machine rule: a new task on the phone moves its default model to the account Auto would use
+(`apps/mobile/src/fork/autoAccount.ts`; a model picked in the draft stays), and a scheduled run
+that starts a new thread moves off its saved account when that account is limited or signed out
+(`apps/server/src/fork/scheduledRunAccount.ts`). A scheduled task bound to a thread keeps the
+thread's account.
 
 **Machine pictures** (`apps/web/src/fork/machinePictures/`). MacBook Pro 16 (space black) and
 Mac mini product pictures wherever T3 draws a laptop or Mac mini environment icon (environment
@@ -276,6 +282,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/mobile/src/features/usage/UsageRouteScreen.tsx`: the Machines tab (no pull to refresh; it is live).
 - `apps/mobile/src/features/threads/NewTaskContextPickerScreens.tsx`: the new task Environment
   picker's rows get the usage line as their subtitle.
+- `packages/shared/package.json`: exports `./accountChoice`, the account rule the web, the phone and
+  the server share.
+- `apps/mobile/src/features/threads/new-task-flow-provider.tsx`: the default model goes through
+  `withAutoAccount`.
+- `apps/server/src/scheduledTasks/ScheduledTaskService.ts`: a new-thread run goes through
+  `scheduledRunModelSelection`.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -285,7 +297,8 @@ the fleet instead of GitHub (1; the move feature now depends on fleet awareness)
 (1), opening the moved thread once the client knows it (1), then the phone app: its identity (1),
 pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1),
 then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
-machine pickers (1).
+machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
+in scheduled runs (1; moves the account rule to `packages/shared`).
 
 ## Sync, build, deploy
 

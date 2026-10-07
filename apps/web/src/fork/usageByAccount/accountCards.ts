@@ -11,7 +11,7 @@ import {
   chooseAutoAccount,
   soonestSessionReset,
   windowRemainingPercent,
-} from "../autoPlacement/accountChoice";
+} from "@t3tools/shared/accountChoice";
 
 export interface AccountCardWindow {
   readonly id: string;
