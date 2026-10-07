@@ -1,14 +1,20 @@
 /**
  * Fork (Owner): which subscription account Auto uses for a provider. The one
- * owner of this rule; the composer's Auto and the Usage screen's "Use now"
- * flag both call `chooseAutoAccount`.
+ * owner of this rule: the web composer's Auto, the phone's new task, the
+ * Usage screens' "Use now" flag and the server's scheduled runs all call
+ * `chooseAutoAccount` (through `chooseAutoInstance` for provider snapshots).
  *
  * Rule: skip limited accounts (a window with nothing left), then the most
  * remaining in the current session (five-hour) window, then the most remaining
  * weekly. Accounts that report no usage rank after accounts that do; equal
  * accounts keep the caller's order. No thresholds.
  */
-import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
+import {
+  isProviderAvailable,
+  type ServerProvider,
+  type ServerProviderUsageLimits,
+  type ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 
 /** Percent left in a window. A window whose reset time has passed is full again. */
 export function windowRemainingPercent(window: ServerProviderUsageWindow, now: number): number {
@@ -79,6 +85,34 @@ export function chooseAutoAccount<T>(
     );
   const best = ranked[0];
   return best ? { account: best.account, standing: best.standing } : null;
+}
+
+/** One machine's usable instances of a driver, in the server's order. */
+export function usableInstances(
+  providers: ReadonlyArray<ServerProvider>,
+  driver: string,
+): ReadonlyArray<ServerProvider> {
+  return providers.filter(
+    (provider) =>
+      provider.driver === driver &&
+      provider.enabled &&
+      provider.installed &&
+      provider.auth.status !== "unauthenticated" &&
+      isProviderAvailable(provider),
+  );
+}
+
+/** The instance of `driver` Auto would use on one machine. */
+export function chooseAutoInstance(
+  providers: ReadonlyArray<ServerProvider>,
+  driver: string,
+  now: number,
+): AccountChoice<ServerProvider> | null {
+  return chooseAutoAccount(
+    usableInstances(providers, driver),
+    (provider) => provider.usageLimits,
+    now,
+  );
 }
 
 /**

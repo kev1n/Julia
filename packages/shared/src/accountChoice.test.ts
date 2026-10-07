@@ -1,10 +1,11 @@
 import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountStanding, chooseAutoAccount, soonestSessionReset } from "./accountChoice";
+import { accountStanding, chooseAutoAccount, soonestSessionReset } from "./accountChoice.ts";
 
 const NOW = Date.parse("2026-10-06T12:00:00Z");
-const inHours = (hours: number) => new Date(NOW + hours * 3_600_000).toISOString();
+const inHours = (hours: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW + hours * 3_600_000));
 
 function limits(
   session: number | null,
@@ -31,7 +32,7 @@ function limits(
       resetsAt: inHours(72),
     });
   }
-  return { checkedAt: new Date(NOW).toISOString(), windows };
+  return { checkedAt: inHours(0), windows };
 }
 
 type Account = { readonly name: string; readonly limits: ServerProviderUsageLimits | undefined };

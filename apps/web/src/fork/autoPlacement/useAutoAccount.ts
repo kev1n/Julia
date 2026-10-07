@@ -4,40 +4,12 @@
  * the composer line says what Auto chose and why.
  */
 import type { ProviderDriverKind, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
-import { isProviderAvailable } from "@t3tools/contracts";
+import { chooseAutoInstance, type AccountChoice } from "@t3tools/shared/accountChoice";
 import { useEffect, useMemo, useRef } from "react";
 
 import { providerClients } from "../../components/settings/providerDriverMeta";
 import { useNowMinute } from "../../hooks/useNowMinute";
-import { chooseAutoAccount, type AccountChoice } from "./accountChoice";
 import { shortPlanLabel } from "./planLabel";
-
-/** The chosen machine's usable instances of one driver, in the server's order. */
-function usableInstances(
-  providers: ReadonlyArray<ServerProvider>,
-  driver: string,
-): ReadonlyArray<ServerProvider> {
-  return providers.filter(
-    (provider) =>
-      provider.driver === driver &&
-      provider.enabled &&
-      provider.installed &&
-      provider.auth.status !== "unauthenticated" &&
-      isProviderAvailable(provider),
-  );
-}
-
-export function chooseAutoInstance(
-  providers: ReadonlyArray<ServerProvider>,
-  driver: string,
-  now: number,
-): AccountChoice<ServerProvider> | null {
-  return chooseAutoAccount(
-    usableInstances(providers, driver),
-    (provider) => provider.usageLimits,
-    now,
-  );
-}
 
 /**
  * Applies the Auto account to the draft once per machine/driver/choice, so
