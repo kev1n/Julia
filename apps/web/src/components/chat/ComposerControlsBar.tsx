@@ -190,6 +190,10 @@ export function ComposerControlsBar(props: {
       : {}),
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
+  const providerModelPickerOptionsContent = renderProviderTraitsMenuContent({
+    ...providerTraitsPickerInput,
+    layout: "model-picker",
+  });
   const {
     accessDisplay,
     showModeBlock,
@@ -269,6 +273,7 @@ export function ComposerControlsBar(props: {
       instanceEntries={providerInstanceEntries}
       keybindings={keybindings}
       modelOptionsByInstance={modelOptionsByInstance}
+      optionsContent={providerModelPickerOptionsContent}
       size={composerControlsCollapsed ? "xs" : "sm"}
       triggerClassName={cn(
         "pe-1",

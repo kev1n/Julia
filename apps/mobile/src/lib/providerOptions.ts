@@ -6,6 +6,7 @@ import type {
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
+  withNormalSpeedDefault,
 } from "@t3tools/shared/model";
 
 export function resolveProviderOptionDescriptors(input: {
@@ -17,7 +18,7 @@ export function resolveProviderOptionDescriptors(input: {
   }
   return getProviderOptionDescriptors({
     caps: input.capabilities,
-    selections: input.selections,
+    selections: withNormalSpeedDefault(input.capabilities, input.selections),
   });
 }
 

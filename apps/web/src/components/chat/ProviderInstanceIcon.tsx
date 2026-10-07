@@ -1,10 +1,7 @@
 import { type CSSProperties, memo } from "react";
+import { BotIcon } from "lucide-react";
 
-import {
-  normalizeProviderAccentColor,
-  providerAccentForegroundColor,
-  providerInstanceInitials,
-} from "@t3tools/client-runtime/state/provider-instance-display";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 
 import { ProviderDriverKind } from "@t3tools/contracts";
 import { AntigravityIcon, ClaudeAI, Icon, OpenAI } from "../Icons";
@@ -64,7 +61,6 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   acpRegistryAgentId?: string | undefined;
   acpRegistryIconUrl?: string | undefined;
   showBadge?: boolean;
-  badgeContent?: "initials" | "none";
   size?: "default" | "compact";
   className?: string;
   iconClassName?: string;
@@ -76,12 +72,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   const indicatorBackground = props.indicatorBackground ?? "var(--card)";
   const accentColor = normalizeProviderAccentColor(props.accentColor);
   const accentStyle = accentColor
-    ? ({
-        "--provider-accent": accentColor,
-        "--provider-accent-foreground": providerAccentForegroundColor(accentColor),
-      } as CSSProperties)
+    ? ({ "--provider-accent": accentColor } as CSSProperties)
     : undefined;
-  const badgeContent = props.badgeContent ?? "initials";
   const iconClassName = cn(props.size === "compact" && "size-3.5", props.iconClassName);
   const isAcpRegistry = props.driverKind === "acpRegistry";
   const acpRegistryIconUrl = resolveProviderInstanceAcpRegistryIconUrl({
@@ -114,26 +106,27 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
       ) : Icon ? (
         <Icon className={cn("size-5 shrink-0", iconClassName)} aria-hidden />
       ) : (
-        <span className={cn("text-3xs font-semibold leading-none", iconClassName)}>
-          {providerInstanceInitials(props.displayName)}
-        </span>
+        <BotIcon className={cn("size-5 shrink-0", iconClassName)} aria-hidden />
       )}
-      {props.showBadge ? (
+      {props.statusDotClassName ? (
         <span
           className={cn(
-            "pointer-events-none absolute right-0 bottom-0 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border px-0.5 text-4xs font-semibold leading-none shadow-sm",
-            accentColor
-              ? "bg-(--provider-accent) text-(--provider-accent-foreground)"
-              : "bg-card text-muted-foreground",
-            props.size === "compact" &&
-              "right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs",
+            "pointer-events-none absolute -left-0.5 -top-0.5 z-10 size-2 rounded-full",
+            props.statusDotClassName,
+          )}
+          style={{ boxShadow: `0 0 0 2px ${indicatorBackground}` }}
+          aria-hidden
+        />
+      ) : null}
+      {props.showBadge && accentColor ? (
+        <span
+          className={cn(
+            "pointer-events-none absolute right-0 bottom-0 z-10 size-2 rounded-full border bg-(--provider-accent) shadow-sm",
             props.badgeClassName,
           )}
           style={{ borderColor: indicatorBackground }}
           aria-hidden
-        >
-          {badgeContent === "initials" ? providerInstanceInitials(props.displayName) : null}
-        </span>
+        />
       ) : null}
     </span>
   );

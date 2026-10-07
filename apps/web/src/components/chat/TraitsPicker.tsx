@@ -20,12 +20,13 @@ import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
+  getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
   isClaudeUltrathinkPrompt,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 import { memo, type ReactNode, useRef } from "react";
-import { GaugeIcon, ZapIcon } from "lucide-react";
+import { ChevronRightIcon, GaugeIcon, ZapIcon } from "lucide-react";
 import {
   Menu,
   MenuGroup,
@@ -39,6 +40,7 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
@@ -327,6 +329,7 @@ interface TraitsMenuContentProps {
   extraMenuOwnsModeShortcut?: boolean;
   /** Extra tooltip text naming what else the menu holds. */
   extraMenuHint?: string;
+  layout?: "menu" | "model-picker";
 }
 
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
@@ -340,6 +343,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   reportedModelSelection,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  layout = "menu",
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const modelSelection =
@@ -398,6 +402,125 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
 
   if (!hasAnyControls) {
     return null;
+  }
+
+  if (layout === "model-picker" && !modelIsUnavailable) {
+    const fastMode = booleanDescriptors.find((descriptor) => descriptor.id === "fastMode");
+    const serviceTier = selectDescriptors.find((descriptor) => descriptor.id === "serviceTier");
+    const normalTier = serviceTier?.options.find((option) => option.id === "default");
+    const fastTier = serviceTier?.options.find(
+      (option) => option.id === "priority" || option.label === "Fast",
+    );
+    const tierValue = serviceTier ? getProviderOptionCurrentValue(serviceTier) : undefined;
+    const speedValue = fastMode
+      ? fastMode.currentValue === true
+      : serviceTier
+        ? tierValue === fastTier?.id
+        : false;
+    return (
+      <div className="shrink-0 border-t border-border/60 p-1.5" data-model-picker-options>
+        {selectDescriptors
+          .filter((descriptor) => descriptor.id !== "serviceTier" || !(normalTier && fastTier))
+          .map((descriptor) => {
+            const selectedValue =
+              ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
+                ? "ultrathink"
+                : (getDescriptorStringValue(descriptor, modelSelection, reportedModelSelection) ??
+                  "");
+            const label = ["reasoningEffort", "reasoning", "effort", "variant"].includes(
+              descriptor.id,
+            )
+              ? "Effort"
+              : descriptor.label;
+            return (
+              <Menu key={descriptor.id}>
+                <MenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-2.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    />
+                  }
+                >
+                  <span>{label}</span>
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    {descriptor.options.find((option) => option.id === selectedValue)?.label ??
+                      selectedValue}
+                    <ChevronRightIcon className="size-3.5" />
+                  </span>
+                </MenuTrigger>
+                <MenuPopup side="right" align="start" surface="solid">
+                  <MenuRadioGroup
+                    value={selectedValue}
+                    onValueChange={(value) => handleSelectChange(descriptor, value)}
+                  >
+                    {descriptor.options.map((option) => (
+                      <MenuRadioItem
+                        key={option.id}
+                        value={option.id}
+                        closeOnClick
+                        disabled={
+                          ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id
+                        }
+                      >
+                        {option.label}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuPopup>
+              </Menu>
+            );
+          })}
+        {fastMode || (normalTier && fastTier) ? (
+          <div className="flex min-h-10 items-center justify-between gap-3 px-2.5 text-sm">
+            <span>Speed</span>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span>
+                {fastMode || tierValue === normalTier?.id
+                  ? speedValue
+                    ? "Fast"
+                    : "Normal"
+                  : (serviceTier?.options.find((option) => option.id === tierValue)?.label ??
+                    "Normal")}
+              </span>
+              <Switch
+                size="sm"
+                aria-label="Fast mode"
+                checked={speedValue}
+                onCheckedChange={(fast) => {
+                  if (fastMode)
+                    updateDescriptors(
+                      replaceDescriptorCurrentValue(descriptors, fastMode.id, fast),
+                    );
+                  else if (serviceTier && normalTier && fastTier)
+                    handleSelectChange(serviceTier, fast ? fastTier.id : normalTier.id);
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
+        {booleanDescriptors
+          .filter((descriptor) => descriptor.id !== "fastMode")
+          .map((descriptor) => (
+            <div
+              key={descriptor.id}
+              className="flex min-h-10 items-center justify-between gap-3 px-2.5 text-sm"
+            >
+              <span>{descriptor.label}</span>
+              <Switch
+                size="sm"
+                aria-label={descriptor.label}
+                checked={descriptor.currentValue === true}
+                onCheckedChange={(checked) =>
+                  updateDescriptors(
+                    replaceDescriptorCurrentValue(descriptors, descriptor.id, checked),
+                  )
+                }
+              />
+            </div>
+          ))}
+      </div>
+    );
   }
 
   if (modelIsUnavailable) {

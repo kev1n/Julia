@@ -19,6 +19,7 @@ export type ModelRowProps = {
 };
 
 export type ChoiceRowProps = {
+  readonly disabled?: boolean | undefined;
   readonly label: string;
   readonly description?: string;
   readonly selected: boolean;
@@ -140,7 +141,8 @@ export function ChoiceRowContent(props: ChoiceRowProps & RowSelectionProps) {
     <Pressable
       accessibilityLabel={props.description ? `${props.label}. ${props.description}` : props.label}
       accessibilityRole="radio"
-      accessibilityState={{ checked: props.selected }}
+      accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+      disabled={props.disabled}
       onPress={props.onPress}
       style={props.minimumHeight === undefined ? undefined : { minHeight: props.minimumHeight }}
       className={cn(

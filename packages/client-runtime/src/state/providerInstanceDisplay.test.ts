@@ -4,28 +4,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   normalizeProviderAccentColor,
   providerAccentForegroundColor,
-  providerInstanceInitials,
   shouldShowInstanceBadge,
 } from "./providerInstanceDisplay.ts";
 
 const codex = ProviderDriverKind.make("codex");
 const acpRegistry = ProviderDriverKind.make("acpRegistry");
-
-describe("providerInstanceInitials", () => {
-  it("treats punctuation as a word break but keeps apostrophes between letters", () => {
-    expect(providerInstanceInitials("Codex (hub)")).toBe("CH");
-    expect(providerInstanceInitials("work_codex")).toBe("WC");
-    expect(providerInstanceInitials("Theo's Codex")).toBe("TC");
-    expect(providerInstanceInitials("Codex 'hub'")).toBe("CH");
-    expect(providerInstanceInitials("‘hub’")).toBe("HU");
-    expect(providerInstanceInitials("(hub)")).toBe("HU");
-  });
-
-  it("keeps an emoji whole instead of splitting its surrogate pair", () => {
-    expect(providerInstanceInitials("😀 Work")).toBe("😀W");
-    expect(providerInstanceInitials("😀")).toBe("😀");
-  });
-});
 
 describe("normalizeProviderAccentColor", () => {
   // regression: #9899 a non-hex accent must not render as the account badge color

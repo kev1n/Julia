@@ -27,6 +27,7 @@ function MenuPopup({
   anchor,
   keepMounted = false,
   width = "default",
+  surface = "glass",
   ...props
 }: MenuPrimitive.Popup.Props & {
   align?: MenuPrimitive.Positioner.Props["align"];
@@ -36,6 +37,7 @@ function MenuPopup({
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   keepMounted?: boolean;
   width?: "default" | "content";
+  surface?: "glass" | "solid";
 }) {
   return (
     <MenuPrimitive.Portal keepMounted={keepMounted}>
@@ -50,7 +52,10 @@ function MenuPopup({
       >
         <MenuPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
+            "relative flex origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
+            surface === "solid"
+              ? "border border-border bg-popover text-popover-foreground"
+              : "dropdown-glass",
             // Electron drag hit-testing ignores z-index; opt portaled menus out to keep overlapping rows
             // hoverable.
             "[-webkit-app-region:no-drag]",
@@ -58,6 +63,7 @@ function MenuPopup({
             width === "content" ? "w-max min-w-0" : "min-w-[min(10rem,calc(100vw-2rem))]",
             className,
           )}
+          data-surface={surface}
           data-slot="menu-popup"
           {...props}
         >
