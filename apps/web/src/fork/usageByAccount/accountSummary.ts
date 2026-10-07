@@ -5,7 +5,7 @@
  */
 import type { ServerProvider } from "@t3tools/contracts";
 
-import { accountStanding } from "@t3tools/shared/accountChoice";
+import { accountStanding, windowRemainingPercent } from "@t3tools/shared/accountChoice";
 import { shortPlanLabel } from "../autoPlacement/planLabel";
 
 type AccountSummaryProvider = Pick<ServerProvider, "displayName" | "auth" | "usageLimits">;
@@ -19,8 +19,30 @@ export function accountLimitSummary(provider: AccountSummaryProvider, now: numbe
     // Instances are usually named after their login; saying it twice adds nothing.
     login && !name.includes(login) ? login : null,
     shortPlanLabel(provider.auth.label),
-    standing.sessionLeft === null ? null : `${Math.round(standing.sessionLeft)}% session`,
-    standing.weeklyLeft === null ? null : `${Math.round(standing.weeklyLeft)}% week`,
+    ...(standing.limited
+      ? [limitReachedLabel(provider.usageLimits, now)]
+      : [
+          standing.sessionLeft === null ? null : `${Math.round(standing.sessionLeft)}% session`,
+          standing.weeklyLeft === null ? null : `${Math.round(standing.weeklyLeft)}% week`,
+        ]),
   ].filter((part) => part !== null && part !== "");
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** `no limit left · back Thu 3:40 PM`: when the last empty window refills. */
+function limitReachedLabel(limits: ServerProvider["usageLimits"], now: number): string {
+  const backAt = Math.max(
+    ...(limits?.windows ?? [])
+      .filter((window) => windowRemainingPercent(window, now) <= 0)
+      .map((window) => (window.resetsAt === undefined ? Number.NaN : Date.parse(window.resetsAt)))
+      .filter(Number.isFinite),
+  );
+  if (!Number.isFinite(backAt)) return "no limit left";
+  const sameDay = new Date(backAt).toDateString() === new Date(now).toDateString();
+  const time = new Intl.DateTimeFormat(undefined, {
+    ...(sameDay ? {} : { weekday: "short" }),
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(backAt);
+  return `no limit left · back ${time}`;
 }

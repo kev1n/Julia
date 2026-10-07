@@ -27,7 +27,7 @@ import type {
   ServerProviderModel,
   ServerProviderSkill,
 } from "@t3tools/contracts";
-import { PREFERRED_DEFAULT_CODEX_MODELS, ServerSettingsError } from "@t3tools/contracts";
+import { ServerSettingsError } from "@t3tools/contracts";
 
 import {
   codexModelFamily,
@@ -35,6 +35,10 @@ import {
   formatCodexModelName,
 } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import {
+  FORK_PREFERRED_DEFAULT_CODEX_MODELS,
+  forkCodexDefaultEffort,
+} from "../fork/codexDefaults.ts";
 import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
 import {
   buildServerProvider,
@@ -220,7 +224,9 @@ export function mapCodexModelCapabilities(
 ): ModelCapabilities {
   const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
     reasoningEffort ===
-    (codexDefaultReasoningEffortOverride(model.model) ?? model.defaultReasoningEffort)
+    (forkCodexDefaultEffort(codexModelFamily(model.model)) ??
+      codexDefaultReasoningEffortOverride(model.model) ??
+      model.defaultReasoningEffort)
       ? {
           id: reasoningEffort,
           label: reasoningEffortLabel(reasoningEffort),
@@ -302,7 +308,7 @@ function parseCodexModelListResponse(
 export function applyPreferredCodexDefaultModel(
   models: ReadonlyArray<ServerProviderModel>,
 ): ReadonlyArray<ServerProviderModel> {
-  const preferredSlug = PREFERRED_DEFAULT_CODEX_MODELS.flatMap((slug) =>
+  const preferredSlug = FORK_PREFERRED_DEFAULT_CODEX_MODELS.flatMap((slug) =>
     models.filter((model) => !model.isCustom && codexModelFamily(model.slug) === slug),
   )[0]?.slug;
   if (!preferredSlug) {

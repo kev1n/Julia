@@ -67,6 +67,7 @@ import {
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
 import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { accountStanding } from "@t3tools/shared/accountChoice";
 import { useNowMinute } from "../../hooks/useNowMinute";
 
 type ModelPickerItem = {
@@ -528,6 +529,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       accountLimitSummary(entry.snapshot, accountSummaryNow),
     ]),
   );
+  const limitedInstanceIds = new Set(
+    instanceEntries
+      .filter((entry) => accountStanding(entry.snapshot.usageLimits, accountSummaryNow).limited)
+      .map((entry) => entry.instanceId),
+  );
   const matchesLockedProvider = (
     entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">,
   ): boolean => {
@@ -874,6 +880,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onFocusSearch={focusSearchInput}
             instanceEntries={sidebarInstanceEntries}
             accountSummaryByInstanceId={accountSummaryByInstanceId}
+            limitedInstanceIds={limitedInstanceIds}
             showFavorites
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
