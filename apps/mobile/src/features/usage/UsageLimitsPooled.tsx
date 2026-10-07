@@ -23,6 +23,7 @@ import { Defs, Path, Pattern, Rect, Svg } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { AccountFlagBadges, accountFlags, type AccountFlag } from "../../fork/accountFlags";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
@@ -166,7 +167,9 @@ function PoolWindowCard({
   label,
   description,
   wide,
+  flags,
 }: {
+  readonly flags: ReadonlyMap<string, AccountFlag>;
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
@@ -348,6 +351,7 @@ function PoolWindowCard({
             >
               {accountName(account)}
             </Text>
+            <AccountFlagBadges flag={flags.get(account.key)} now={now} />
             <Text className="text-sm font-t3-medium tabular-nums text-foreground">
               {remainingPercent(window)}%
             </Text>
@@ -415,7 +419,9 @@ export function UsageLimitsSection({
     selectedEnvironmentIds === null
       ? presentations
       : new Map([...presentations].filter(([id]) => selectedEnvironmentIds.has(id)));
-  const pools = collectLimitPools(collectLimitAccounts(selected), now);
+  const accounts = collectLimitAccounts(selected);
+  const pools = collectLimitPools(accounts, now);
+  const flags = accountFlags(accounts, now); // Fork (Owner): Use now / Resets next
   const notices = collectLimitNotices(selected);
   const externalLinks = collectExternalUsageLinks(selected);
   const colors = useProviderColors();
@@ -457,6 +463,7 @@ export function UsageLimitsSection({
                     label={details?.label}
                     description={details?.description}
                     wide={wide}
+                    flags={flags}
                   />
                 );
               })}

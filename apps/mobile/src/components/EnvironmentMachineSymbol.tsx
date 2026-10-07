@@ -1,4 +1,5 @@
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
+import { hasMachinePicture, MachinePicture } from "../fork/machinePictures";
 import { SymbolView, type AppSymbolName } from "./ui/AppSymbol";
 
 export const ENVIRONMENT_MACHINE_SYMBOLS = {
@@ -26,6 +27,16 @@ export function EnvironmentMachineSymbol(props: {
   readonly size: number;
   readonly tintColorClassName: string;
 }) {
+  if (hasMachinePicture(props.kind)) {
+    // Fork (Owner): machine pictures
+    return (
+      <MachinePicture
+        kind={props.kind}
+        size={props.size}
+        accessibilityLabel={ENVIRONMENT_MACHINE_KIND_LABELS[props.kind]}
+      />
+    );
+  }
   return (
     <SymbolView
       accessibilityLabel={ENVIRONMENT_MACHINE_KIND_LABELS[props.kind]}
