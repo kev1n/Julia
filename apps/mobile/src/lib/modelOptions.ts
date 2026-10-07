@@ -25,6 +25,8 @@ import {
 import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
 import { resolveProvidersForCwd } from "@t3tools/client-runtime/providerSkills";
 
+import { accountLimitSummary } from "../../../web/src/fork/usageByAccount/accountSummary";
+
 /** The contracts `disallowedProviderMessage` English, as translatable sentences. */
 function disallowedProviderText(organization: string | undefined, label: string): string {
   return organization === undefined
@@ -36,6 +38,7 @@ function disallowedProviderText(organization: string | undefined, label: string)
         }),
       );
 }
+
 export type ModelOption = {
   readonly key: string;
   readonly label: string;
@@ -43,6 +46,8 @@ export type ModelOption = {
   readonly subtitle: string;
   readonly providerKey: string;
   readonly providerLabel: string;
+  /** Fork (Owner): the instance's subscription and what it has left. */
+  readonly providerDetail?: string | undefined;
   readonly providerDriver: string;
   readonly supportedRuntimeModes?: ReadonlyArray<RuntimeMode>;
   readonly providerIconUrl?: string | undefined;
@@ -69,6 +74,7 @@ type ProviderUpdateRequired = Pick<
 export type ProviderGroup = {
   readonly providerKey: string;
   readonly providerLabel: string;
+  readonly providerDetail?: string | undefined;
   readonly models: ReadonlyArray<ModelOption>;
   readonly updateRequired?: ProviderUpdateRequired;
 };
@@ -382,6 +388,7 @@ export function buildModelOptions(
       ),
     };
   };
+  const now = Date.now();
 
   for (const provider of config?.providers ?? []) {
     if (
@@ -400,6 +407,7 @@ export function buildModelOptions(
     const updateRequired = provider.updateRequiredModels?.length
       ? { driver: provider.driver, updateRequiredModels: provider.updateRequiredModels }
       : undefined;
+    const providerDetail = accountLimitSummary(provider, now) ?? undefined;
     const preferences = config?.settings?.providerModelPreferences?.[provider.instanceId];
     const hiddenModels = new Set(preferences?.hiddenModels ?? []);
     const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));
@@ -418,6 +426,7 @@ export function buildModelOptions(
         subtitle: model.subProvider ?? "",
         providerKey: provider.instanceId,
         providerLabel,
+        ...(providerDetail ? { providerDetail } : {}),
         providerDriver: provider.driver,
         providerBadge,
         ...(provider.supportedRuntimeModes === undefined
@@ -510,6 +519,7 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     string,
     {
       providerLabel: string;
+      providerDetail: string | undefined;
       models: ModelOption[];
       updateRequired: ProviderUpdateRequired | undefined;
     }
@@ -522,6 +532,7 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     } else {
       groups.set(option.providerKey, {
         providerLabel: option.providerLabel,
+        providerDetail: option.providerDetail,
         models: [option],
         updateRequired: option.providerUpdateRequired,
       });
@@ -531,6 +542,7 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
   return [...groups.entries()].map(([providerKey, group]) => ({
     providerKey,
     providerLabel: group.providerLabel,
+    providerDetail: group.providerDetail,
     models: group.models,
     ...(group.updateRequired ? { updateRequired: group.updateRequired } : {}),
   }));
