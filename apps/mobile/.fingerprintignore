@@ -7,6 +7,8 @@ android/
 ios/
 dist/
 web-build/
+# Kotlin session files Gradle writes into gradle plugins only while it builds
+**/*-gradle-plugin/.kotlin/**/*
 
 # Test files
 **/*.test.ts
