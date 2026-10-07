@@ -59,6 +59,7 @@ import { ProviderWizardAuthenticationStep } from "./ProviderWizardAuthentication
 import { resolveOfficialAcpRegistryIconUrl } from "./AcpRegistryIcon";
 import { AddManagedCodexAccountDialog } from "./CodexSetupSection";
 import { MultipleAccountsNote } from "./MultipleAccountsNote";
+import { AddEverywhereRow, useAddProviderEverywhere } from "./addProviderEverywhere";
 import { ProviderEnvironmentSection } from "./ProviderInstanceCard";
 import { useSecretSources } from "./SecretSourceInput";
 
@@ -157,6 +158,7 @@ export function AddProviderInstanceDialog({
   const secretSources = useSecretSources(environmentId);
   const persistProviderInstance = usePersistEnvironmentProviderInstanceMutation(environmentId);
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
+  const everywhere = useAddProviderEverywhere(environmentId);
 
   const [wizardStep, setWizardStep] = useState(0);
   const [addingChatGptAccount, setAddingChatGptAccount] = useState(false);
@@ -409,6 +411,14 @@ export function AddProviderInstanceDialog({
       return;
     }
     onCreated?.(brandedId, driver);
+    // ACP agents are prepared per machine, so only built-in providers fan out.
+    if (!isAcpRegistry) {
+      void everywhere.addToOtherMachines(brandedId, nextInstance).then((elsewhere) => {
+        if (elsewhere) {
+          toastManager.add({ type: "success", title: "Other machines", description: elsewhere });
+        }
+      });
+    }
     if (isAcpRegistry && !isLocalAcp) {
       setCreatedInstanceId(brandedId);
       setIsSaving(false);
@@ -674,6 +684,13 @@ export function AddProviderInstanceDialog({
                     />
                   }
                 />
+                {isAcpRegistry ? null : (
+                  <AddEverywhereRow
+                    enabled={everywhere.enabled}
+                    onEnabledChange={everywhere.setEnabled}
+                    otherLabels={everywhere.otherLabels}
+                  />
+                )}
                 <SettingsRow
                   title="Accent color"
                   description="Optional marker shown in the picker."
