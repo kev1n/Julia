@@ -255,6 +255,8 @@ build-mac 05:00  com.example.t3code-fork.sync    fork/scripts/sync.sh
                 lint of every file the fork touches, fork tests + tests beside touched files)
              -> fork/scripts/build.sh (server runtime archive + T3 Code (Owner).app)
              -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
+             any of these fails -> fork/scripts/autofix.sh: a Claude chat on build-mac fixes it,
+                then the same checks and builds run again (see "When the sync fails")
              -> push owner, GitHub release owner-<version>-<sha> on owner/t3code
                 (VERSION, SHA256SUMS, install scripts)
              -> build-mobile.sh publish (into ~/t3-fork/out/mobile); a new APK opens the issue
@@ -279,23 +281,45 @@ Login off, so a pull from each Mac replaces a push from build-mac. The large art
 the tailnet from build-mac, not through GitHub: uploading them from build-mac failed about one time in
 three on 2026-10-06 (broken pipe and TLS errors on 80-150 MB uploads).
 
-**Where a failure shows up:** on a rebase conflict or a failed check/build/publish (the phone
-build included) nothing is released, so nothing deploys, and the job opens (or comments on) the issue **"Fork sync
-failed"** on `owner/t3code` with the step, conflicting files and log tail. GitHub notifies
-Owner as the repo owner; the MacBook's daily deploy job also raises a macOS notification while
-that issue is open. The next successful sync closes it. Logs: `~/t3-fork/logs/` on each Mac.
+**When the sync fails** (a rebase conflict, or a failed check, desktop build or phone build),
+`fork/scripts/autofix.sh` hands it to a Claude chat in T3 Code on build-mac (Claude owner,
+Opus, full access), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
+under the project `t3code-fork` on build-mac. The chat works in the git worktree
+`~/t3-fork/autofix/<stamp>/worktree` (branch `autofix/<stamp>`, started at origin/owner): it
+rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
+`build.sh` and `build-mobile.sh build`, and writes `~/t3-fork/autofix/<stamp>/report.md`
+(`RESOLVED` or `UNRESOLVED`, what conflicted and how it was resolved). The sync waits for the
+chat to finish, then accepts its branch only if the report says `RESOLVED`, no rebase is left
+in progress, the branch sits on the upstream ref, the fork's commit subjects are unchanged in
+order and number (no "fix conflicts" commit), nothing under `fork/` changed, the fork's test
+cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable count
+did not grow. It then runs the very same rebase check, checks and builds itself on that branch;
+only if they pass does the normal push and release happen, and the release notes carry the
+chat link and the agent's report (what conflicted, how it was resolved) for audit. The chat's
+worktree is removed then; the chat itself stays in T3 Code.
+
+**Where a failure shows up:** if the agent cannot get everything green (or its branch fails
+the guards or the rerun), nothing is released, so nothing deploys, and the job opens (or
+comments on) the issue **"Fork sync failed"** on `owner/t3code` with the step, conflicting
+files, the chat link, the agent's report and verdict, and the log tail. The agent's worktree is
+kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub notifies Owner as the
+repo owner; the MacBook's daily deploy job also raises a macOS notification while that issue is
+open. The next successful sync closes it. Logs: `~/t3-fork/logs/` on each Mac.
 
 Manual runs:
 
 ```
 ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh"'                  # sync + publish now
-ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run"'        # rebase+check+build only
+ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run"'        # rebase+check+build (+auto-fix) only
 ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run upstream/main"'
 ~/t3-fork/pull-deploy.sh                                                       # on any Mac: install now
 ```
 
-Resolving a conflict: `cd ~/src/t3code-fork && git rebase <tag>` on build-mac, fix the hook in
-the listed upstream file, `git rebase --continue`, then run `fork/scripts/sync.sh`.
+Resolving a conflict by hand (after the auto-fix gave up): `cd ~/src/t3code-fork && git rebase
+<tag>` on build-mac, fix the hook in the listed upstream file, `git rebase --continue`, then run
+`fork/scripts/sync.sh`. A dry run with a failure also starts a real auto-fix chat (it publishes
+nothing and prints the issue body or release notes it would have used). `sync.sh` works on the
+clone it lives in, so a test can run from a scratch clone whose `origin`/`upstream` are local.
 
 ### How a deploy works on one Mac
 
