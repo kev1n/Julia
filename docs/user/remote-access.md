@@ -163,9 +163,20 @@ Preferences are saved separately in each client.
 The composer checks eligible machines when choosing a draft's environment, then keeps
 that choice stable. Choose **Auto balance** again to check current resources, or choose
 a specific machine to override it. Choosing a branch or worktree also keeps the draft
-on that machine. Existing threads stay where they started. If resource checks are
+on that machine. Existing threads stay where they started until you move them. If resource checks are
 unavailable or all eligible machines are full, choose a machine manually to continue.
 Mobile keeps its manual environment selection.
+
+### Move an existing thread to another machine
+
+After the current turn finishes, choose another machine under **Run on** in the
+composer or thread details. On mobile, open **Thread settings → Run on**. The
+other machine must be connected and have the same project and model available.
+
+The move carries the branch, uncommitted files and recent conversation into a
+new thread on the destination, and closes the source thread. Provider-native
+session state and attachments do not move. To move back, use **Run on** in the
+new thread after its turn finishes.
 
 ### Tailscale HTTPS
 

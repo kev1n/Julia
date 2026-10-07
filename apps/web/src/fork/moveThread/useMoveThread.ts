@@ -12,25 +12,28 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  AuthOrchestrationOperateScope,
   WS_METHODS,
   type EnvironmentId,
-  type ModelSelection,
   type ScopedThreadRef,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
-import { useCallback, useContext, useMemo } from "react";
+import type { AtomRegistry } from "effect/reactivity";
+import { useContext, useState } from "react";
 
+import {
+  useEnvironmentScope,
+  readEnvironmentScope,
+  useEnvironmentsWithScope,
+} from "../../state/session";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { newMessageId, newThreadId } from "../../lib/utils";
-import {
-  deriveLogicalProjectKeyFromSettings,
-  selectProjectGroupingSettings,
-} from "../../logicalProject";
-import { readProjects, readThreadShell } from "../../state/entities";
-import { useEnvironments } from "../../state/environments";
+import { readThreadShell, useThreadShell, useProjects } from "../../state/entities";
+import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
 import {
   environmentThreadDetails,
   environmentThreadShells,
@@ -38,10 +41,15 @@ import {
 } from "../../state/threads";
 import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
-import { chooseAutoInstance } from "@t3tools/shared/accountChoice";
+
 import { isAutoCandidate, useAutoPlacement } from "../autoPlacement/useAutoPlacement";
 import { readMachineSummaries } from "../machines/useMachineCards";
-import { buildMoveMessage } from "./moveContext";
+import {
+  moveThread as performThreadMove,
+  threadMoveProject,
+  threadMoveProviders,
+  threadMoveRefusal,
+} from "@t3tools/client-runtime/thread-move";
 import { recordMovedThread } from "./movedThreads";
 import { openMovedThread } from "./openMovedThread";
 
@@ -57,82 +65,91 @@ export function isMoveMenuId(id: string): boolean {
   return id.startsWith(MENU_PREFIX);
 }
 
-const isWorking = (status: string | undefined) =>
-  status === "preparing" || status === "starting" || status === "running";
-
-class MoveRefused extends Error {}
-
 export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
   // Callers build the ref inline; key everything on its two ids.
   const environmentKey = unstableThreadRef?.environmentId ?? null;
   const threadKey = unstableThreadRef?.threadId ?? null;
-  const threadRef = useMemo(
-    () => (environmentKey && threadKey ? scopeThreadRef(environmentKey, threadKey) : null),
-    [environmentKey, threadKey],
-  );
+  const threadRef = environmentKey && threadKey ? scopeThreadRef(environmentKey, threadKey) : null;
   const registry = useContext(RegistryContext);
   const navigate = useNavigate();
   const { environments } = useEnvironments();
-  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const providersByEnvironment = useEnvironmentProviders();
   const weights = useClientSettings((settings) => settings.loadBalancingWeights);
   const { settleThread } = useThreadActions();
 
-  const thread = threadRef ? readThreadShell(threadRef) : null;
+  const thread = useThreadShell(threadRef);
+  const projects = useProjects();
+  const [isMoving, setIsMoving] = useState(false);
+  const canOperate = useEnvironmentScope(
+    threadRef?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
+  const permittedTargets = useEnvironmentsWithScope(environments, AuthOrchestrationOperateScope);
+  const disabledReason = !canOperate
+    ? "This connection cannot move threads."
+    : thread
+      ? threadMoveRefusal(thread)
+      : "The thread is no longer available.";
   const sourceEnvironment = environments.find(
     (environment) => environment.environmentId === threadRef?.environmentId,
   );
-  const driver = sourceEnvironment?.serverConfig?.providers.find(
-    (provider) => provider.instanceId === thread?.modelSelection.instanceId,
-  )?.driver;
+  const driver = threadRef
+    ? providersByEnvironment
+        .get(threadRef.environmentId)
+        ?.find((provider) => provider.instanceId === thread?.modelSelection.instanceId)?.driver
+    : undefined;
 
   // Other connected machines that have this thread's project.
-  const targets = useMemo(() => {
+  const targets = (() => {
     if (!thread || !threadRef) return [];
-    const projects = readProjects();
     const source = projects.find(
       (project) =>
         project.environmentId === threadRef.environmentId && project.id === thread.projectId,
     );
     if (!source) return [];
-    const logicalKey = deriveLogicalProjectKeyFromSettings(source, projectGroupingSettings);
     return environments.flatMap((environment) => {
       if (environment.environmentId === threadRef.environmentId) return [];
-      if (environment.connection.phase !== "connected") return [];
-      const project = projects.find(
-        (candidate) =>
-          candidate.environmentId === environment.environmentId &&
-          deriveLogicalProjectKeyFromSettings(candidate, projectGroupingSettings) === logicalKey,
-      );
+      if (
+        environment.connection.phase !== "connected" ||
+        !permittedTargets.has(environment.environmentId)
+      )
+        return [];
+      const project = threadMoveProject(source, projects, environment.environmentId);
+      if (
+        !threadMoveProviders(
+          providersByEnvironment.get(environment.environmentId) ?? [],
+          driver ?? "",
+          thread.modelSelection.model,
+        ).some((provider) => provider.enabled)
+      )
+        return [];
       return project ? [{ environment, project }] : [];
     });
-  }, [environments, projectGroupingSettings, thread, threadRef]);
+  })();
 
   // Auto's machine rule over the eligible targets (same rule as new threads).
-  const autoCandidates = useMemo(
-    () =>
-      driver
-        ? targets
-            .filter(({ environment }) =>
-              isAutoCandidate({
-                environmentId: environment.environmentId,
-                connected: true,
-                serverConfig: environment.serverConfig,
-                kind: resolveEnvironmentMachineKind(environment.serverConfig),
-                weights,
-                driver,
-              }),
-            )
-            .map(({ environment }) => ({
-              environmentId: environment.environmentId,
-              label: environment.label,
-            }))
-        : [],
-    [driver, targets, weights],
-  );
+  const autoCandidates = driver
+    ? targets
+        .filter(({ environment }) =>
+          isAutoCandidate({
+            environmentId: environment.environmentId,
+            connected: true,
+            serverConfig: environment.serverConfig,
+            providers: providersByEnvironment.get(environment.environmentId),
+            kind: resolveEnvironmentMachineKind(environment.serverConfig),
+            weights,
+            driver,
+          }),
+        )
+        .map(({ environment }) => ({
+          environmentId: environment.environmentId,
+          label: environment.label,
+        }))
+    : [];
   const auto = useAutoPlacement(autoCandidates, null);
 
   /** The machines a thread can move to, Auto's pick first. */
-  const choices = useMemo(() => {
+  const choices = (() => {
     if (!thread || targets.length === 0) return [];
     const sorted = [...targets].sort(
       (left, right) =>
@@ -141,17 +158,18 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
     );
     return sorted.map(({ environment }) => ({
       environmentId: environment.environmentId,
+      machine: resolveEnvironmentMachineKind(environment.serverConfig),
       menuId: `${MENU_PREFIX}${environment.environmentId}`,
       label:
         environment.environmentId === auto.environmentId
           ? `${environment.label} (Auto)`
           : environment.label,
     }));
-  }, [auto.environmentId, targets, thread]);
+  })();
 
   // A native menu cannot change once shown, so each machine's CPU, memory and
   // disk are read as the menu opens rather than polled.
-  const menuItems = useCallback(async () => {
+  const menuItems = async () => {
     if (choices.length === 0) return [];
     const usage = await readMachineSummaries(
       registry,
@@ -168,163 +186,151 @@ export function useMoveThread(unstableThreadRef: ScopedThreadRef | null) {
         })),
       },
     ];
-  }, [choices, registry]);
+  };
 
-  const move = useCallback(
-    async (menuId: string) => {
-      if (!threadRef || !thread || !sourceEnvironment) return;
-      const target = targets.find(
-        ({ environment }) => `${MENU_PREFIX}${environment.environmentId}` === menuId,
+  const move = async (menuId: string) => {
+    if (!threadRef || !thread || !sourceEnvironment) return;
+    if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
+    const target = targets.find(
+      ({ environment }) => `${MENU_PREFIX}${environment.environmentId}` === menuId,
+    );
+    if (!target) return;
+    const toast = (title: string, description?: string, type: "error" | "info" = "error") =>
+      toastManager.add(
+        stackedThreadToast({ type, title, ...(description ? { description } : {}) }),
       );
-      if (!target) return;
-      const toast = (title: string, description?: string, type: "error" | "info" = "error") =>
-        toastManager.add(
-          stackedThreadToast({ type, title, ...(description ? { description } : {}) }),
-        );
-      try {
-        const current = readThreadShell(threadRef);
-        if (!current) throw new MoveRefused("The thread is no longer available.");
-        if (isWorking(current.latestRun?.status)) {
-          throw new MoveRefused("Stop or wait for the current turn before moving the thread.");
-        }
-        if (!current.worktreePath || !current.branch) {
-          throw new MoveRefused(
-            "Only threads in their own worktree can move: the move commits to the thread's branch, never the project checkout's branch.",
-          );
-        }
-        const branch = current.branch;
-        const toMachine = target.environment.label;
-        toast(`Moving to ${toMachine}…`, `Sending ${branch} to ${toMachine}.`, "info");
+    // The move runs outside the hook so the React Compiler can still compile it.
+    await runMove({
+      registry,
+      threadRef,
+      sourceLabel: sourceEnvironment.label,
+      target,
+      driver,
+      targetProviders: providersByEnvironment.get(target.environment.environmentId) ?? [],
+      settleThread,
+      navigate,
+      toast,
+      setIsMoving,
+    }).catch((error: unknown) =>
+      toast("Move failed", error instanceof Error ? error.message : String(error)),
+    );
+    setIsMoving(false);
+  };
 
-        // 1. Everything in the worktree, untracked files included, committed on the
-        //    source and taken by the target straight from the source machine.
-        const received = await runAtomCommand(
-          registry,
-          moveReceive,
-          {
-            environmentId: target.environment.environmentId,
-            input: {
-              sourceEnvironmentId: threadRef.environmentId,
-              sourceWorktreePath: current.worktreePath,
-              branch,
-              projectRoot: target.project.workspaceRoot,
-              commitMessage: `WIP: move to ${toMachine}`,
-            },
-          },
-          { label: "fork:move-thread:receive", reportFailure: false, reportDefect: true },
-        );
-        if (received._tag === "Failure") throw squashAtomCommandFailure(received);
-        // The source's branch name unless the target already has that branch.
-        const taken = received.value;
+  return { choices, menuItems, move, disabledReason, isMoving };
+}
 
-        // 2. The conversation, as the new thread's first message.
-        const projection = Option.getOrNull(
-          registry.get(environmentThreadDetails.stateAtom(threadRef)).data,
-        );
-        const text = buildMoveMessage({
-          title: current.title,
-          fromMachine: sourceEnvironment.label,
-          toMachine,
-          branch: taken.branch,
-          messages: (projection?.messages ?? []).map(({ role, text }) => ({ role, text })),
-        });
+interface MoveTarget {
+  readonly environment: { readonly environmentId: EnvironmentId; readonly label: string };
+  readonly project: Parameters<typeof performThreadMove>[0]["targetProject"];
+}
 
-        // 3. The same model on the target, on the account Auto would use there.
-        const targetProviders = target.environment.serverConfig?.providers ?? [];
-        const account = driver ? chooseAutoInstance(targetProviders, driver, Date.now()) : null;
-        const modelSelection: ModelSelection = {
-          ...current.modelSelection,
-          instanceId: account?.account.instanceId ?? current.modelSelection.instanceId,
-        };
-        const nextThreadId = newThreadId();
-        const createdAt = new Date().toISOString();
-        const started = await runAtomCommand(
-          registry,
-          threadEnvironment.startTurn,
-          {
-            environmentId: target.environment.environmentId,
-            input: {
-              threadId: nextThreadId,
-              message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-              modelSelection,
-              titleSeed: current.title,
-              runtimeMode: current.runtimeMode,
-              interactionMode: "default",
-              bootstrap: {
-                createThread: {
-                  projectId: target.project.id,
-                  title: current.title,
-                  modelSelection,
-                  runtimeMode: current.runtimeMode,
-                  interactionMode: "default",
-                  branch: taken.branch,
-                  worktreePath: null,
-                  createdAt,
-                },
-                prepareWorktree: {
-                  projectCwd: target.project.workspaceRoot,
-                  baseBranch: taken.commit,
-                  branch: taken.branch,
-                  requireWorktree: true,
-                  startFromOrigin: false,
-                },
-                runSetupScript: true,
-              },
-              createdAt,
-            },
-          },
-          { label: "fork:move-thread:start", reportFailure: false, reportDefect: true },
-        );
-        if (started._tag === "Failure") throw squashAtomCommandFailure(started);
-
-        // 4. Mark the source thread and remember where it went.
-        const moved = scopeThreadRef(
-          target.environment.environmentId as EnvironmentId,
-          nextThreadId,
-        );
-        recordMovedThread(threadRef, {
-          environmentId: moved.environmentId,
-          threadId: moved.threadId,
-          machine: toMachine,
-        });
-        await runAtomCommand(
-          registry,
-          threadEnvironment.updateMetadata,
-          {
-            environmentId: threadRef.environmentId,
-            input: {
-              threadId: threadRef.threadId,
-              title: `Moved to ${toMachine} · ${current.title}`,
-            },
-          },
-          { label: "fork:move-thread:rename", reportFailure: false, reportDefect: true },
-        );
-        await settleThread(threadRef);
-        const opened = await openMovedThread({
-          registry,
-          shell: environmentThreadShells.threadShellAtom(moved),
-          navigate: () =>
-            navigate({
-              to: "/$environmentId/$threadId",
-              params: { environmentId: moved.environmentId, threadId: moved.threadId },
-            }),
-        });
-        if (!opened) {
-          toast(
-            `Moved to ${toMachine}`,
-            "The new thread has not reached this app yet. Open it from the banner or the sidebar once it appears.",
-            "info",
-          );
-        }
-      } catch (error) {
-        toast(
-          error instanceof MoveRefused ? "Cannot move this thread" : "Move failed",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    },
-    [driver, navigate, registry, settleThread, sourceEnvironment, targets, thread, threadRef],
+async function runMove(input: {
+  readonly registry: AtomRegistry.AtomRegistry;
+  readonly threadRef: ScopedThreadRef;
+  readonly sourceLabel: string;
+  readonly target: MoveTarget;
+  readonly driver: ServerProvider["driver"] | undefined;
+  readonly targetProviders: ReadonlyArray<ServerProvider>;
+  readonly settleThread: ReturnType<typeof useThreadActions>["settleThread"];
+  readonly navigate: ReturnType<typeof useNavigate>;
+  readonly toast: (title: string, description?: string, type?: "error" | "info") => void;
+  readonly setIsMoving: (moving: boolean) => void;
+}) {
+  const {
+    registry,
+    threadRef,
+    sourceLabel,
+    target,
+    driver,
+    targetProviders,
+    settleThread,
+    navigate,
+    toast,
+    setIsMoving,
+  } = input;
+  const current = readThreadShell(threadRef);
+  if (!current) throw new Error("The thread is no longer available.");
+  const reason = threadMoveRefusal(current);
+  if (reason) throw new Error(reason);
+  if (!driver) throw new Error("This thread's provider is no longer available.");
+  setIsMoving(true);
+  const toMachine = target.environment.label;
+  toast(`Moving to ${toMachine}…`, `Sending ${current.branch} to ${toMachine}.`, "info");
+  const projection = Option.getOrNull(
+    registry.get(environmentThreadDetails.stateAtom(threadRef)).data,
   );
-
-  return { choices, menuItems, move };
+  const nextThreadId = newThreadId();
+  const moved = scopeThreadRef(target.environment.environmentId, nextThreadId);
+  await performThreadMove({
+    source: current,
+    sourceEnvironmentId: threadRef.environmentId,
+    sourceLabel,
+    targetEnvironmentId: target.environment.environmentId,
+    targetLabel: toMachine,
+    targetProject: target.project,
+    targetProviders: targetProviders,
+    driver,
+    messages: (projection?.messages ?? []).map(({ role, text }) => ({ role, text })),
+    threadId: nextThreadId,
+    messageId: newMessageId(),
+    now: Date.now(),
+    creationSource: "web",
+    receive: async (input) => {
+      const result = await runAtomCommand(
+        registry,
+        moveReceive,
+        {
+          environmentId: target.environment.environmentId,
+          input,
+        },
+        { label: "fork:move-thread:receive", reportFailure: false, reportDefect: true },
+      );
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      return result.value;
+    },
+    start: async (input) => {
+      const result = await runAtomCommand(
+        registry,
+        threadEnvironment.startTurn,
+        {
+          environmentId: target.environment.environmentId,
+          input,
+        },
+        { label: "fork:move-thread:start", reportFailure: false, reportDefect: true },
+      );
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      recordMovedThread(threadRef, { ...moved, machine: toMachine });
+    },
+    markSource: async (title) => {
+      const result = await runAtomCommand(
+        registry,
+        threadEnvironment.updateMetadata,
+        {
+          environmentId: threadRef.environmentId,
+          input: { threadId: threadRef.threadId, title },
+        },
+        { label: "fork:move-thread:rename", reportFailure: false, reportDefect: true },
+      );
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      const settled = await settleThread(threadRef);
+      if (settled._tag === "Failure") throw squashAtomCommandFailure(settled);
+    },
+  });
+  const opened = await openMovedThread({
+    registry,
+    shell: environmentThreadShells.threadShellAtom(moved),
+    navigate: () =>
+      navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: moved.environmentId, threadId: moved.threadId },
+      }),
+  });
+  if (!opened) {
+    toast(
+      `Moved to ${toMachine}`,
+      "The new thread has not reached this app yet. Open it from the banner or the sidebar once it appears.",
+      "info",
+    );
+  }
 }

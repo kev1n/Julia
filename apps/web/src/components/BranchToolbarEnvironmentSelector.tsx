@@ -4,13 +4,14 @@ import { Tooltip, TooltipTrigger, TooltipPopup } from "./ui/tooltip";
 import { useAtomValue } from "@effect/atom-react";
 import { shortcutLabelForCommand } from "../keybindings";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { PlusIcon, ScaleIcon } from "lucide-react";
 import { memo } from "react";
 
 import { ADD_TO_MACHINE_LABEL_CLASS, type EnvironmentOption } from "./BranchToolbar.logic";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { MachineUsageLine } from "../fork/machines/MachineUsageLine";
+import { useMoveThread } from "../fork/moveThread/useMoveThread";
 import { useComposerMenuProps } from "./chat/composerEventScope";
 import {
   Select,
@@ -26,6 +27,7 @@ interface BranchToolbarEnvironmentSelectorProps {
   /** Fork (Owner): why Auto chose this machine and account; the tooltip. */
   autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
+  threadRef?: ScopedThreadRef | null;
   envLocked: boolean;
   environmentId: EnvironmentId;
   availableEnvironments: readonly EnvironmentOption[];
@@ -43,12 +45,34 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   autoEnvironmentDetail,
   onAutoEnvironment,
   envLocked,
+  threadRef,
   environmentId,
   availableEnvironments,
   onEnvironmentChange,
   onAddToMachine,
 }: BranchToolbarEnvironmentSelectorProps) {
   const composerFloatingLayerProps = useComposerMenuProps();
+  const moveThread = useMoveThread(envLocked ? (threadRef ?? null) : null);
+  const canMove = envLocked && moveThread.choices.length > 0;
+  const options = canMove
+    ? [
+        {
+          environmentId,
+          label:
+            availableEnvironments.find((env) => env.environmentId === environmentId)?.label ??
+            "This machine",
+          machine:
+            availableEnvironments.find((env) => env.environmentId === environmentId)?.machine ??
+            ("server" as const),
+        },
+        ...moveThread.choices.map((choice) => ({
+          environmentId: choice.environmentId,
+          label: choice.label,
+          machine: choice.machine,
+        })),
+      ]
+    : availableEnvironments;
+  const showAddToMachine = !envLocked && onAddToMachine !== undefined;
   const shortcutLabel = shortcutLabelForCommand(
     useAtomValue(primaryServerKeybindingsAtom),
     "composer.host",
@@ -57,19 +81,22 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     availableEnvironments.find((env) => env.environmentId === environmentId) ?? null;
 
   const environmentItems = [
-    ...(onAutoEnvironment
+    ...(!envLocked && onAutoEnvironment
       ? [{ value: AUTO_VALUE, label: autoEnvironmentLabel ?? "Auto balance" }]
       : []),
-    ...availableEnvironments.map((env) => ({
+    ...options.map((env) => ({
       value: environmentValue(env.environmentId),
       label: env.label,
     })),
-    ...(onAddToMachine ? [{ value: ADD_MACHINE_VALUE, label: "Add to another machine" }] : []),
+    ...(showAddToMachine ? [{ value: ADD_MACHINE_VALUE, label: "Add to another machine" }] : []),
   ];
 
   // Match the xs control's height and padding: the composer strip has no min-height,
   // and its glass seam assumes that height even when this label is the only control.
-  if (envLocked || (onEnvironmentChange === undefined && onAddToMachine === undefined)) {
+  if (
+    !canMove &&
+    (envLocked || (onEnvironmentChange === undefined && onAddToMachine === undefined))
+  ) {
     const lockedRow = (
       <span
         className="inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 border border-transparent px-1.75 font-normal text-muted-foreground/70 text-sm sm:h-6 sm:text-xs"
@@ -85,7 +112,11 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     return (
       <Tooltip>
         <TooltipTrigger render={lockedRow} />
-        <TooltipPopup>{activeEnvironment?.label ?? "Run on"}</TooltipPopup>
+        <TooltipPopup>
+          {envLocked
+            ? "Moving requires another connected machine with this project and provider."
+            : (activeEnvironment?.label ?? "Run on")}
+        </TooltipPopup>
       </Tooltip>
     );
   }
@@ -93,16 +124,25 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   return (
     <Select
       modal={false}
-      value={autoEnvironmentLabel ? AUTO_VALUE : environmentValue(environmentId)}
+      value={!envLocked && autoEnvironmentLabel ? AUTO_VALUE : environmentValue(environmentId)}
       onValueChange={(value) => {
         if (value === ADD_MACHINE_VALUE) {
           onAddToMachine?.();
         } else if (value === AUTO_VALUE) {
           onAutoEnvironment?.();
         } else if (value?.startsWith("env:")) {
-          onEnvironmentChange?.(value.slice(4) as EnvironmentId);
+          const nextEnvironmentId = value.slice(4) as EnvironmentId;
+          if (canMove) {
+            const choice = moveThread.choices.find(
+              (choice) => choice.environmentId === nextEnvironmentId,
+            );
+            if (choice) void moveThread.move(choice.menuId);
+          } else {
+            onEnvironmentChange?.(nextEnvironmentId);
+          }
         }
       }}
+      disabled={moveThread.isMoving}
       items={environmentItems}
     >
       <Tooltip>
@@ -117,7 +157,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
             />
           }
         >
-          {autoEnvironmentLabel ? (
+          {!envLocked && autoEnvironmentLabel ? (
             <ScaleIcon className="size-3 shrink-0" aria-hidden="true" />
           ) : (
             <EnvironmentMachineIcon
@@ -130,14 +170,22 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
           </ComposerContextLabel>
         </TooltipTrigger>
         <TooltipPopup>
-          {autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}
+          {canMove
+            ? (moveThread.disabledReason ?? "Move this thread to another machine")
+            : (autoEnvironmentDetail ??
+              autoEnvironmentLabel ??
+              activeEnvironment?.label ??
+              "Run on")}
           {shortcutLabel ? ` · ${shortcutLabel}` : null}
         </TooltipPopup>
       </Tooltip>
       <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
         <SelectGroup>
-          <SelectGroupLabel>Run on</SelectGroupLabel>
-          {onAutoEnvironment && (
+          <SelectGroupLabel>{canMove ? "Move to another machine" : "Run on"}</SelectGroupLabel>
+          {canMove && moveThread.disabledReason ? (
+            <SelectGroupLabel>{moveThread.disabledReason}</SelectGroupLabel>
+          ) : null}
+          {!envLocked && onAutoEnvironment && (
             <SelectItem
               value={AUTO_VALUE}
               onClick={() => {
@@ -150,11 +198,15 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
               </span>
             </SelectItem>
           )}
-          {availableEnvironments.map((env) => (
+          {options.map((env) => (
             <SelectItem
               key={env.environmentId}
               value={environmentValue(env.environmentId)}
-              disabled={onEnvironmentChange === undefined && env.environmentId !== environmentId}
+              disabled={
+                canMove
+                  ? moveThread.disabledReason !== null || env.environmentId === environmentId
+                  : onEnvironmentChange === undefined && env.environmentId !== environmentId
+              }
             >
               <span className="inline-flex items-center gap-1.5">
                 <EnvironmentMachineIcon kind={env.machine} className="size-3" />
@@ -164,7 +216,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
               <MachineUsageLine environmentId={env.environmentId} />
             </SelectItem>
           ))}
-          {onAddToMachine ? (
+          {showAddToMachine ? (
             <SelectItem value={ADD_MACHINE_VALUE}>
               <span className={ADD_TO_MACHINE_LABEL_CLASS}>
                 <PlusIcon aria-hidden="true" className="size-3" />
