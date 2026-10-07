@@ -4,7 +4,11 @@
  * the composer line says what Auto chose and why.
  */
 import type { ProviderDriverKind, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
-import { chooseAutoInstance, type AccountChoice } from "@t3tools/shared/accountChoice";
+import {
+  accountStanding,
+  chooseAutoInstance,
+  type AccountChoice,
+} from "@t3tools/shared/accountChoice";
 import { useEffect, useMemo, useRef } from "react";
 
 import { providerClients } from "../../components/settings/providerDriverMeta";
@@ -42,6 +46,41 @@ export function useAutoAccount(input: {
     if (currentInstanceId !== chosenInstanceId) select(chosenInstanceId);
   }, [enabled, environmentId, driver, chosenInstanceId, currentInstanceId, select]);
   return choice;
+}
+
+/**
+ * Outside Auto (a machine picked by hand), a new chat still moves off an
+ * account with no limit left, once per draft and provider, to the account
+ * Auto would pick on that machine. Picking the limited account again by hand
+ * then sticks.
+ */
+export function useLimitedAccountSwitch(input: {
+  readonly draftId: string | null;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly driver: string;
+  readonly currentInstanceId: ProviderInstanceId | null;
+  readonly select: (instanceId: ProviderInstanceId) => void;
+}) {
+  const { draftId, providers, driver, currentInstanceId, select } = input;
+  const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
+  const target = useMemo(() => {
+    if (draftId === null || currentInstanceId === null) return null;
+    const current = providers.find((provider) => provider.instanceId === currentInstanceId);
+    if (!current || !accountStanding(current.usageLimits, now).limited) return null;
+    const choice = chooseAutoInstance(providers, driver, now);
+    return choice && choice.account.instanceId !== currentInstanceId
+      ? choice.account.instanceId
+      : null;
+  }, [draftId, providers, driver, currentInstanceId, now]);
+  const appliedRef = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves a draft off a depleted account in the draft store once per draft
+  useEffect(() => {
+    if (draftId === null || target === null) return;
+    const key = `${draftId}|${driver}`;
+    if (appliedRef.current === key) return;
+    appliedRef.current = key;
+    select(target);
+  }, [draftId, driver, target, select]);
 }
 
 /** `Claude owner (Max 20x)`: the instance name, with the plan unless the name has one. */

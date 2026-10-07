@@ -56,6 +56,7 @@ const ModelPickerSidebarItem = memo(function ModelPickerSidebarItem(props: {
   selectableUnavailableInstanceIds: ReadonlySet<ProviderInstanceId> | undefined;
   getDisabledInstanceTooltip: ((entry: ProviderInstanceEntry) => string) | undefined;
   accountSummary: string | null | undefined;
+  limited: boolean;
   messageResolver: MessageResolver;
   onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
   setHoveredInstanceId: Dispatch<SetStateAction<ProviderInstanceId | null>>;
@@ -77,6 +78,7 @@ const ModelPickerSidebarItem = memo(function ModelPickerSidebarItem(props: {
       className={cn(
         "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
         isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
+        !isDisabled && props.limited && "opacity-40",
       )}
       data-provider-accent-color={props.entry.accentColor}
       onClick={() => !isDisabled && props.onSelectInstance(props.entry.instanceId)}
@@ -148,6 +150,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
   /** Fork (Owner): subscription and limits left, shown in each instance's tooltip. */
   accountSummaryByInstanceId?: ReadonlyMap<ProviderInstanceId, string | null>;
+  /** Fork (Owner): instances with no limit left draw dimmed (still selectable). */
+  limitedInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
   const m = useMessages();
   const showFavorites = props.showFavorites ?? true;
@@ -242,6 +246,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               selectableUnavailableInstanceIds={props.selectableUnavailableInstanceIds}
               getDisabledInstanceTooltip={props.getDisabledInstanceTooltip}
               accountSummary={props.accountSummaryByInstanceId?.get(entry.instanceId)}
+              limited={props.limitedInstanceIds?.has(entry.instanceId) ?? false}
               messageResolver={m}
               onSelectInstance={props.onSelectInstance}
               setHoveredInstanceId={setHoveredInstanceId}

@@ -75,6 +75,15 @@ describe("accountLimitSummary", () => {
     );
   });
 
+  it("says when an account with no limit left comes back instead of its percentages", () => {
+    const summary = accountLimitSummary(
+      provider({ plan: "Claude Max 20x Subscription", session: 100, weekly: 40 }),
+      NOW,
+    );
+    expect(summary).toMatch(/^Max 20x · no limit left · back /);
+    expect(summary).not.toContain("%");
+  });
+
   it("is null when the instance reports nothing", () => {
     expect(accountLimitSummary(provider({}), NOW)).toBeNull();
   });
