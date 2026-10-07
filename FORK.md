@@ -11,11 +11,12 @@ always "the newest upstream nightly tag plus a short series of fork commits", re
 New threads default to Auto. Auto picks the machine (eligible: connected, has the project,
 provider usable, Auto preference not "Manual only"; laptops stay out until their preference is
 set) by most available memory, then fewest running threads, then most free disk. It then picks
-the provider account with the most session (5-hour) usage left, weekly breaking ties, skipping
-limited accounts. The composer's existing machine chip shows the choice as machine, account and
-session left (`build-mac · alice · 88%`, the design Owner picked from three on 2026-10-06), and
-its tooltip says why (`Auto chose build-mac: most free memory · Claude alice (Pro): 88% session
-left`). With no eligible machine the chip says so and sending asks you to pick one.
+the provider account whose tightest window (session, weekly or monthly) has the most left, then
+the most session left, skipping limited accounts (a window under 5% left; an account at 99% of
+its week is used up however fresh its session). The composer's existing machine chip shows the
+choice as machine, account and that tightest window's percent left (`build-mac · alice · 88%`,
+the design Owner picked from three on 2026-10-06), and its tooltip says why (`Auto chose build-mac:
+most free memory · Claude alice (Pro): 88% left`). With no eligible machine the chip says so and sending asks you to pick one.
 The account rule (`packages/shared/src/accountChoice.ts`) also runs in three places without the
 machine rule: a new chat on a machine picked by hand moves off an account with no limit left,
 once per draft (`useLimitedAccountSwitch`; picking that account again then sticks), a new task on
@@ -47,7 +48,7 @@ credentials). An unknown tier shows the plan without one.
 
 The model pickers say the same per account (`accountLimitSummary`): each model row in the
 composer's picker ends with the account, plan and what is left
-(`owner · Max 20x · 88% session · 61% week`), as do the provider rail's tooltips and the
+(`owner · Max 20x · 88% session · 61% week`, plus `% month` where reported), as do the provider rail's tooltips and the
 composer model chip's tooltip. An account with no limit left says when it comes back instead
 (`Max 20x · no limit left · back 3:40 PM`) and its icon in the rail is dimmed. On the phone the model sheet puts that line on each provider's
 header and names the machine under its title (`Runs on build-mac`).
@@ -479,7 +480,8 @@ Each series is independent of the packaging and tooling commits.
 - Accounts: Auto ranks the chosen machine's enabled, installed, signed-in instances of the
   selected provider. Session = the window of kind `session`; weekly = the tightest window of kind
   `weekly` (model-specific weeklies included); a window whose reset time has passed counts as
-  full; limited = any window with nothing left. Accounts reporting no usage rank last.
+  full; limited = any window under 5% left (Claude warns at 99% of a week while the session is
+  fresh, and a turn needs more than 1%). Accounts reporting no usage rank last.
 - Applying the account: when Auto resolves, the composer's model selection moves to the chosen
   instance with the same model (T3's own model-select path), once per machine/driver/choice, so
   picking another account by hand in the model picker sticks until Auto's answer changes. To
