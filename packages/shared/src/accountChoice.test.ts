@@ -44,9 +44,36 @@ describe("chooseAutoAccount", () => {
     expect(
       pick([
         { name: "max", limits: limits(40, 10) },
-        { name: "pro", limits: limits(8, 90) },
+        { name: "pro", limits: limits(8, 10) },
       ]),
     ).toBe("pro");
+  });
+
+  it("ranks by the tightest window: a fresh session cannot outspend a nearly used week", () => {
+    expect(
+      pick([
+        { name: "week-at-90", limits: limits(9, 90) },
+        { name: "half-session", limits: limits(50, 20) },
+      ]),
+    ).toBe("half-session");
+  });
+
+  it("treats a week at 99% as used up", () => {
+    expect(pick([{ name: "week-at-99", limits: limits(9, 99) }])).toBeNull();
+  });
+
+  it("counts a used-up monthly window", () => {
+    expect(
+      pick([
+        {
+          name: "month-out",
+          limits: limits(0, 0, [
+            { id: "monthly", kind: "monthly", label: "Monthly", usedPercent: 100 },
+          ]),
+        },
+        { name: "next", limits: limits(60, 50) },
+      ]),
+    ).toBe("next");
   });
 
   it("breaks a session tie on weekly remaining", () => {
@@ -96,7 +123,13 @@ describe("chooseAutoAccount", () => {
       ]),
       NOW,
     );
-    expect(standing).toEqual({ sessionLeft: 90, weeklyLeft: 25, limited: false });
+    expect(standing).toEqual({
+      sessionLeft: 90,
+      weeklyLeft: 25,
+      monthlyLeft: null,
+      tightestLeft: 25,
+      limited: false,
+    });
   });
 });
 

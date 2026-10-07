@@ -1,13 +1,7 @@
 /**
- * Fork (Owner): which subscription account Auto uses for a provider. The one
- * owner of this rule: the web composer's Auto, the phone's new task, the
- * Usage screens' "Use now" flag and the server's scheduled runs all call
- * `chooseAutoAccount` (through `chooseAutoInstance` for provider snapshots).
- *
- * Rule: skip limited accounts (a window with nothing left), then the most
- * remaining in the current session (five-hour) window, then the most remaining
- * weekly. Accounts that report no usage rank after accounts that do; equal
- * accounts keep the caller's order. No thresholds.
+ * Fork (Owner): the one rule for which account Auto uses (`chooseAutoAccount`). Skip accounts under
+ * 5% in any window, then most left in the tightest window, then most session, then most weekly
+ * left. Accounts without usage rank after; ties keep the caller's order.
  */
 import {
   isProviderAvailable,
@@ -23,12 +17,19 @@ export function windowRemainingPercent(window: ServerProviderUsageWindow, now: n
   return Math.max(0, Math.min(100, 100 - window.usedPercent));
 }
 
+/** A window with less than this percent left counts as used up: too little for a turn. */
+export const LIMITED_BELOW_PERCENT = 5;
+
 export interface AccountStanding {
   /** Percent left in the session window; null when the account reports none. */
   readonly sessionLeft: number | null;
   /** Percent left in the tightest weekly window; null when the account reports none. */
   readonly weeklyLeft: number | null;
-  /** Some reported window has nothing left. */
+  /** Percent left in the tightest monthly window; null when the account reports none. */
+  readonly monthlyLeft: number | null;
+  /** Percent left in the account's tightest window of any kind; null when it reports none. */
+  readonly tightestLeft: number | null;
+  /** Some reported window has under `LIMITED_BELOW_PERCENT` left. */
   readonly limited: boolean;
 }
 
@@ -38,13 +39,19 @@ export function accountStanding(
 ): AccountStanding {
   const windows = limits?.windows ?? [];
   const session = windows.find((window) => window.kind === "session");
-  const weekly = windows
-    .filter((window) => window.kind === "weekly")
-    .map((window) => windowRemainingPercent(window, now));
+  const tightest = (kind?: ServerProviderUsageWindow["kind"]) => {
+    const left = windows
+      .filter((window) => kind === undefined || window.kind === kind)
+      .map((window) => windowRemainingPercent(window, now));
+    return left.length > 0 ? Math.min(...left) : null;
+  };
+  const tightestLeft = tightest();
   return {
     sessionLeft: session ? windowRemainingPercent(session, now) : null,
-    weeklyLeft: weekly.length > 0 ? Math.min(...weekly) : null,
-    limited: windows.some((window) => windowRemainingPercent(window, now) <= 0),
+    weeklyLeft: tightest("weekly"),
+    monthlyLeft: tightest("monthly"),
+    tightestLeft,
+    limited: tightestLeft !== null && tightestLeft < LIMITED_BELOW_PERCENT,
   };
 }
 
@@ -79,6 +86,7 @@ export function chooseAutoAccount<T>(
     .filter((entry) => !entry.standing.limited)
     .sort(
       (left, right) =>
+        compareLeft(left.standing.tightestLeft, right.standing.tightestLeft) ||
         compareLeft(left.standing.sessionLeft, right.standing.sessionLeft) ||
         compareLeft(left.standing.weeklyLeft, right.standing.weeklyLeft) ||
         left.index - right.index,
