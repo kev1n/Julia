@@ -17,6 +17,7 @@ import { serverEnvironment } from "../state/server";
 import {
   MACHINES_POLL_MS,
   machineCard,
+  machineSummary,
   offlineText,
   type Meter,
 } from "../../../web/src/fork/machines/machineCards";
@@ -90,6 +91,17 @@ function useMachineCards(
       };
     }),
   };
+}
+
+/**
+ * One line per machine (`CPU 8% · Mem 9.6/16 GB · Disk 107/245 GB`) for the
+ * new task's environment picker, polled while `active` (the picker on screen).
+ */
+export function useMachineSummaries(active: boolean): ReadonlyMap<EnvironmentId, string> {
+  const { cards, now } = useMachineCards(null, active);
+  return new Map(
+    cards.map(({ environmentId, card }) => [environmentId, machineSummary(card, now)]),
+  );
 }
 
 function MeterRow(props: { readonly label: string; readonly meter: Meter | null }) {
