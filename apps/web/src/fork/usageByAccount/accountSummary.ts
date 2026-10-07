@@ -5,7 +5,7 @@
  */
 import type { ServerProvider } from "@t3tools/contracts";
 
-import { accountStanding } from "../autoPlacement/accountChoice";
+import { accountStanding } from "@t3tools/shared/accountChoice";
 import { shortPlanLabel } from "../autoPlacement/planLabel";
 
 type AccountSummaryProvider = Pick<ServerProvider, "displayName" | "auth" | "usageLimits">;

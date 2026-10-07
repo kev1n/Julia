@@ -47,6 +47,8 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Metrics from "../observability/Metrics.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import { scheduledRunModelSelection } from "../fork/scheduledRunAccount.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
@@ -401,6 +403,8 @@ export const layer = Layer.effect(
     const secretRequests = yield* SecretRequests.SecretRequests;
     const scheduler = yield* Scheduler.Scheduler;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
+    // Fork (Owner): optional so the task tests need no registry; the server always has one.
+    const providerRegistry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
     const webhookPermits = yield* Ref.make<ReadonlyMap<ScheduledTaskId, Semaphore.Semaphore>>(
       new Map(),
     );
@@ -807,6 +811,15 @@ export const layer = Layer.effect(
         const messageId = MessageId.make(`scheduled-task-message:${fireKey}`);
         // A webhook prompt was rendered from the row when the request arrived.
         const prompt = webhook?.prompt ?? active.prompt;
+        // Fork (Owner): a new thread moves off a saved account with no limit
+        // left. A bound thread keeps its account, since its session lives there.
+        const launchModelSelection = Option.isSome(providerRegistry)
+          ? scheduledRunModelSelection(
+              active.modelSelection,
+              yield* providerRegistry.value.getProviders,
+              DateTime.toEpochMillis(startedAt),
+            )
+          : active.modelSelection;
 
         // Capture defects and interrupts too so dispatch failures still reach markCompleted.
         const result =
@@ -817,7 +830,7 @@ export const layer = Layer.effect(
                     commandId,
                     projectId: active.projectId,
                     title: active.title,
-                    modelSelection: active.modelSelection,
+                    modelSelection: launchModelSelection,
                     runtimeMode: active.runtimeMode,
                     interactionMode: active.interactionMode,
                     workspaceStrategy: active.workspaceStrategy,
