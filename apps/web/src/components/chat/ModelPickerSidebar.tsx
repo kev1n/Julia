@@ -55,6 +55,7 @@ const ModelPickerSidebarItem = memo(function ModelPickerSidebarItem(props: {
   disabledInstanceIds: ReadonlySet<ProviderInstanceId> | undefined;
   selectableUnavailableInstanceIds: ReadonlySet<ProviderInstanceId> | undefined;
   getDisabledInstanceTooltip: ((entry: ProviderInstanceEntry) => string) | undefined;
+  accountSummary: string | null | undefined;
   messageResolver: MessageResolver;
   onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
   setHoveredInstanceId: Dispatch<SetStateAction<ProviderInstanceId | null>>;
@@ -129,7 +130,7 @@ const ModelPickerSidebarItem = memo(function ModelPickerSidebarItem(props: {
           sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
           align="center"
         >
-          {tooltip}
+          {props.accountSummary ? `${tooltip} · ${props.accountSummary}` : tooltip}
         </TooltipPopup>
       </Tooltip>
     </div>
@@ -145,6 +146,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+  /** Fork (Owner): subscription and limits left, shown in each instance's tooltip. */
+  accountSummaryByInstanceId?: ReadonlyMap<ProviderInstanceId, string | null>;
 }) {
   const m = useMessages();
   const showFavorites = props.showFavorites ?? true;
@@ -238,6 +241,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               disabledInstanceIds={props.disabledInstanceIds}
               selectableUnavailableInstanceIds={props.selectableUnavailableInstanceIds}
               getDisabledInstanceTooltip={props.getDisabledInstanceTooltip}
+              accountSummary={props.accountSummaryByInstanceId?.get(entry.instanceId)}
               messageResolver={m}
               onSelectInstance={props.onSelectInstance}
               setHoveredInstanceId={setHoveredInstanceId}
