@@ -248,7 +248,6 @@ import { threadEnvironment } from "../state/threads";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
 import { chatGitStatusAtom, NO_CHAT_GIT_STATUS_ATOM, vcsEnvironment } from "../state/vcs";
 import {
-  type EnvironmentPresentation,
   useEnvironment,
   useEnvironmentProviders,
   useEnvironments,
@@ -391,7 +390,6 @@ const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_TURN_ITEMS: ThreadStructure["turnItems"] = [];
 const EMPTY_RUNS: ThreadStructure["runs"] = [];
-const EMPTY_AUTO_UPDATE_ENVIRONMENTS: ReadonlyArray<EnvironmentPresentation> = [];
 const EMPTY_COMPOSER_BANNER_ITEMS: ReadonlyArray<ComposerBannerStackItem> = [];
 
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
@@ -1283,21 +1281,11 @@ export default function ChatView(props: ChatViewProps) {
     (!draftThread?.branch || draftThread.environmentSelection === "auto") &&
     !draftThread?.worktreePath,
   );
-  const autoUpdateEnvironments = automaticEnvironment
-    ? logicalProjectEnvironments.flatMap(({ environmentId }) => {
-        const environment = environmentById.get(environmentId);
-        return environment ? [environment] : [];
-      })
-    : EMPTY_AUTO_UPDATE_ENVIRONMENTS;
   const systemComposerBannerItems = useSystemComposerBanners({
     activeEnvironment,
     activeEnvironmentUnavailable,
     activeEnvironmentUnavailableState,
     activeThreadEnvironmentId: activeThread?.environmentId ?? null,
-    serverConfig,
-    hasMultipleRegisteredEnvironments: environments.length > 1,
-    automaticEnvironment,
-    autoUpdateEnvironments,
     movedThreadRef: isServerThread ? activeThreadRef : null,
   });
   const providerInstanceEntries = providerInstanceEntriesFor(
