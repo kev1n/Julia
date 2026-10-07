@@ -188,6 +188,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
               targetThreadId,
               sourcePoint,
               ...(input.title === undefined ? {} : { title: input.title }),
+              ...(input.contextMode === undefined ? {} : { contextMode: input.contextMode }),
               createdBy: "agent",
               creationSource: "mcp",
             })

@@ -118,6 +118,36 @@ export function resolveSidebarProjectScopeKeys(input: {
   ];
 }
 
+/** Preserve thread order within each logical project, including remote members. */
+export function groupSidebarThreadsUnderProjects<
+  T extends { environmentId: EnvironmentId; projectId: Project["id"] },
+>(threads: readonly T[], projects: readonly SidebarProjectSnapshot[]) {
+  const byPhysicalKey = new Map<string, SidebarProjectSnapshot>();
+  for (const project of projects) {
+    for (const member of project.memberProjects)
+      byPhysicalKey.set(`${member.environmentId}:${member.id}`, project);
+  }
+  const buckets = new Map<string, T[]>();
+  const ungrouped: T[] = [];
+  for (const thread of threads) {
+    const project = byPhysicalKey.get(`${thread.environmentId}:${thread.projectId}`);
+    if (!project) {
+      ungrouped.push(thread);
+      continue;
+    }
+    const bucket = buckets.get(project.projectKey) ?? [];
+    bucket.push(thread);
+    buckets.set(project.projectKey, bucket);
+  }
+  return {
+    groups: projects.map((project) => ({
+      project,
+      threads: buckets.get(project.projectKey) ?? [],
+    })),
+    ungrouped,
+  };
+}
+
 export function buildPhysicalToLogicalProjectKeyMap(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;

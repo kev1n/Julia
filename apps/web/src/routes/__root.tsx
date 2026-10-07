@@ -354,7 +354,11 @@ function EventRouter({
         scopedProjectKey(
           scopeProjectRef(payload.environment.environmentId, payload.bootstrapProjectId),
         );
-      useUiStateStore.getState().setProjectExpanded(bootstrapProjectKey, true);
+      const uiState = useUiStateStore.getState();
+      // A welcome/reconnect must not undo an explicitly collapsed project.
+      if (uiState.projectExpandedById[bootstrapProjectKey] === undefined) {
+        uiState.setProjectExpanded(bootstrapProjectKey, true);
+      }
 
       if (readPathname() !== "/") {
         return;

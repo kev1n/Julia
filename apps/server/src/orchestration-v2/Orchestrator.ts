@@ -14,6 +14,7 @@ import {
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
+import { selectFinalMessageHistory } from "@t3tools/shared/finalMessageHistory";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
@@ -5230,6 +5231,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         targetThreadId: command.targetThreadId,
         ...(command.title === undefined ? {} : { title: command.title }),
         ...(command.sideChat ? { sideChat: true } : {}),
+        ...(command.contextMode === undefined ? {} : { contextMode: command.contextMode }),
         createdBy: command.createdBy,
         creationSource: command.creationSource,
         createdAt: now,
@@ -7841,6 +7843,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               sourceRunStatus: sourceRun.status,
               fromSpecificTurn: sourceRun !== null,
               sourceBusy: sourceRunsAfterFork.some(isActiveRun),
+              contextMode:
+                projection.thread.forkedFrom?.type === "run"
+                  ? projection.thread.forkedFrom.contextMode
+                  : undefined,
             }),
           );
     const canResolveForkNatively = forkExecution === "native_fork";
@@ -7894,8 +7900,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             providerSessionId,
             updatedAt: now,
           };
-    const portableForkItems =
-      !requiresPortableFork || sourceProjection === null || sourceRun === null
+    let portableForkItems =
+      !requiresPortableFork ||
+      sourceProjection === null ||
+      sourceRun === null ||
+      (projection.thread.forkedFrom?.type === "run" &&
+        projection.thread.forkedFrom.contextMode === "final_messages")
         ? []
         : yield* readForkHistoryItems(projectionStore, sourceProjection, sourceRun).pipe(
             Effect.mapError(
@@ -7903,6 +7913,41 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 new OrchestratorProjectionError({ threadId: sourceProjection.thread.id, cause }),
             ),
           );
+    if (
+      requiresPortableFork &&
+      sourceProjection !== null &&
+      sourceRun !== null &&
+      projection.thread.forkedFrom?.type === "run" &&
+      projection.thread.forkedFrom.contextMode === "final_messages"
+    ) {
+      // The indexed messages view includes fork ancestry but never hydrates tool output.
+      const history = yield* projectionStore
+        .getTimelinePage(sourceProjection.thread.id, {
+          view: "messages",
+          limit: Number.MAX_SAFE_INTEGER,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new OrchestratorProjectionError({
+                threadId: sourceProjection.thread.id,
+                cause,
+              }),
+          ),
+        );
+      const runOrdinals = new Map(sourceProjection.runs.map((run) => [run.id, run.ordinal]));
+      portableForkItems = selectFinalMessageHistory(
+        history.items
+          .map((row) => row.item)
+          .filter(
+            (item) =>
+              item.threadId !== sourceProjection.thread.id ||
+              (item.runId === null
+                ? sourceProjection.thread.historyOrigin === "v1_import"
+                : (runOrdinals.get(item.runId) ?? Infinity) <= sourceRun.ordinal),
+          ),
+      );
+    }
     const portableForkHandoff =
       !requiresPortableFork ||
       pendingForkTransfer === undefined ||

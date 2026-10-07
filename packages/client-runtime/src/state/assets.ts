@@ -75,6 +75,8 @@ export type AssetUrlState =
   | {
       readonly _tag: "Failure";
       readonly reason?: "missing-file-access";
+      /** What the session check said, such as how to regain file access. */
+      readonly message?: string | undefined;
     }
   | {
       readonly _tag: "Success";
@@ -107,9 +109,10 @@ export function blockedAssetUrlState(
     return null;
   }
   if (fileAccess.isPending) return { _tag: "Loading" };
+  // An error says why access is missing, such as being offline or lacking the grant.
   return fileAccess.error === null
     ? { _tag: "Failure", reason: "missing-file-access" }
-    : { _tag: "Failure" };
+    : { _tag: "Failure", message: fileAccess.error };
 }
 
 export function assetUrlStateFromResult(

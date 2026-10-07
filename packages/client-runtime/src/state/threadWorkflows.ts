@@ -120,6 +120,13 @@ export function threadSupportsProviderHandoff(projection: Projection | null | un
   );
 }
 
+/** Compact forks always start a fresh portable session, never a native fork. */
+export function threadSupportsCompactFork(projection: Projection | null | undefined): boolean {
+  if (projection == null) return false;
+  const session = resolveThreadProviderSession(projection);
+  return session === null || session.capabilities.context.supportsFullThreadHandoff;
+}
+
 export function getUserQueuedThreadRuns(
   projection: Pick<Projection, "runs" | "messages">,
 ): ReadonlyArray<Run> {
@@ -193,6 +200,7 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
 export function canForkProjectedAssistantItem(input: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly capabilities?: OrchestrationV2ProviderCapabilities | undefined;
+  readonly contextMode?: "full" | "final_messages";
 }): boolean {
   const item = input.projectedItem.item;
   if (item.type !== "assistant_message" || item.runId === null || item.status !== "completed") {
@@ -205,6 +213,7 @@ export function canForkProjectedAssistantItem(input: {
     return true;
   }
   const capabilities = input.capabilities;
+  if (input.contextMode === "final_messages") return capabilities.context.supportsFullThreadHandoff;
   const canForkNatively =
     capabilities.threads.canForkThread &&
     capabilities.threads.canForkFromTurn &&
