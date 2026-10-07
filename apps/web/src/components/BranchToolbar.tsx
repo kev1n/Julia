@@ -37,6 +37,7 @@ import {
   type BranchToolbarBranchSelectorHandle,
 } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
+import { useMoveThread } from "../fork/moveThread/useMoveThread";
 import { openAddProjectToMachine } from "./AddProjectToMachineDialog";
 import { type AddProjectTarget, useAddProjectTargets } from "../hooks/useAddProjectTargets";
 import { MachineUsageLine } from "../fork/machines/MachineUsageLine";
@@ -145,6 +146,7 @@ function showWorkspaceContextMenu(event: ReactMouseEvent, workspacePath: string)
 interface RunContextSelectorProps {
   displayMode?: "toolbar" | "panel";
   workspaceRoot?: string;
+  threadRef: import("@t3tools/contracts").ScopedThreadRef | null;
   forceNewWorktree: boolean;
   autoEnvironmentLabel?: string | undefined;
   autoEnvironmentDetail?: string | undefined;
@@ -170,6 +172,7 @@ const RunContextSelector = memo(function RunContextSelector({
   displayMode = "toolbar",
   workspaceRoot,
   forceNewWorktree,
+  threadRef,
   autoEnvironmentLabel,
   autoEnvironmentDetail,
   onAutoEnvironment,
@@ -189,6 +192,18 @@ const RunContextSelector = memo(function RunContextSelector({
   addTargets,
   onAddToMachine,
 }: RunContextSelectorProps) {
+  const moveThread = useMoveThread(envLocked ? threadRef : null);
+  const canMove = envLocked && moveThread.choices.length > 0;
+  const machineOptions = canMove
+    ? [
+        ...(availableEnvironments?.filter((env) => env.environmentId === environmentId) ?? []),
+        ...moveThread.choices.map((choice) => ({
+          environmentId: choice.environmentId,
+          label: choice.label,
+          machine: choice.machine,
+        })),
+      ]
+    : availableEnvironments;
   const composerFloatingLayerProps = useComposerMenuProps();
   const activeEnvironment =
     availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
@@ -206,7 +221,8 @@ const RunContextSelector = memo(function RunContextSelector({
         ? resolveEnvModeLabel("worktree")
         : resolveCurrentWorkspaceLabel(activeWorktreePath);
   const isPanel = displayMode === "panel";
-  const isLocked = envLocked || (envModeLocked && (!isPanel || !showEnvironmentPicker));
+  const isLocked =
+    (envLocked || (envModeLocked && (!isPanel || !showEnvironmentPicker))) && !canMove;
   const workspacePath =
     forceNewWorktree || (effectiveEnvMode === "worktree" && !activeWorktreePath)
       ? null
@@ -307,7 +323,7 @@ const RunContextSelector = memo(function RunContextSelector({
         }
         data-composer-context-control
         data-composer-shortcut={[
-          showEnvironmentPicker && !envLocked ? "composer.host" : "",
+          (showEnvironmentPicker && !envLocked) || canMove ? "composer.host" : "",
           !envModeLocked ? "composer.workspace" : "",
         ].join(" ")}
       >
@@ -325,20 +341,27 @@ const RunContextSelector = memo(function RunContextSelector({
         }
         {...(!isPanel ? composerFloatingLayerProps : {})}
       >
-        {availableEnvironments &&
-        ((showEnvironmentPicker && onEnvironmentChange) || addTargets.length > 0) ? (
+        {machineOptions &&
+        (canMove || (showEnvironmentPicker && onEnvironmentChange) || addTargets.length > 0) ? (
           <>
             <MenuGroup>
-              <MenuGroupLabel>Run on</MenuGroupLabel>
+              <MenuGroupLabel>{canMove ? "Move to another machine" : "Run on"}</MenuGroupLabel>
+              {canMove && moveThread.disabledReason ? (
+                <MenuGroupLabel>{moveThread.disabledReason}</MenuGroupLabel>
+              ) : null}
               <MenuRadioGroup
-                value={autoEnvironmentLabel ? "auto" : environmentId}
-                onValueChange={(value) =>
-                  value === "auto"
-                    ? onAutoEnvironment?.()
-                    : onEnvironmentChange?.(value as EnvironmentId)
-                }
+                value={!envLocked && autoEnvironmentLabel ? "auto" : environmentId}
+                onValueChange={(value) => {
+                  if (canMove) {
+                    const choice = moveThread.choices.find(
+                      (choice) => choice.environmentId === value,
+                    );
+                    if (choice) void moveThread.move(choice.menuId);
+                  } else if (value === "auto") onAutoEnvironment?.();
+                  else onEnvironmentChange?.(value as EnvironmentId);
+                }}
               >
-                {onAutoEnvironment && (
+                {!envLocked && onAutoEnvironment && (
                   <MenuRadioItem
                     value="auto"
                     disabled={envLocked}
@@ -355,11 +378,15 @@ const RunContextSelector = memo(function RunContextSelector({
                     </span>
                   </MenuRadioItem>
                 )}
-                {availableEnvironments.map((env) => (
+                {machineOptions.map((env) => (
                   <MenuRadioItem
                     key={env.environmentId}
                     disabled={
-                      envLocked || (!onEnvironmentChange && env.environmentId !== environmentId)
+                      canMove
+                        ? moveThread.disabledReason !== null ||
+                          moveThread.isMoving ||
+                          env.environmentId === environmentId
+                        : envLocked || (!onEnvironmentChange && env.environmentId !== environmentId)
                     }
                     value={env.environmentId}
                     closeOnClick
@@ -692,10 +719,12 @@ export const BranchToolbar = memo(function BranchToolbar({
     availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
   // Started threads get no handler but still show which machine they run on,
   // matching the strip visibility ChatView computes from the same inputs.
-  const showEnvironmentIndicator = shouldShowEnvironmentIndicator({
-    activeEnvironment: activeEnvironmentOption,
-    canPickEnvironment: hasMultipleEnvironments,
-  });
+  const showEnvironmentIndicator =
+    isServerThread ||
+    shouldShowEnvironmentIndicator({
+      activeEnvironment: activeEnvironmentOption,
+      canPickEnvironment: hasMultipleEnvironments,
+    });
   const [attachStrip, labelsOverflow] = useLabelsOverflow();
 
   if (!activeProject) return null;
@@ -706,6 +735,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         {panelSection !== "branch" ? (
           <RunContextSelector
             displayMode="panel"
+            threadRef={isServerThread ? threadRef : null}
             workspaceRoot={activeProject.workspaceRoot}
             forceNewWorktree={forceNewWorktree}
             autoEnvironmentLabel={autoEnvironmentLabel}
@@ -757,6 +787,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       {showGitControls ? (
         <div className="contents @xl/composer-surface:hidden">
           <RunContextSelector
+            threadRef={isServerThread ? threadRef : null}
             forceNewWorktree={forceNewWorktree}
             autoEnvironmentLabel={autoEnvironmentLabel}
             autoEnvironmentDetail={autoEnvironmentDetail}
@@ -790,6 +821,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           {showEnvironmentIndicator && availableEnvironments && (
             <>
               <BranchToolbarEnvironmentSelector
+                threadRef={isServerThread ? threadRef : null}
                 autoEnvironmentLabel={autoEnvironmentLabel}
                 autoEnvironmentDetail={autoEnvironmentDetail}
                 onAutoEnvironment={onAutoEnvironment}

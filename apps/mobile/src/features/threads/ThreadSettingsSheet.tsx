@@ -17,6 +17,7 @@ import type {
   ProviderOptionDescriptor,
   ProviderOptionSelection,
   RuntimeMode,
+  ScopedThreadRef,
   ServerSettings,
   ThreadId,
 } from "@t3tools/contracts";
@@ -78,6 +79,7 @@ import { ChatGptSharingStatus } from "./ChatGptSharingStatus";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentQuery } from "../../state/query";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useThreadReportedModelSelection } from "../../state/entities";
 import {
   setComposerDraftText,
@@ -104,6 +106,7 @@ import {
 } from "./provider-catalog-refresh";
 import { useSearchToolbarInset } from "../../components/ui/useBarInset";
 import type { AppBarSearch } from "../../components/ui/AppBar";
+import { ThreadMachineChoices, ThreadMachineRow } from "../../fork/ThreadMachinePicker";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
 import {
   compatibleRuntimeModeForChoices,
@@ -261,9 +264,11 @@ function SwitchRow(props: {
 
 type ThreadSettingsSubmenuPage =
   | { readonly kind: "descriptor"; readonly id: string }
-  | { readonly kind: "runtime" };
+  | { readonly kind: "runtime" }
+  | { readonly kind: "machine" };
 
 type ThreadSettingsSessionProps = {
+  readonly threadRef?: ScopedThreadRef | null;
   readonly environmentId: EnvironmentId | null;
   readonly projectId: ProjectId | null;
   readonly cwd: string | null;
@@ -290,6 +295,7 @@ export type ExistingThreadSettingsRouteParams = {
 };
 
 type ThreadSettingsSessionValue = {
+  readonly threadRef: ScopedThreadRef | null;
   readonly environmentId: EnvironmentId | null;
   readonly providerInstanceId?: ProviderInstanceId;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
@@ -611,6 +617,7 @@ function ThreadSettingsSessionProvider(
     props.cwd && scannedInstanceId ? { instanceId: scannedInstanceId, cwd: props.cwd } : null;
 
   const value = {
+    threadRef: props.threadRef ?? null,
     environmentId,
     providerInstanceId: props.providerInstanceId,
     providerGroups,
@@ -1074,6 +1081,14 @@ function ThreadSettingsMainContent(props: {
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       maintainVisibleContentPosition={THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION}
+      ListHeaderComponent={
+        session.threadRef ? (
+          <ThreadMachineRow
+            threadRef={session.threadRef}
+            onPress={() => props.onOpenSubmenu({ kind: "machine" })}
+          />
+        ) : null
+      }
       recycleItems
       refreshControl={
         session.environmentId ? (
@@ -1304,11 +1319,15 @@ function ThreadSettingsModelsScreen() {
           bottomInset={searchToolbarInset}
           onOpenSubmenu={(submenu) => {
             const title =
-              submenu.kind === "runtime"
-                ? "Runtime"
-                : (session.displayedDescriptors.find(
-                    (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
-                  )?.label ?? "Option");
+              submenu.kind === "machine"
+                ? "Run on"
+                : submenu.kind === "runtime"
+                  ? "Runtime"
+                  : (session.displayedDescriptors.find(
+                      (descriptor) =>
+                        descriptor.type === "select" &&
+                        descriptor.id === (submenu.kind === "descriptor" ? submenu.id : null),
+                    )?.label ?? "Option");
             navigation.navigate("ThreadSettingsChoice", { ...submenu, title });
           }}
         />
@@ -1320,15 +1339,21 @@ function ThreadSettingsModelsScreen() {
 function ThreadSettingsChoiceScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ThreadSettingsPickerStackParams>>();
   const route = useRoute<RouteProp<ThreadSettingsPickerStackParams, "ThreadSettingsChoice">>();
+  const session = useThreadSettingsSession();
+  const presentation = useThreadSettingsPickerPresentation();
 
   return (
     <>
       <AppBar title={route.params.title} onBack={() => navigation.goBack()} hideBottomBorder />
       <ScreenContent>
-        <ThreadSettingsChoiceContent
-          submenu={route.params}
-          onSelected={() => navigation.goBack()}
-        />
+        {route.params.kind === "machine" && session.threadRef ? (
+          <ThreadMachineChoices threadRef={session.threadRef} onClose={presentation.onClose} />
+        ) : (
+          <ThreadSettingsChoiceContent
+            submenu={route.params}
+            onSelected={() => navigation.goBack()}
+          />
+        )}
       </ScreenContent>
     </>
   );
@@ -1421,6 +1446,7 @@ export function ExistingThreadSettingsRouteScreen({
 
   return (
     <ThreadSettingsPickerScreen
+      threadRef={scopeThreadRef(selectedThread.environmentId, selectedThread.id)}
       environmentId={selectedThread.environmentId}
       projectId={selectedThread.projectId}
       cwd={selectedThreadCwd}

@@ -75,8 +75,12 @@ line as read when the menu opens (asked again unless the client holds a snapshot
 5 seconds).
 
 **Move to another machine** (`apps/web/src/fork/moveThread/`, `apps/server/src/fork/moveThread.ts`).
-The thread title menu has **Move to another machine**, and the command palette **Move thread to
-another machine...**, both listing the machines that have the project, Auto's pick first. The
+Existing threads can change machine from **Run on** in the composer or thread details,
+or **Thread settings → Run on** on the phone. The thread title menu and command palette
+keep their move actions. Destinations need the same repository and subdirectory and the
+current provider/model; sidebar grouping does not affect eligibility. Active turns must
+finish or be stopped first. The transfer and handoff are shared in
+`packages/client-runtime/src/threadMove.ts`. The
 branch travels machine to machine over the fleet channel (below), never through GitHub or any
 other git remote, in every direction, MacBook included:
 
@@ -188,8 +192,7 @@ marks per provider (the web fork's `buildAccountCards`, so phone and desktop alw
 account) beside the plan tier the servers already report (`Claude Max 20x`). Fleet awareness is
 agent-side, so the phone sees it only in the agents' transcripts. Not on the phone, because it has
 no matching screen: the Auto chip (the phone's new-thread flow has no machine balancing at all),
-Move to another machine (no such item in its thread menu), and the large environment-list
-pictures (the phone's environment rows draw the glyph at 14 pt, and the picture keeps that
+the large environment-list pictures (the phone's environment rows draw the glyph at 14 pt, and the picture keeps that
 height). No push notifications (the fork build has no Firebase project) and no T3 Connect (no
 Clerk keys); pairing is direct over the tailnet.
 
