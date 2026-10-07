@@ -347,13 +347,12 @@ function PoolWindowCard({
                 {index + 1}
               </Text>
             </View>
-            <Text
-              numberOfLines={1}
-              className="min-w-0 flex-1 text-sm font-t3-medium text-foreground"
-            >
-              {accountName(account)}
-            </Text>
-            <AccountFlagBadges flag={flags.get(account.key)} now={now} />
+            <View className="min-w-0 flex-1 gap-1 py-1">
+              <Text numberOfLines={1} className="text-sm font-t3-medium text-foreground">
+                {accountName(account)}
+              </Text>
+              <AccountFlagBadges flag={flags.get(account.key)} now={now} />
+            </View>
             <Text className="text-sm font-t3-medium tabular-nums text-foreground">
               {remainingPercent(window)}%
             </Text>
