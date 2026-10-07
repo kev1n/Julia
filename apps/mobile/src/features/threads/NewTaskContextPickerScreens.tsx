@@ -19,7 +19,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import * as Haptics from "expo-haptics";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { useRef, useState, type ReactNode } from "react";
 import { sanitizeNewRefName } from "@t3tools/shared/git";
 import { Platform, Pressable, ScrollView, View } from "react-native";
@@ -30,6 +30,7 @@ import { ScreenContent } from "../../components/ui/ScreenContent";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
+import { useMachineSummaries } from "../../fork/machines";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
@@ -65,6 +66,8 @@ function EnvironmentPickerRow(props: {
   disabled: boolean;
   isLast: boolean;
   onPress: () => void;
+  /** Fork (Owner): the machine's CPU, memory and disk. */
+  subtitle?: string | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { presentation } = useEnvironmentPresentation(props.environmentId);
@@ -100,6 +103,11 @@ function EnvironmentPickerRow(props: {
                 {status}
               </Text>
             </View>
+            {props.subtitle ? (
+              <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+                {props.subtitle}
+              </Text>
+            ) : null}
           </View>
           {props.selected ? (
             <SymbolView name="checkmark" size={16} tintColorClassName="accent-icon" />
@@ -186,6 +194,9 @@ export function NewTaskEnvironmentPickerRouteScreen() {
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  // Fork (Owner): each machine's live CPU, memory and disk under its name.
+  const focused = useIsFocused();
+  const machineUsage = useMachineSummaries(focused);
   return (
     <View className="flex-1 bg-sheet" collapsable={false}>
       <NativeStackScreenOptions
@@ -225,6 +236,7 @@ export function NewTaskEnvironmentPickerRouteScreen() {
                   });
                 }}
                 selected={flow.selectedEnvironmentId === environment.environmentId}
+                subtitle={machineUsage.get(environment.environmentId)}
                 title={environment.environmentLabel}
               />
             ))}

@@ -39,6 +39,7 @@ import {
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { openAddProjectToMachine } from "./AddProjectToMachineDialog";
 import { type AddProjectTarget, useAddProjectTargets } from "../hooks/useAddProjectTargets";
+import { MachineUsageLine } from "../fork/machines/MachineUsageLine";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
@@ -367,9 +368,13 @@ const RunContextSelector = memo(function RunContextSelector({
                     value={env.environmentId}
                     closeOnClick
                   >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <EnvironmentMachineIcon kind={env.machine} className="size-3" />
-                      <span className="min-w-0 truncate">{env.label}</span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <EnvironmentMachineIcon kind={env.machine} className="size-3" />
+                        <span className="min-w-0 truncate">{env.label}</span>
+                      </span>
+                      {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
+                      <MachineUsageLine environmentId={env.environmentId} />
                     </span>
                   </MenuRadioItem>
                 ))}
