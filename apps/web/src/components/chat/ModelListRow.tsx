@@ -22,6 +22,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
   providerAccentColor?: string | undefined;
   acpRegistryAgentId?: string | undefined;
   acpRegistryIconUrl?: string | undefined;
+  /** Fork (Owner): the instance's subscription and what it has left, after the provider name. */
+  accountSummary?: string | null;
   isFavorite: boolean;
   /** In Favorites every row is starred, so the star shows only on hover. */
   favoriteStarOnHover?: boolean;
@@ -83,6 +85,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
         {props.subProvider ? (
           <span className="min-w-0 shrink truncate text-xs text-muted-foreground/70">
             {props.subProvider}
+          </span>
+        ) : null}
+        {props.accountSummary ? (
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
+            {props.accountSummary}
           </span>
         ) : null}
         {props.showNewBadge ? (

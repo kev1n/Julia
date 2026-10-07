@@ -33,6 +33,12 @@ ChatGPT id token) as T3 already reads it, and for Claude the SDK's `Claude Max` 
 rate-limit tier (`default_claude_max_20x`) in Claude Code's own profile file `.claude.json` (no
 credentials). An unknown tier shows the plan without one.
 
+The model pickers say the same per account (`accountLimitSummary`): each model row in the
+composer's picker ends with the account, plan and what is left
+(`owner · Max 20x · 88% session · 61% week`), as do the provider rail's tooltips and the
+composer model chip's tooltip. On the phone the model sheet puts that line on each provider's
+header and names the machine under its title (`Runs on build-mac`).
+
 **Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
 `apps/server/src/fork/freeDisk.ts`). Usage > **Machines**, beside Limits, shows one card per paired
 environment (respecting the page's environment filter) with its picture, name and three bars: CPU

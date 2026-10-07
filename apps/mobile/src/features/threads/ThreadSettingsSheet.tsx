@@ -95,6 +95,7 @@ import { environmentServerConfigsAtom, serverEnvironment } from "../../state/ser
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useNewTaskFlow } from "./new-task-flow-provider";
+import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import {
   createProviderCatalogRefreshRunner,
@@ -147,6 +148,7 @@ function ProviderHeader(props: {
   readonly driver: string | undefined;
   readonly iconUrl: string | undefined;
   readonly label: string;
+  readonly detail: string | undefined;
   readonly collapsible: boolean;
   readonly collapsed: boolean;
   readonly modelCount: number;
@@ -155,7 +157,12 @@ function ProviderHeader(props: {
   const content = (
     <>
       <ProviderIcon iconUrl={props.iconUrl} provider={props.driver} size={15} />
-      <Text className="text-sm font-t3-medium text-foreground-muted">{props.label}</Text>
+      <Text className="shrink text-sm font-t3-medium text-foreground-muted" numberOfLines={1}>
+        {props.label}
+      </Text>
+      {props.detail ? (
+        <Text className="shrink-0 text-xs tabular-nums text-foreground-muted">{props.detail}</Text>
+      ) : null}
       {props.collapsible ? (
         <>
           <View className="flex-1" />
@@ -647,6 +654,7 @@ type ThreadSettingsProviderCatalog = {
   readonly driver: string | undefined;
   readonly iconUrl: string | undefined;
   readonly label: string;
+  readonly detail: string | undefined;
   readonly collapsible: boolean;
   readonly collapsed: boolean;
   readonly modelCount: number;
@@ -721,6 +729,7 @@ function ThreadSettingsProviderListHeader(props: {
       driver={props.provider.driver}
       iconUrl={props.provider.iconUrl}
       label={props.provider.label}
+      detail={props.provider.detail}
       modelCount={props.provider.modelCount}
       onToggle={onToggle}
     />
@@ -782,6 +791,7 @@ function buildThreadSettingsCatalogItems(
       driver,
       iconUrl: group.models[0]?.providerIconUrl,
       label: group.providerLabel,
+      detail: group.providerDetail,
       collapsible,
       collapsed,
       modelCount: visibleModels.length,
@@ -1162,6 +1172,12 @@ function useThreadSettingsPickerPresentation() {
 
 function ThreadSettingsModelsScreen() {
   const session = useThreadSettingsSession();
+  // Fork (Owner): the machine this thread runs on, under the sheet title.
+  const { savedConnectionsById } = useSavedRemoteConnections();
+  const machineLabel = session.environmentId
+    ? savedConnectionsById[session.environmentId]?.environmentLabel
+    : undefined;
+  const machineSubtitle = machineLabel ? `Runs on ${machineLabel}` : undefined;
   const presentation = useThreadSettingsPickerPresentation();
   const navigation = useNavigation<NativeStackNavigationProp<ThreadSettingsPickerStackParams>>();
   const hasCustomCatalogFilter = session.providerFilter !== null || session.showLegacy;
@@ -1192,6 +1208,7 @@ function ThreadSettingsModelsScreen() {
     <>
       <AppBar
         title="Thread settings"
+        subtitle={machineSubtitle}
         onClose={presentation.onClose}
         closeAccessibilityLabel="Cancel thread settings"
         search={search}
@@ -1230,6 +1247,7 @@ function ThreadSettingsModelsScreen() {
           session.providerGroups.map((group) => group.providerKey),
           session.showLegacy,
           session.hasLegacyModels,
+          machineSubtitle,
         ]}
         confirm={{
           label: session.pendingModel ? "Save" : "Done",
