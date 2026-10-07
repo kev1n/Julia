@@ -31,6 +31,8 @@ import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { useNowMinute } from "../../hooks/useNowMinute";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -259,9 +261,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
+  // Fork (Owner): the subscription the selected model runs on and what it has left.
+  const nowMinute = useNowMinute();
+  const accountSummary =
+    activeEntry && !selectedEntries && props.triggerLabel === undefined
+      ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
+      : null;
   const triggerTooltipContent = [
     props.triggerLabel ?? allModelNames ?? triggerLabel,
     props.triggerDetail,
+    accountSummary ? `${activeEntry?.displayName} · ${accountSummary}` : null,
     shortcutLabel,
   ]
     .filter(Boolean)

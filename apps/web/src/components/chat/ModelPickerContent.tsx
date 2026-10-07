@@ -66,6 +66,8 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { useNowMinute } from "../../hooks/useNowMinute";
 
 type ModelPickerItem = {
   slug: string;
@@ -517,6 +519,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const canOpenProviderSetup = onOpenProviderSetup !== undefined;
 
   const entryByInstanceId = new Map(instanceEntries.map((entry) => [entry.instanceId, entry]));
+  // Fork (Owner): which subscription each instance runs on and what it has left.
+  const nowMinute = useNowMinute();
+  const accountSummaryNow = Date.parse(`${nowMinute}Z`); // the minute is an ISO UTC prefix
+  const accountSummaryByInstanceId = new Map(
+    instanceEntries.map((entry) => [
+      entry.instanceId,
+      accountLimitSummary(entry.snapshot, accountSummaryNow),
+    ]),
+  );
   const matchesLockedProvider = (
     entry: Pick<ProviderInstanceEntry, "driverKind" | "continuationGroupKey">,
   ): boolean => {
@@ -776,6 +787,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     modelJumpLabelByKey,
     activeModelKey,
     selectedModelKeySet,
+    accountSummaryByInstanceId,
   };
 
   const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -861,6 +873,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onSelectInstance={handleSelectInstance}
             onFocusSearch={focusSearchInput}
             instanceEntries={sidebarInstanceEntries}
+            accountSummaryByInstanceId={accountSummaryByInstanceId}
             showFavorites
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
@@ -1048,6 +1061,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     providerAccentColor={model.instanceAccentColor}
                     acpRegistryAgentId={model.acpRegistryAgentId}
                     acpRegistryIconUrl={model.acpRegistryIconUrl}
+                    accountSummary={accountSummaryByInstanceId.get(model.instanceId) ?? null}
                     isFavorite={favoritesSet.has(providerModelKey(model.instanceId, model.slug))}
                     isSelected={
                       selectedModelKeys !== undefined
