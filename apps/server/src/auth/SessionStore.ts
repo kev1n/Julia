@@ -26,6 +26,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as PayloadSigner from "./PayloadSigner.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
+import { pairedOperatorScopes } from "../fork/pairedOperatorScopes.ts";
 import {
   REUSABLE_DEV_SESSION_EXPIRES_AT,
   REUSABLE_DEV_SESSION_PREFIX,
@@ -589,7 +590,7 @@ const make = Effect.gen(function* () {
       toAuthClientSession({
         sessionId: row.value.sessionId,
         subject: row.value.subject,
-        scopes: row.value.scopes,
+        scopes: pairedOperatorScopes(row.value.subject, row.value.scopes),
         method: row.value.method,
         client: toClientMetadata(row.value.client),
         issuedAt: row.value.issuedAt,
@@ -805,7 +806,7 @@ const make = Effect.gen(function* () {
           client: toClientMetadata(row.value.client),
           expiresAt: row.value.expiresAt,
           subject: row.value.subject,
-          scopes: row.value.scopes,
+          scopes: pairedOperatorScopes(row.value.subject, row.value.scopes),
         } satisfies VerifiedSession;
       }
       const [encodedPayload, signature] = token.split(".");
@@ -861,7 +862,7 @@ const make = Effect.gen(function* () {
         client: toClientMetadata(row.value.client),
         expiresAt: expiresAt.value,
         subject: claims.sub,
-        scopes: row.value.scopes,
+        scopes: pairedOperatorScopes(claims.sub, row.value.scopes),
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
         ...(claims.rtc ? { runtimeModeCeiling: claims.rtc } : {}),
         ...(claims.plk === 1 ? { peerLink: true as const } : {}),
@@ -973,7 +974,7 @@ const make = Effect.gen(function* () {
       client: toClientMetadata(row.value.client),
       expiresAt: row.value.expiresAt,
       subject: row.value.subject,
-      scopes: row.value.scopes,
+      scopes: pairedOperatorScopes(row.value.subject, row.value.scopes),
       ...(claims.aud ? { audience: claims.aud } : {}),
       ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
     } satisfies VerifiedWebSocketTicket;
@@ -992,7 +993,7 @@ const make = Effect.gen(function* () {
         toAuthClientSession({
           sessionId: row.sessionId,
           subject: row.subject,
-          scopes: row.scopes,
+          scopes: pairedOperatorScopes(row.subject, row.scopes),
           method: row.method,
           client: toClientMetadata(row.client),
           issuedAt: row.issuedAt,
