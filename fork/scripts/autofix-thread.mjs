@@ -1,10 +1,11 @@
 // Runs one Claude chat on this Mac's T3 Code server and waits for it to finish,
 // so the sync's auto-fix shows up in Owner's app like any other thread.
-//   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file>
+//   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
 // existing git worktree <worktree> on Claude owner (instance claudeAgent,
-// Max) with full access, and blocks until its run ends. Prints one JSON line:
-//   {"environmentId","threadId","status"}
+// Max) with full access, and blocks until its run ends or <limit-seconds> pass;
+// then it stops the chat's turn (as the Stop button does) and reports
+// status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
 // It speaks the server's WebSocket RPC (Effect RPC JSON) with a short-lived
 // session from `t3 auth session issue`, revoked on exit.
 import { execFileSync } from "node:child_process";
@@ -12,8 +13,9 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
 
-const [repoRoot, worktree, title, promptFile] = process.argv.slice(2);
-if (!promptFile) throw new Error("usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file>");
+const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
+if (!limitSeconds)
+  throw new Error("usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>");
 const server = "http://127.0.0.1:3773";
 const t3 = `${process.env.HOME}/.local/bin/t3`;
 const root = realpathSync(repoRoot);
@@ -115,10 +117,27 @@ console.error(`autofix: thread ${threadId} launched on ${environment.label}`);
 // Follow the thread on the shell stream; reconnect if the socket drops (a
 // server restart, say) and read the state again from the fresh snapshot.
 let started = false;
+let current = conn;
+let runId = null;
 const status = await new Promise((resolve, reject) => {
+  setTimeout(() => {
+    if (runId === null) return resolve("timed out");
+    current
+      .call("orchestration.dispatchCommand", {
+        type: "run.interrupt",
+        commandId: randomUUID(),
+        threadId,
+        runId,
+        reason: "Fork sync auto-fix time limit reached",
+        holdQueue: true,
+      })
+      .then(() => resolve("timed out"), reject);
+  }, Number(limitSeconds) * 1000);
   const watch = (c) => {
+    current = c;
     const check = (thread) => {
       if (!thread || thread.id !== threadId) return;
+      runId = thread.activeRunId ?? thread.latestRunId ?? runId;
       if (thread.activeRunId || !ended.has(thread.status)) started = true;
       const idle =
         !thread.activeRunId &&
@@ -145,7 +164,7 @@ const status = await new Promise((resolve, reject) => {
   };
   watch(conn);
 });
-conn.ws.onclose = null;
-conn.ws.close();
+current.ws.onclose = null;
+current.ws.close();
 console.log(JSON.stringify({ environmentId: environment.environmentId, threadId, status }));
 process.exit(0);
