@@ -570,3 +570,24 @@ export function applyClaudePromptEffortPrefix(
   }
   return `Ultrathink:\n${trimmed}`;
 }
+
+/** Normal speed is the implicit client choice; explicit saved speed choices still win. */
+export function withNormalSpeedDefault(
+  caps: ModelCapabilities,
+  selections: ReadonlyArray<ProviderOptionSelection> | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const defaults: ProviderOptionSelection[] = [];
+  for (const descriptor of caps.optionDescriptors ?? []) {
+    if (selections?.some((selection) => selection.id === descriptor.id)) continue;
+    if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
+      defaults.push({ id: descriptor.id, value: false });
+    } else if (
+      descriptor.id === "serviceTier" &&
+      descriptor.type === "select" &&
+      descriptor.options.some((option) => option.id === "default")
+    ) {
+      defaults.push({ id: descriptor.id, value: "default" });
+    }
+  }
+  return defaults.length ? [...(selections ?? []), ...defaults] : (selections ?? undefined);
+}

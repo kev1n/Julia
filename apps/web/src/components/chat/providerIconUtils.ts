@@ -42,3 +42,9 @@ export function getTriggerDisplayModelName(
   const shortName = resolveModelShortName(model, driverKind);
   return getDisplayModelName({ ...model, shortName }, { preferShortName: true });
 }
+
+export function getModelPickerDisplayName(model: ModelEsque): string {
+  return getTriggerDisplayModelName(model, null)
+    .replace(/^Claude /, "")
+    .replace(/^(GPT-[\d.]+)-(Sol|Astra)$/, "$1 $2");
+}

@@ -6,7 +6,11 @@ import {
   type ProviderOptionSelection,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import { getComposerProviderState, getComposerReasoningStep } from "./composerProviderState";
+import {
+  getComposerProviderState,
+  getComposerReasoningStep,
+  withImplicitFastModeDefault,
+} from "./composerProviderState";
 import { readPromptUltrathink } from "./TraitsPicker";
 
 const PROVIDER: ProviderDriverKind = ProviderDriverKind.make("codex");
@@ -202,6 +206,59 @@ describe("getComposerProviderState", () => {
     });
 
     expect(state.modelOptionsForDispatch).toEqual(selections(["fastMode", false]));
+  });
+});
+
+describe("withImplicitFastModeDefault", () => {
+  // regression: #2981 a remembered Fast mode choice must survive the implicit default on new chats
+  it("injects fastMode false only when the model exposes fastMode and no selection exists", () => {
+    expect(
+      withImplicitFastModeDefault(
+        {
+          optionDescriptors: [booleanDescriptor("fastMode", true)],
+        },
+        undefined,
+      ),
+    ).toEqual(selections(["fastMode", false]));
+
+    expect(
+      withImplicitFastModeDefault(
+        {
+          optionDescriptors: [booleanDescriptor("fastMode", true)],
+        },
+        selections(["fastMode", true]),
+      ),
+    ).toEqual(selections(["fastMode", true]));
+  });
+
+  it("dispatches Normal for a provider's Fast-default tier, without overriding a saved Fast choice", () => {
+    const caps = {
+      optionDescriptors: [
+        {
+          id: "serviceTier",
+          label: "Speed",
+          type: "select" as const,
+          currentValue: "priority",
+          options: [
+            { id: "default", label: "Standard" },
+            { id: "priority", label: "Fast", isDefault: true },
+          ],
+        },
+      ],
+    };
+    expect(withImplicitFastModeDefault(caps, undefined)).toEqual(
+      selections(["serviceTier", "default"]),
+    );
+    expect(withImplicitFastModeDefault(caps, selections(["serviceTier", "priority"]))).toEqual(
+      selections(["serviceTier", "priority"]),
+    );
+    const state = getComposerProviderState({
+      provider: ProviderDriverKind.make("codex"),
+      model: MODEL,
+      models: modelWith(caps.optionDescriptors),
+      modelOptions: undefined,
+    });
+    expect(state.modelOptionsForDispatch).toContainEqual({ id: "serviceTier", value: "default" });
   });
 });
 

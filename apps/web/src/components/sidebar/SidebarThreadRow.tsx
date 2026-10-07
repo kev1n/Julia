@@ -318,8 +318,8 @@ function SidebarThreadTooltip({
               accentColor={providerEntry?.accentColor}
               acpRegistryAgentId={providerEntry?.acpRegistryAgentId}
               acpRegistryIconUrl={providerEntry?.acpRegistryIconUrl}
+              // Accent dot identifies the account; its name stays in the label.
               showBadge={showInstanceBadge && providerEntry?.accentColor !== undefined}
-              badgeContent="none"
               badgeClassName="h-2 min-w-2 px-0"
               iconClassName="size-3 shrink-0 grayscale opacity-60"
             />

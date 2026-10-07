@@ -29,6 +29,11 @@ import {
   getProviderOptionCurrentValue,
 } from "@t3tools/shared/model";
 import {
+  groupModelSubscriptions,
+  defaultModelPriority,
+  type ModelSubscriptionGroup,
+} from "@t3tools/shared/modelSubscriptions";
+import {
   useNavigation,
   useRoute,
   type RouteProp,
@@ -60,6 +65,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { AppBar } from "../../components/ui/AppBar";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
+import { accountLimitSummary } from "../../../../web/src/fork/usageByAccount/accountSummary";
 import { cn } from "../../lib/cn";
 import { useReduceMotionEnabled } from "../../lib/appState";
 import {
@@ -117,20 +123,16 @@ import {
 } from "./thread-settings-options";
 import {
   canCommitPendingModel,
-  favoritesFirst,
   modelFavoriteKey,
   modelMatchesCatalogQuery,
   pendingModelAfterPress,
-  providerSectionIsCollapsed,
 } from "./thread-settings-sheet-state";
 import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/providerUpdateRequiredModels";
 
-const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
-  "claudeAgent",
-  "codex",
-  "antigravity",
-]);
-/** Keep measured size changes stable; let catalog mutations return underflowing filtered lists to the top. */
+/**
+ * Keep measured row changes stable, but let catalog mutations use the list's
+ * native bounds so a filtered catalog that underflows returns to the top.
+ */
 const THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION = {
   data: false,
   size: true,
@@ -148,62 +150,45 @@ const EMPTY_MODEL_FAVORITES: ReadonlyArray<{
 const FAVORITES_PROVIDER_FILTER = "@favorites";
 // Servers that predate `migrateModelPreferences` drop it and keep reporting null favorites.
 const attemptedMigrationGenerations = new Map<EnvironmentId, number>();
-function ProviderHeader(props: {
-  readonly driver: string | undefined;
-  readonly iconUrl: string | undefined;
-  readonly label: string;
-  readonly detail: string | undefined;
-  readonly collapsible: boolean;
-  readonly collapsed: boolean;
-  readonly modelCount: number;
+const ALL_MODELS_FILTER = "@all-models";
+/** The model's chosen subscription stays visible while alternatives are folded. */
+function SubscriptionDisclosure(props: {
+  readonly option: ModelOption;
+  readonly expanded: boolean;
+  readonly selected: boolean;
+  readonly hasCapacity: boolean;
+  readonly count: number;
   readonly onToggle: () => void;
 }) {
-  const content = (
-    <>
-      <ProviderIcon iconUrl={props.iconUrl} provider={props.driver} size={15} />
-      <Text className="shrink text-sm font-t3-medium text-foreground-muted" numberOfLines={1}>
-        {props.label}
-      </Text>
-      {props.detail ? (
-        <Text className="shrink-0 text-xs tabular-nums text-foreground-muted">{props.detail}</Text>
-      ) : null}
-      {props.collapsible ? (
-        <>
-          <View className="flex-1" />
-          {props.collapsed ? (
-            <Text className="text-2xs font-t3-medium text-foreground-muted">
-              {props.modelCount}
-            </Text>
-          ) : null}
-          <SymbolView
-            name={props.collapsed ? "chevron.down" : "chevron.up"}
-            size={12}
-            tintColorClassName="accent-icon-subtle"
-            type="monochrome"
-          />
-        </>
-      ) : null}
-    </>
-  );
-
-  if (props.collapsible) {
-    return (
-      <Pressable
-        accessibilityLabel={`${props.label}, ${props.modelCount} models`}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: !props.collapsed }}
-        className="mx-4 mt-1 min-h-11 flex-row items-center gap-2 rounded-xl px-1 pt-2 active:opacity-60 android:min-h-12"
-        onPress={props.onToggle}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-
   return (
-    <View accessibilityRole="header" className="mx-4 min-h-9 flex-row items-center gap-2 px-1 pt-1">
-      {content}
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Subscriptions for ${props.option.label}, ${props.count} accounts`}
+      accessibilityState={{ expanded: props.expanded }}
+      onPress={props.onToggle}
+      className="mx-4 mb-2 min-h-14 flex-row items-center gap-2 rounded-b-2xl bg-grouped-card px-4 pb-2 active:bg-subtle"
+    >
+      <ProviderIcon
+        iconUrl={props.option.providerIconUrl}
+        provider={props.option.providerDriver}
+        size={15}
+      />
+      <View className="min-w-0 flex-1">
+        <Text className="text-sm text-foreground-muted" numberOfLines={1}>
+          {props.option.providerLabel} ·{" "}
+          {props.selected ? "Selected" : props.hasCapacity ? "Auto" : "No capacity"}
+        </Text>
+        <Text className="text-xs tabular-nums text-foreground-muted">
+          {props.option.providerDetail ?? "Usage unavailable"}
+        </Text>
+      </View>
+      <SymbolView
+        name={props.expanded ? "chevron.up" : "chevron.down"}
+        size={12}
+        tintColorClassName="accent-icon-subtle"
+        type="monochrome"
+      />
+    </Pressable>
   );
 }
 
@@ -241,6 +226,7 @@ function DisclosureRow(props: {
 
 function SwitchRow(props: {
   readonly label: string;
+  readonly valueLabel?: string;
   readonly value: boolean;
   readonly onValueChange: (value: boolean) => void;
   readonly isLast?: boolean;
@@ -253,11 +239,16 @@ function SwitchRow(props: {
       )}
     >
       <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
-      <ThemedSwitch
-        accessibilityLabel={props.label}
-        onValueChange={props.onValueChange}
-        value={props.value}
-      />
+      <View className="flex-row items-center gap-2">
+        {props.valueLabel ? (
+          <Text className="text-sm text-foreground-muted">{props.valueLabel}</Text>
+        ) : null}
+        <ThemedSwitch
+          accessibilityLabel={props.label}
+          onValueChange={props.onValueChange}
+          value={props.value}
+        />
+      </View>
     </View>
   );
 }
@@ -338,6 +329,7 @@ function ThreadSettingsSessionProvider(
   props: ThreadSettingsSessionProps & { readonly children: ReactNode },
 ) {
   const registry = use(RegistryContext);
+  const { onSelectModel, onUpdateOptionSelections } = props;
   const preferences = useAtomValue(mobilePreferencesAtom);
   const configs = useAtomValue(environmentServerConfigsAtom);
   const config = props.environmentId ? configs.get(props.environmentId) : undefined;
@@ -406,6 +398,18 @@ function ThreadSettingsSessionProvider(
     const favorites = resolveModelPreferences(currentSettings, {
       favorites: legacyFavorites,
     }).favorites;
+    // Fork (Owner): a favorite covers every account that offers the same model.
+    const compatible = providerGroups
+      .flatMap((group) => group.models)
+      .filter(
+        (model) =>
+          model.providerDriver === option.providerDriver &&
+          model.selection.model === option.selection.model &&
+          (option.providerDriver !== "acpRegistry" || model.providerKey === option.providerKey),
+      );
+    const targets = compatible.some((model) => model.key === option.key)
+      ? compatible
+      : [...compatible, option];
     const key = JSON.stringify([
       environmentId,
       option.selection.instanceId,
@@ -415,10 +419,12 @@ function ThreadSettingsSessionProvider(
     const previousFavorite =
       previous && (previous.pending || previous.settings.favorites === currentSettings.favorites)
         ? previous.favorite
-        : favorites.some(
-            (favorite) =>
-              favorite.provider === option.selection.instanceId &&
-              favorite.model === option.selection.model,
+        : favorites.some((favorite) =>
+            targets.some(
+              (target) =>
+                favorite.provider === target.selection.instanceId &&
+                favorite.model === target.selection.model,
+            ),
           );
     const pending = { favorite: !previousFavorite, settings: currentSettings, pending: true };
     pendingFavorites.current.set(key, pending);
@@ -427,13 +433,11 @@ function ThreadSettingsSessionProvider(
       environmentId: environmentId,
       input: {
         patch: {
-          setModelFavorites: [
-            {
-              provider: option.selection.instanceId,
-              model: option.selection.model,
-              favorite: pending.favorite,
-            },
-          ],
+          setModelFavorites: targets.map((target) => ({
+            provider: target.selection.instanceId,
+            model: target.selection.model,
+            favorite: pending.favorite,
+          })),
           ...(currentSettings.favorites === null ? { migrateModelPreferences: { favorites } } : {}),
         },
       },
@@ -512,7 +516,7 @@ function ThreadSettingsSessionProvider(
   const promptTraits = getPromptControlledTraits(displayedDescriptors, displayedPrompt);
   const displayedModel =
     pendingModel ??
-    props.providerGroups.flatMap((group) => group.models).find((option) => isApplied(option)) ??
+    providerGroups.flatMap((group) => group.models).find((option) => isApplied(option)) ??
     null;
   const runtimeModeChoices = withManagedRuntimeModeLimits(
     runtimeModeChoicesForSupportedModes(displayedModel?.supportedRuntimeModes),
@@ -523,12 +527,12 @@ function ThreadSettingsSessionProvider(
     runtimeModeChoices,
   );
 
-  const hasLegacyModels = props.providerGroups.some((group) =>
+  const hasLegacyModels = providerGroups.some((group) =>
     group.models.some((model) => model.isLegacy),
   );
   const commitPendingModel = () => {
     if (pendingModel) {
-      if (!canCommitPendingModel(pendingModel, props.providerGroups)) {
+      if (pendingModel.isUnavailable || !canCommitPendingModel(pendingModel, providerGroups)) {
         Dialog.alert(
           "Model unavailable",
           "Set up this provider on web or desktop, or select another model.",
@@ -536,7 +540,7 @@ function ThreadSettingsSessionProvider(
         return false;
       }
       void Haptics.selectionAsync();
-      props.onSelectModel(pendingModel);
+      onSelectModel(pendingModel);
       if (pendingPrompt !== null && pendingPrompt !== props.prompt) {
         props.onPromptChange(pendingPrompt);
       }
@@ -578,7 +582,7 @@ function ThreadSettingsSessionProvider(
         selection: { ...pendingModel.selection, options: next },
       });
     } else {
-      props.onUpdateOptionSelections(next);
+      onUpdateOptionSelections(next);
     }
   };
 
@@ -686,178 +690,231 @@ function useThreadSettingsSession() {
   return value;
 }
 
-type ThreadSettingsProviderCatalog = {
-  readonly key: string;
-  readonly driver: string | undefined;
-  readonly iconUrl: string | undefined;
-  readonly label: string;
-  readonly detail: string | undefined;
-  readonly collapsible: boolean;
-  readonly collapsed: boolean;
-  readonly modelCount: number;
-  readonly models: ReadonlyArray<ModelOption>;
-};
-
 type ThreadSettingsCatalogItem =
-  | {
-      readonly kind: "provider";
-      readonly key: string;
-      readonly provider: ThreadSettingsProviderCatalog;
-    }
   | {
       readonly kind: "model";
       readonly key: string;
+      readonly group: ModelSubscriptionGroup<ModelOption>;
       readonly option: ModelOption;
-      readonly isFirst: boolean;
+      readonly expanded: boolean;
+    }
+  | {
+      readonly kind: "subscription";
+      readonly key: string;
+      readonly option: ModelOption;
+      readonly recommended: boolean;
       readonly isLast: boolean;
     }
-  | {
-      readonly kind: "notice";
-      readonly key: string;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "empty";
-      readonly key: "empty";
-    }
-  | {
-      readonly kind: "options";
-      readonly key: "options";
-    };
+  | { readonly kind: "empty"; readonly key: "empty" }
+  | { readonly kind: "options"; readonly key: "options" };
 
 function ThreadSettingsModelListRow(props: {
+  readonly group: ModelSubscriptionGroup<ModelOption>;
   readonly option: ModelOption;
-  readonly isFirst: boolean;
+  readonly expanded: boolean;
+}) {
+  const session = useThreadSettingsSession();
+  const selected = props.group.subscriptions.some((subscription) =>
+    session.isDisplayed(subscription.value),
+  );
+  const isFavorite = props.group.subscriptions.some((subscription) =>
+    session.favoriteKeys.has(subscription.value.key),
+  );
+  return (
+    <>
+      <ModelRow
+        isFirst
+        isLast={false}
+        option={props.option}
+        selected={selected}
+        onPress={() => session.pressModel(props.option)}
+        isFavorite={isFavorite}
+        favoritesLoaded={session.favoritesLoaded}
+        onToggleFavorite={() => session.toggleFavorite(props.option)}
+        onToggleHidden={
+          session.manageHidden && props.option.canHide
+            ? () => {
+                // Hiding a model hides it on every account that offers it.
+                for (const subscription of props.group.subscriptions) {
+                  if (
+                    subscription.value.canHide &&
+                    subscription.value.isHidden === props.option.isHidden
+                  ) {
+                    session.toggleHidden(subscription.value);
+                  }
+                }
+              }
+            : undefined
+        }
+        hiddenUpdatePending={props.group.subscriptions.some((subscription) =>
+          session.pendingHiddenKeys.has(subscription.value.key),
+        )}
+      />
+      <SubscriptionDisclosure
+        option={props.option}
+        expanded={props.expanded}
+        selected={selected}
+        hasCapacity={props.group.recommended !== null}
+        count={props.group.subscriptions.length}
+        onToggle={() => session.toggleProvider(props.group.key)}
+      />
+    </>
+  );
+}
+
+function ThreadSettingsSubscriptionRow(props: {
+  readonly option: ModelOption;
+  readonly recommended: boolean;
   readonly isLast: boolean;
 }) {
   const session = useThreadSettingsSession();
-  const onPress = () => session.pressModel(props.option);
-
   return (
-    <ModelRow
-      isFirst={props.isFirst}
-      isLast={props.isLast}
-      onPress={onPress}
-      isFavorite={session.favoriteKeys.has(props.option.key)}
-      favoritesLoaded={session.favoritesLoaded}
-      onToggleFavorite={() => session.toggleFavorite(props.option)}
-      onToggleHidden={
-        session.manageHidden && props.option.canHide
-          ? () => session.toggleHidden(props.option)
-          : undefined
-      }
-      hiddenUpdatePending={session.pendingHiddenKeys.has(props.option.key)}
-      option={props.option}
-      selected={session.isDisplayed(props.option)}
-    />
+    <View className="mx-4 overflow-hidden rounded-xl">
+      <ChoiceRow
+        label={`${props.option.providerLabel}${props.recommended ? " · Recommended" : ""}`}
+        description={props.option.providerDetail ?? "Usage unavailable"}
+        selected={session.isDisplayed(props.option)}
+        disabled={props.option.isUnavailable}
+        onPress={() => session.pressModel(props.option)}
+        isLast={props.isLast}
+      />
+    </View>
   );
 }
 
-function ThreadSettingsProviderListHeader(props: {
-  readonly provider: ThreadSettingsProviderCatalog;
-}) {
-  const session = useThreadSettingsSession();
-  const onToggle = () => session.toggleProvider(props.provider.key);
-
-  return (
-    <ProviderHeader
-      collapsible={props.provider.collapsible}
-      collapsed={props.provider.collapsed}
-      driver={props.provider.driver}
-      iconUrl={props.provider.iconUrl}
-      label={props.provider.label}
-      detail={props.provider.detail}
-      modelCount={props.provider.modelCount}
-      onToggle={onToggle}
-    />
-  );
-}
-
-function buildThreadSettingsCatalogItems(
+function useThreadSettingsCatalogItems(
   session: ThreadSettingsSessionValue,
 ): ReadonlyArray<ThreadSettingsCatalogItem> {
-  return session.providerGroups.flatMap((group) => {
-    if (
-      session.providerFilter !== null &&
-      session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-      group.providerKey !== session.providerFilter
-    ) {
-      return [];
-    }
-    const driver = group.models[0]?.providerDriver ?? group.providerKey;
-    const catalogModels =
-      session.manageHidden ||
-      session.showLegacy ||
-      session.providerFilter === FAVORITES_PROVIDER_FILTER
-        ? group.models
-        : group.models.filter(
-            (model) =>
-              !model.isLegacy || session.isDisplayed(model) || session.favoriteKeys.has(model.key),
-          );
-    const visibleModels = favoritesFirst(
-      catalogModels.filter(
-        (model) =>
-          (session.providerFilter !== FAVORITES_PROVIDER_FILTER ||
-            session.favoriteKeys.has(model.key)) &&
+  const {
+    providerGroups,
+    favoriteKeys,
+    providerFilter,
+    showLegacy,
+    searchQuery,
+    isDisplayed,
+    providerExpansionOverrides,
+    manageHidden,
+  } = session;
+  const configs = useAtomValue(environmentServerConfigsAtom);
+  const providers = session.environmentId
+    ? configs.get(session.environmentId)?.providers
+    : undefined;
+  const [now, setNow] = useState(Date.now);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a clock that re-renders account resets every minute
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const options = providerGroups.flatMap((group) => group.models);
+  const groups = groupModelSubscriptions(
+    options.map((option) => {
+      const provider = providers?.find(
+        (candidate) => candidate.instanceId === option.selection.instanceId,
+      );
+      const available =
+        !option.isUnavailable &&
+        (!provider ||
+          (provider.enabled &&
+            provider.installed &&
+            provider.status === "ready" &&
+            provider.availability !== "unavailable" &&
+            provider.auth.status !== "unauthenticated"));
+      return {
+        instanceId: option.selection.instanceId,
+        catalog:
+          option.providerDriver === "acpRegistry"
+            ? `acpRegistry:${option.providerKey}`
+            : option.providerDriver,
+        model: option.selection.model,
+        available,
+        usageLimits: provider?.usageLimits ?? option.usageLimits,
+        value: {
+          ...option,
+          isUnavailable: !available,
+          providerDetail: provider
+            ? (accountLimitSummary(provider, now) ?? undefined)
+            : option.providerDetail,
+        },
+      };
+    }),
+    now,
+  );
+  const isFavorite = (group: (typeof groups)[number]) =>
+    group.subscriptions.some((subscription) => favoriteKeys.has(subscription.value.key));
+  const hasFavorites = groups.some(isFavorite);
+  const firstByCatalog = new Set<string>();
+  const searching = searchQuery.trim().length > 0;
+  return [...groups]
+    .sort((a, b) => {
+      const firstA = a.subscriptions[0]!;
+      const firstB = b.subscriptions[0]!;
+      return (
+        defaultModelPriority(firstA.catalog, firstA.model) -
+        defaultModelPriority(firstB.catalog, firstB.model)
+      );
+    })
+    .flatMap((group): ThreadSettingsCatalogItem[] => {
+      const first = group.subscriptions[0]!;
+      const current = group.subscriptions.some((subscription) => !subscription.value.isLegacy);
+      const isFirst = !firstByCatalog.has(first.catalog) && current;
+      if (current) firstByCatalog.add(first.catalog);
+      const selected = group.subscriptions.some((subscription) =>
+        isDisplayed(subscription.value),
+      );
+      const favorite = isFavorite(group);
+      const preferred = defaultModelPriority(first.catalog, first.model) < 3;
+      const defaultModel =
+        preferred ||
+        isFirst ||
+        group.subscriptions.some((subscription) => subscription.value.isDefault);
+      if (
+        providerFilter !== null &&
+        providerFilter !== FAVORITES_PROVIDER_FILTER &&
+        providerFilter !== ALL_MODELS_FILTER &&
+        !group.subscriptions.some(
+          (subscription) => subscription.value.providerKey === providerFilter,
+        )
+      )
+        return [];
+      if (providerFilter === FAVORITES_PROVIDER_FILTER && !favorite) return [];
+      if (
+        !searching &&
+        !manageHidden &&
+        providerFilter === null &&
+        !selected &&
+        !(preferred || (hasFavorites ? favorite : defaultModel))
+      )
+        return [];
+      if (!showLegacy && !manageHidden && !current && !selected && !favorite && !searching)
+        return [];
+      if (
+        !group.subscriptions.some((subscription) =>
           modelMatchesCatalogQuery({
-            model,
-            providerLabel: group.providerLabel,
-            query: session.searchQuery,
+            model: subscription.value,
+            providerLabel: subscription.value.providerLabel,
+            query: searchQuery,
           }),
-      ),
-      session.favoriteKeys,
-    );
-    const updateRequiredNotice =
-      group.updateRequired && session.providerFilter !== FAVORITES_PROVIDER_FILTER
-        ? formatProviderUpdateRequiredNotice(group.updateRequired, session.searchQuery)
-        : null;
-    if (visibleModels.length === 0 && !updateRequiredNotice) {
-      return [];
-    }
-    const isPrimary = driver !== undefined && PRIMARY_PROVIDER_DRIVERS.has(driver);
-    const containsAppliedSelection = group.models.some(session.isApplied);
-    const isNarrowed = session.providerFilter !== null || session.searchQuery.trim().length > 0;
-    const collapsible = !isNarrowed;
-    const collapsed = providerSectionIsCollapsed({
-      defaultExpanded: isPrimary || containsAppliedSelection,
-      hasExpansionOverride: session.providerExpansionOverrides.has(group.providerKey),
-      isNarrowed,
+        )
+      )
+        return [];
+      const choice =
+        group.subscriptions.find((subscription) => isDisplayed(subscription.value)) ??
+        group.recommended ??
+        first;
+      const expanded = providerExpansionOverrides.has(group.key);
+      return [
+        { kind: "model", key: `group:${group.key}`, group, option: choice.value, expanded },
+        ...(expanded
+          ? group.subscriptions.map((subscription, index) => ({
+              kind: "subscription" as const,
+              key: `account:${subscription.value.key}`,
+              option: subscription.value,
+              recommended: group.recommended === subscription,
+              isLast: index === group.subscriptions.length - 1,
+            }))
+          : []),
+      ];
     });
-    const provider: ThreadSettingsProviderCatalog = {
-      key: group.providerKey,
-      driver,
-      iconUrl: group.models[0]?.providerIconUrl,
-      label: group.providerLabel,
-      detail: group.providerDetail,
-      collapsible,
-      collapsed,
-      modelCount: visibleModels.length,
-      models: collapsed ? [] : visibleModels,
-    };
-    return [
-      {
-        kind: "provider" as const,
-        key: `provider:${group.providerKey}`,
-        provider,
-      },
-      ...provider.models.map((option, index) => ({
-        kind: "model" as const,
-        key: `model:${option.key}`,
-        option,
-        isFirst: index === 0,
-        isLast: index === provider.models.length - 1,
-      })),
-      ...(!collapsed && updateRequiredNotice
-        ? [
-            {
-              kind: "notice" as const,
-              key: `notice:${group.providerKey}`,
-              text: updateRequiredNotice,
-            },
-          ]
-        : []),
-    ];
-  });
 }
 
 function ThreadSettingsOptionsItem(props: {
@@ -894,16 +951,27 @@ function ThreadSettingsOptionsItem(props: {
                 layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
               >
                 <DisclosureRow
-                  label={descriptor.label}
+                  label={
+                    descriptor.id === "serviceTier"
+                      ? "Speed"
+                      : ["reasoningEffort", "effort", "reasoning", "variant"].includes(
+                            descriptor.id,
+                          )
+                        ? "Effort"
+                        : descriptor.label
+                  }
                   value={
                     session.promptTraits.ultrathinkPromptControlled &&
                     descriptor.id === session.promptTraits.primarySelectDescriptor?.id
                       ? "Ultrathink"
-                      : getProviderOptionCurrentLabel(
-                          descriptor,
-                          session.displayedModelSelection,
-                          session.reportedModelSelection,
-                        )
+                      : descriptor.id === "serviceTier" &&
+                          getProviderOptionCurrentValue(descriptor) === "default"
+                        ? "Normal"
+                        : getProviderOptionCurrentLabel(
+                            descriptor,
+                            session.displayedModelSelection,
+                            session.reportedModelSelection,
+                          )
                   }
                   onPress={() => props.onOpenSubmenu({ kind: "descriptor", id: descriptor.id })}
                 />
@@ -918,7 +986,10 @@ function ThreadSettingsOptionsItem(props: {
               layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
             >
               <SwitchRow
-                label={descriptor.label}
+                label={descriptor.id === "fastMode" ? "Speed" : descriptor.label}
+                {...(descriptor.id === "fastMode"
+                  ? { valueLabel: descriptor.currentValue ? "Fast" : "Normal" }
+                  : {})}
                 value={descriptor.currentValue ?? false}
                 onValueChange={(value) => session.applyOptionChange(descriptor.id, value)}
               />
@@ -1002,7 +1073,7 @@ function ThreadSettingsMainContent(props: {
   const reducedMotion = useReducedMotion();
   const reduceMotionEnabled = useReduceMotionEnabled();
   const animationsReady = listLoaded && !reducedMotion && !reduceMotionEnabled;
-  const catalogItems = buildThreadSettingsCatalogItems(session);
+  const catalogItems = useThreadSettingsCatalogItems(session);
   const hasActiveCatalogFilter =
     session.providerFilter !== null || session.searchQuery.trim().length > 0;
   const listItems = [
@@ -1013,18 +1084,22 @@ function ThreadSettingsMainContent(props: {
     const item = itemProps.item;
     let content: ReactNode;
 
-    if (item.kind === "provider") {
-      content = <ThreadSettingsProviderListHeader provider={item.provider} />;
+    if (item.kind === "subscription") {
+      content = (
+        <ThreadSettingsSubscriptionRow
+          option={item.option}
+          recommended={item.recommended}
+          isLast={item.isLast}
+        />
+      );
     } else if (item.kind === "model") {
       content = (
         <ThreadSettingsModelListRow
-          isFirst={item.isFirst}
-          isLast={item.isLast}
+          group={item.group}
+          expanded={item.expanded}
           option={item.option}
         />
       );
-    } else if (item.kind === "notice") {
-      content = <Text className="mx-8 mt-2 text-xs text-foreground-muted">{item.text}</Text>;
     } else if (item.kind === "empty") {
       content = (
         <View className="items-center px-8 py-14">
@@ -1082,12 +1157,32 @@ function ThreadSettingsMainContent(props: {
       keyboardShouldPersistTaps="handled"
       maintainVisibleContentPosition={THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION}
       ListHeaderComponent={
-        session.threadRef ? (
-          <ThreadMachineRow
-            threadRef={session.threadRef}
-            onPress={() => props.onOpenSubmenu({ kind: "machine" })}
-          />
-        ) : null
+        <>
+          {session.threadRef ? (
+            <ThreadMachineRow
+              threadRef={session.threadRef}
+              onPress={() => props.onOpenSubmenu({ kind: "machine" })}
+            />
+          ) : null}
+          <View className="flex-row items-center justify-between px-5 py-2">
+            <Text className="text-sm text-foreground-muted">
+              {session.providerFilter === null ? "Default models" : "All models"}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              className="min-h-11 justify-center"
+              onPress={() =>
+                session.setProviderFilter(
+                  session.providerFilter === ALL_MODELS_FILTER ? null : ALL_MODELS_FILTER,
+                )
+              }
+            >
+              <Text className="text-sm text-accent">
+                {session.providerFilter === ALL_MODELS_FILTER ? "Default models" : "All models"}
+              </Text>
+            </Pressable>
+          </View>
+        </>
       }
       recycleItems
       refreshControl={
@@ -1137,7 +1232,10 @@ function ThreadSettingsChoiceContent(props: {
         ? {
             rows: selectableChoices(activeDescriptor).map((choice) => ({
               id: choice.id,
-              label: choice.label,
+              label:
+                activeDescriptor.id === "serviceTier" && choice.id === "default"
+                  ? "Normal"
+                  : choice.label,
               description: choice.description,
               disabled: false,
               selected:
@@ -1254,7 +1352,8 @@ function ThreadSettingsModelsScreen() {
   };
   const searchToolbarInset = useSearchToolbarInset(search);
   const providerFilters = [
-    { id: "all-providers", title: "All providers", value: null },
+    { id: "default-models", title: "Default models", value: null },
+    { id: "all-models", title: "All models", value: ALL_MODELS_FILTER },
     { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
     ...session.providerGroups.map((group) => ({
       id: `provider:${group.providerKey}`,
@@ -1280,7 +1379,7 @@ function ThreadSettingsModelsScreen() {
             items: [
               {
                 id: "provider",
-                title: "Provider",
+                title: "Models",
                 items: providerFilters.map((filter) => ({
                   id: filter.id,
                   title: filter.title,

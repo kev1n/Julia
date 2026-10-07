@@ -13,7 +13,7 @@ import {
   getProviderOptionDescriptors,
   isClaudeUltrathinkPrompt,
   normalizeModelSlug,
-  withImplicitFastModeDefault,
+  withNormalSpeedDefault,
 } from "@t3tools/shared/model";
 
 import type { DraftId } from "../../composerDraftStore";
@@ -62,6 +62,9 @@ type ComposerTraitsTarget = {
 export function getComposerPromptInjectionState(prompt: string): ComposerPromptInjectionState {
   return isClaudeUltrathinkPrompt(prompt) ? "ultrathink" : "none";
 }
+
+/** Keep the exported name for existing callers; both speed descriptor shapes default to Normal. */
+export const withImplicitFastModeDefault = withNormalSpeedDefault;
 
 function resolveComposerOptionSelections(
   models: ReadonlyArray<ServerProviderModel>,

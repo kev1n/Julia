@@ -55,6 +55,10 @@
       "types": "./src/mobileSourceMaps.ts",
       "import": "./src/mobileSourceMaps.ts"
     },
+    "./modelSubscriptions": {
+      "types": "./src/modelSubscriptions.ts",
+      "import": "./src/modelSubscriptions.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"
