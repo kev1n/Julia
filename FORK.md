@@ -45,6 +45,15 @@ asks nothing. A machine whose connection is down, or whose server stops answerin
 `Offline · last seen 12m ago` from the newest snapshot time this client saw. The phone has the
 same tab on its Usage screen, drawn from the same `machineCards.ts`.
 
+Wherever a machine is picked, each machine also shows those numbers on one line
+(`CPU 8% · Mem 9.6/16 GB · Disk 107/245 GB`, `machineSummary` in `machineCards.ts`): the
+composer's machine menu (under each machine; the Auto option keeps its own text), Move to another
+machine in the command palette, and the phone's new task Environment picker, each polled every 5
+seconds only while that menu or screen is open (`MachineUsageLine.tsx`, `useMachineSummaries`).
+The thread title menu is a native menu that cannot change once shown, so its Move items carry the
+line as read when the menu opens (asked again unless the client holds a snapshot from the last
+5 seconds).
+
 **Move to another machine** (`apps/web/src/fork/moveThread/`, `apps/server/src/fork/moveThread.ts`).
 The thread title menu has **Move to another machine**, and the command palette **Move thread to
 another machine...**, both listing the machines that have the project, Auto's pick first. The
@@ -153,7 +162,8 @@ environment and thread id plus the repository's canonical key; paths are reposit
 (`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
 the three servers like the official one. Where the phone has the matching screen it shows the
 fork: machine names (server side, so any app shows them after pairing), machine pictures wherever
-it draws an environment's machine glyph, Usage > Machines (above), and on Usage > Limits the **Use now** and **Resets next**
+it draws an environment's machine glyph, Usage > Machines and the usage line in the new task
+Environment picker (above), and on Usage > Limits the **Use now** and **Resets next**
 marks per provider (the web fork's `buildAccountCards`, so phone and desktop always mark the same
 account) beside the plan tier the servers already report (`Claude Max 20x`). Fleet awareness is
 agent-side, so the phone sees it only in the agents' transcripts. Not on the phone, because it has
@@ -228,7 +238,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/web/src/components/ChatView.tsx`: Auto's candidates, rule and hook (replacing upstream's
   weighted balance), the Auto account, the Auto chip text and tooltip; the moved-thread banner.
 - `apps/web/src/components/BranchToolbar.tsx`, `apps/web/src/components/BranchToolbarEnvironmentSelector.tsx`:
-  an optional tooltip text for the Auto chip (`autoEnvironmentDetail`).
+  an optional tooltip text for the Auto chip (`autoEnvironmentDetail`); each machine in their
+  menus (the composer's combined Run on / Workspace menu and the machine-only select) shows its
+  usage line (`MachineUsageLine`).
 - `apps/web/src/components/settings/LoadBalancingSettings.tsx`: laptops show as Manual only by
   default; describes the fork rule.
 - `apps/web/src/components/EnvironmentMachineIcon.tsx`: looks up a picture before T3's icon.
@@ -239,12 +251,14 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   Machines tab (an option without a shortcut; period and refresh disabled as for Limits).
 - `apps/web/src/components/settings/KeybindingsSettings.logic.ts`: skips a Usage option without a
   shortcut when ordering Usage bindings.
-- `apps/web/src/hooks/useThreadActionMenu.ts`: adds the Move items to the thread menu.
+- `apps/web/src/hooks/useThreadActionMenu.ts`: adds the Move items to the thread menu (awaited,
+  since they read each machine's usage as the menu opens).
 - `packages/contracts/src/rpc.ts`, `packages/contracts/src/index.ts`: the `fork.moveReceive` RPC
   (schemas in `packages/contracts/src/forkMoveThread.ts`).
 - `apps/server/src/auth/RpcAuthorization.ts`: `fork.moveReceive` needs the orchestration operate scope.
 - `apps/server/src/ws.ts`: the `fork.moveReceive` handler (calls `fork/moveThread.ts`).
-- `apps/web/src/components/CommandPalette.tsx`: the same Move choices in the command palette.
+- `apps/web/src/components/CommandPalette.tsx`: the same Move choices in the command palette, each
+  with its usage line as the description.
 - `apps/desktop/src/main.ts`: imports `fork/keychain.ts` first (see Keychain).
 - `apps/desktop/src/app/DesktopStatePaths.ts`: the fork app's state directory.
 - `apps/desktop/src/app/DesktopUserData.ts`: the fork app's Electron profile directory.
@@ -254,6 +268,8 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/mobile/src/components/EnvironmentMachineSymbol.tsx`: looks up a machine picture before T3's glyph.
 - `apps/mobile/src/features/usage/UsageLimitsPooled.tsx`: the Use now / Resets next marks under each account.
 - `apps/mobile/src/features/usage/UsageRouteScreen.tsx`: the Machines tab (no pull to refresh; it is live).
+- `apps/mobile/src/features/threads/NewTaskContextPickerScreens.tsx`: the new task Environment
+  picker's rows get the usage line as their subtitle.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -262,7 +278,8 @@ machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1
 the fleet instead of GitHub (1; the move feature now depends on fleet awareness), overlap alerts
 (1), opening the moved thread once the client knows it (1), then the phone app: its identity (1),
 pictures and account marks (1), sync and update serving (1), and its layout fix with this section (1),
-then Machines (1; adds total disk to the free disk commit's field and owner).
+then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
+machine pickers (1).
 
 ## Sync, build, deploy
 
@@ -482,3 +499,10 @@ Each series is independent of the packaging and tooling commits.
   rebuild from projections; T3 has no lifecycle-only subscription, so the fork filters the event
   types itself. A Claude read-only (Supervised) thread does not pre-approve the fleet tools; T3's
   read-only allowlist is upstream code the fork leaves alone.
+- Usage in the machine pickers (Owner, 2026-10-06: "show the usage details when deciding what
+  machine to put the code on") was read as: wherever a machine is picked for a thread, each
+  machine shows its live CPU, memory and disk from the Machines tab's own data and formatting.
+  The Auto option keeps its "why" text and gets no line of its own. The thread title menu is
+  native (Electron), so its Move items show the reading taken as it opens instead of a live one;
+  opening it waits for that reading (a fresh sample takes the server about 200 ms of CPU
+  measuring, at most the existing 5-second query timeout for a server that does not answer).
