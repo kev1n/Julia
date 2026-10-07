@@ -82,6 +82,7 @@ import {
   type HomeProjectScope,
 } from "../home/homeThreadList";
 import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
+import { withAutoAccount } from "../../fork/autoAccount";
 import {
   resolveNewTaskDraftWorkspace,
   resolveNewTaskBranchWorktreePath,
@@ -439,12 +440,21 @@ export function NewTaskFlowProvider(
     selectedProject?.id ?? null,
   );
 
-  const selectedDefaultModel = resolveNewTaskModelSelection({
+  const resolvedModel = resolveNewTaskModelSelection({
     draftSelection: draftModelSelection,
     projectDefaultSelection: projectDefaultModelSelection,
     stickySelection: stickyModelSelection,
     modelOptions,
   });
+  // Fork (Owner): the default runs on the account with the most usage left;
+  // a pending task being edited keeps the account it was saved with.
+  const selectedDefaultModel = useMemo(
+    () =>
+      draftModelSelection || editingPendingTask
+        ? resolvedModel
+        : withAutoAccount(resolvedModel, selectedEnvironmentServerConfig?.providers ?? []),
+    [draftModelSelection, editingPendingTask, resolvedModel, selectedEnvironmentServerConfig],
+  );
   const selectedModel = resolveNewThreadModelSelection({
     defaultSelection: selectedDefaultModel,
     explicitSelection:

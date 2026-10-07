@@ -38,7 +38,7 @@ import {
 } from "../../state/threads";
 import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
-import { chooseAutoInstance } from "../autoPlacement/useAutoAccount";
+import { chooseAutoInstance } from "@t3tools/shared/accountChoice";
 import { isAutoCandidate, useAutoPlacement } from "../autoPlacement/useAutoPlacement";
 import { readMachineSummaries } from "../machines/useMachineCards";
 import { buildMoveMessage } from "./moveContext";
