@@ -36,4 +36,16 @@ describe("deriveAssetUrlState", () => {
       });
     }
   });
+
+  it("preserves permission repair guidance only while connected", () => {
+    const shared = { _tag: "Failure", message: "Pair again with Read files enabled." } as const;
+    expect(deriveAssetUrlState({ connectionPhase: "connected", shared })).toEqual({
+      ...shared,
+      reason: "failed",
+    });
+    expect(deriveAssetUrlState({ connectionPhase: "offline", shared })).toEqual({
+      _tag: "Failure",
+      reason: "disconnected",
+    });
+  });
 });

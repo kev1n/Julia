@@ -321,8 +321,11 @@ export function ThreadMarkdownImage(props: {
       })}
       unavailable={assetUrl._tag === "Failure"}
       unavailableDetail={
-        assetUrl._tag === "Failure" && assetUrl.reason === "missing-file-access"
-          ? gt("This connection cannot read host files. Pair again with a new link to view it.")
+        assetUrl._tag === "Failure"
+          ? (assetUrl.message ??
+            (assetUrl.reason === "missing-file-access"
+              ? gt("This connection cannot read host files. Pair again with a new link to view it.")
+              : undefined))
           : undefined
       }
       knownSize={assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined}

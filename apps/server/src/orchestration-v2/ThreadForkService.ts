@@ -60,6 +60,7 @@ export interface ThreadForkServiceV2Shape {
     readonly targetThreadId: ThreadId;
     readonly title?: string;
     readonly sideChat?: boolean;
+    readonly contextMode?: "full" | "final_messages";
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
     readonly createdAt: DateTime.Utc;
@@ -123,7 +124,12 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         forkedFrom:
           sourceRun === null
             ? null
-            : { type: "run", threadId: input.sourceProjection.thread.id, runId: sourceRun.id },
+            : {
+                type: "run",
+                threadId: input.sourceProjection.thread.id,
+                runId: sourceRun.id,
+                ...(input.contextMode === undefined ? {} : { contextMode: input.contextMode }),
+              },
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
         archivedAt: null,

@@ -5,7 +5,9 @@ export type AssetUrlFailureReason = "disconnected" | "failed" | "missing-file-ac
 
 export type AssetUrlState =
   | { readonly _tag: "Loading" }
-  | { readonly _tag: "Failure"; readonly reason: AssetUrlFailureReason }
+  | (Omit<Extract<SharedAssetUrlState, { readonly _tag: "Failure" }>, "reason"> & {
+      readonly reason: AssetUrlFailureReason;
+    })
   | Extract<SharedAssetUrlState, { readonly _tag: "Success" }>;
 
 export function deriveAssetUrlState(input: {
@@ -33,7 +35,7 @@ export function deriveAssetUrlState(input: {
       return { _tag: "Loading" };
     case "connected":
       return input.shared._tag === "Failure"
-        ? { _tag: "Failure", reason: input.shared.reason ?? "failed" }
+        ? { ...input.shared, reason: input.shared.reason ?? "failed" }
         : { _tag: "Loading" };
   }
 }

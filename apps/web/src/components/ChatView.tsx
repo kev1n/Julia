@@ -106,6 +106,7 @@ import {
 import {
   getUserQueuedThreadRuns,
   threadSteersDuringCompaction,
+  threadSupportsCompactFork,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { compactionBlocksSteering } from "@t3tools/client-runtime/state/composer-dispatch";
@@ -235,6 +236,7 @@ import {
 import { useNowMinute } from "../hooks/useNowMinute";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { WorkspaceChatTabs } from "./chat/WorkspaceChatTabs";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -3468,6 +3470,38 @@ export default function ChatView(props: ChatViewProps) {
             />
           </header>
         )}
+
+        <WorkspaceChatTabs
+          activeThread={activeThread}
+          isServerThread={isServerThread}
+          canCreate={!activeEnvironmentUnavailable && canOperateThread}
+          canFork={
+            isServerThread &&
+            !activeEnvironmentUnavailable &&
+            !isWorking &&
+            threadSupportsCompactFork(serverProjection) &&
+            activeLatestRun !== null &&
+            ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(
+              activeLatestRun.status,
+            ) &&
+            canOperateThread
+          }
+          onNewChat={() => {
+            if (!activeProjectRef) return;
+            void handleNewThread(activeProjectRef, {
+              branch: activeThread.branch,
+              worktreePath: activeThread.worktreePath,
+              envMode: activeThread.worktreePath ? "worktree" : "local",
+            });
+          }}
+          onForkChat={async () => {
+            if (!activeLatestRun) return;
+            await onForkFromRunStable({
+              sourceThreadId: activeThread.id,
+              runId: activeLatestRun.runId,
+            });
+          }}
+        />
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
