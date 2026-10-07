@@ -43,15 +43,17 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import { toggleUsageEnvironment } from "./usageEnvironmentSelection";
 import { useRefreshLimits } from "./UsageLimitsSection";
+import { MachinesSection } from "../../fork/machines";
 import { UsageLimitsSection } from "./UsageLimitsPooled";
 import type { UsageChartMetric } from "./usageChartData";
 import { PROVIDER_LABEL, useProviderColors, useUsageMixColors } from "./usageProviders";
 
-type UsageView = UsageChartMetric | "limits";
+type UsageView = UsageChartMetric | "limits" | "machines";
 const VIEW_OPTIONS = [
   { value: "cost", label: "Cost" },
   { value: "tokens", label: "Tokens" },
   { value: "limits", label: "Limits" },
+  { value: "machines", label: "Machines" }, // Fork (Owner): Usage > Machines
 ] as const satisfies readonly { value: UsageView; label: string }[];
 
 const WINDOW_OPTIONS = [
@@ -132,6 +134,7 @@ function UsageScreen(props: {
   const [refreshingUsage, setRefreshingUsage] = useState(false);
   const refreshingRef = useRef(false);
   const showingLimits = view === "limits";
+  const showingMachines = view === "machines";
   const metric: UsageChartMetric = view === "tokens" ? "tokens" : "cost";
   const progress = usageProgress(selectedEnvironments, {
     refreshing: refreshingUsage,
@@ -221,7 +224,7 @@ function UsageScreen(props: {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         refreshControl={
-          showingLimits || canReadDiagnostics ? (
+          !showingMachines && (showingLimits || canReadDiagnostics) ? (
             <RefreshControl
               refreshing={showingLimits ? limits.refreshing : refreshingUsage}
               onRefresh={showingLimits ? () => void limits.refresh() : refreshWindow}
@@ -232,7 +235,7 @@ function UsageScreen(props: {
         <View className="w-full gap-6 self-center" style={{ maxWidth: MAX_CONTENT_WIDTH }}>
           {wide ? (
             <View className="flex-row items-center gap-3">
-              {showingLimits ? (
+              {showingLimits || showingMachines ? (
                 <View className="flex-1" />
               ) : (
                 <SegmentedControl
@@ -261,11 +264,13 @@ function UsageScreen(props: {
             />
           )}
           <Animated.View
-            key={showingLimits ? "limits" : "usage"}
+            key={showingMachines ? "machines" : showingLimits ? "limits" : "usage"}
             entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System)}
             className="gap-6"
           >
-            {showingLimits ? (
+            {showingMachines ? (
+              <MachinesSection selectedEnvironmentIds={selectedEnvironmentIds} active={isFocused} />
+            ) : showingLimits ? (
               <UsageLimitsSection
                 now={limits.now}
                 failedLabels={limits.failedLabels}
