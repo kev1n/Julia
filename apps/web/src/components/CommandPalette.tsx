@@ -2,6 +2,7 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { m, type MessageResolver } from "../i18n/messages";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
+import { MachineUsageLine } from "../fork/machines/MachineUsageLine";
 import { useMoveThread } from "../fork/moveThread/useMoveThread";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -1611,12 +1612,13 @@ function OpenCommandPaletteDialog(props: {
       groups: [
         {
           value: "machines",
-          label: "Machines",
-          items: moveThread.choices.map(({ menuId, label }) => ({
+          label: gt("Machines"),
+          items: moveThread.choices.map(({ menuId, label, environmentId }) => ({
             kind: "action" as const,
             value: `action:${menuId}`,
             searchTerms: [label],
             title: label,
+            description: <MachineUsageLine environmentId={environmentId} />,
             icon: <ArrowRightLeftIcon className={ITEM_ICON_CLASS} />,
             run: () => moveThread.move(menuId),
           })),

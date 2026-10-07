@@ -10,6 +10,7 @@ import { T, useGT } from "gt-react";
 
 import { ADD_TO_MACHINE_LABEL_CLASS, type EnvironmentOption } from "./BranchToolbar.logic";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
+import { MachineUsageLine } from "../fork/machines/MachineUsageLine";
 import { useComposerMenuProps } from "./chat/composerEventScope";
 import {
   Select,
@@ -163,6 +164,8 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
                 <EnvironmentMachineIcon kind={env.machine} className="size-3" />
                 {env.label}
               </span>
+              {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
+              <MachineUsageLine environmentId={env.environmentId} />
             </SelectItem>
           ))}
           {onAddToMachine ? (

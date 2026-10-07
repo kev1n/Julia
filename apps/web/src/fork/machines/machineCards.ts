@@ -4,7 +4,8 @@
  * (apps/mobile/src/fork/machines.tsx), so it holds no React or atom state.
  */
 import type { HostResourcesSnapshot } from "@t3tools/contracts";
-import { formatDuration } from "@t3tools/shared/usageLimits";
+
+export { machineSummary, offlineText } from "@t3tools/shared/machineCardsCopy";
 
 /**
  * How often an open Machines view asks each connected server again: the
@@ -26,6 +27,8 @@ export interface Meter {
   /** 0 to 100, rounded. */
   readonly percent: number;
   readonly detail: string;
+  /** The same reading in a few characters, for one-line machine lists: `37%`, `24/32 GB`. */
+  readonly short: string;
 }
 
 export type MachineCard =
@@ -60,9 +63,16 @@ function trim(value: number): string {
 
 function usedMeter(used: number, total: number, unit: "memory" | "disk"): Meter {
   const clamped = Math.min(total, Math.max(0, used));
+  const usedText = formatSize(clamped, unit);
+  const totalText = formatSize(total, unit);
+  const [usedNumber, usedUnit] = usedText.split(" ");
   return {
     percent: total > 0 ? Math.round((clamped / total) * 100) : 0,
-    detail: `${formatSize(clamped, unit)} of ${formatSize(total, unit)}`,
+    detail: `${usedText} of ${totalText}`,
+    // `24/32 GB`, or both units when they differ: `600 GB/1 TB`.
+    short: totalText.endsWith(` ${usedUnit}`)
+      ? `${usedNumber}/${totalText}`
+      : `${usedText}/${totalText}`,
   };
 }
 
@@ -81,16 +91,14 @@ export function machineCard(
     return { kind: "offline", lastSeenAt: lastSeenAt >= 0 ? lastSeenAt : null };
   }
   if (resources === null) return { kind: "loading" };
-  const { totalDiskBytes, freeDiskBytes } = resources;
+  const { totalDiskBytes, freeDiskBytes, cpuUtilization } = resources;
+  const cpuPercent = cpuUtilization === null ? null : Math.round(cpuUtilization * 100);
   return {
     kind: "online",
     cpu:
-      resources.cpuUtilization === null
+      cpuPercent === null
         ? null
-        : {
-            percent: Math.round(resources.cpuUtilization * 100),
-            detail: `${resources.cpuCount} cores`,
-          },
+        : { percent: cpuPercent, detail: `${resources.cpuCount} cores`, short: `${cpuPercent}%` },
     memory: usedMeter(
       resources.totalMemoryBytes - resources.availableMemoryBytes,
       resources.totalMemoryBytes,
@@ -101,13 +109,4 @@ export function machineCard(
         ? null
         : usedMeter(totalDiskBytes - freeDiskBytes, totalDiskBytes, "disk"),
   };
-}
-
-/** `Offline · last seen 12m ago`, from the server's own snapshot time. */
-export function offlineText(lastSeenAt: number | null, now: number): string {
-  if (lastSeenAt === null) return "Offline · not seen since the app opened";
-  const ago = now - lastSeenAt;
-  return ago < 60_000
-    ? "Offline · last seen just now"
-    : `Offline · last seen ${formatDuration(ago)} ago`;
 }

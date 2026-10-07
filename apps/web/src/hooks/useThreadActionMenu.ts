@@ -386,7 +386,11 @@ export function useThreadActionMenu(input: {
         );
         return;
       }
-      const items = [...menu.items, ...moveThread.menuItems()];
+      const items = [
+        ...menu.items,
+        // Only wait on the machines' usage when there is a machine to move to.
+        ...(moveThread.choices.length > 0 ? await moveThread.menuItems() : []),
+      ];
       const clicked = await settlePromise(() => api.contextMenu.show(items, position, source));
       if (clicked._tag === "Failure" || clicked.value === null) return;
       if (isMoveMenuId(clicked.value)) return void (await moveThread.move(clicked.value));

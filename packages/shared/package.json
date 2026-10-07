@@ -643,6 +643,10 @@
       "types": "./src/usageLimitsCopy.ts",
       "import": "./src/usageLimitsCopy.ts"
     },
+    "./machineCardsCopy": {
+      "types": "./src/machineCardsCopy.ts",
+      "import": "./src/machineCardsCopy.ts"
+    },
     "./usageFormatCopy": {
       "types": "./src/usageFormatCopy.ts",
       "import": "./src/usageFormatCopy.ts"
