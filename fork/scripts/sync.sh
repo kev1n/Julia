@@ -6,13 +6,16 @@
 # On a conflict or a failed step nothing is published (so nothing deploys) and
 # the open "Fork sync failed" issue on owner/t3code gets the details.
 #   fork/scripts/sync.sh            rebase, check, build, push, release
-#   fork/scripts/sync.sh --dry-run [ref]
+#   fork/scripts/sync.sh --dry-run [ref [autofix-limit-seconds]]
 #       rebase (onto ref, default the newest nightly), check, build; push,
 #       release and notify nothing, and put the branch back
 set -uo pipefail
 dry_run=false
 onto=
-if [ "${1:-}" = "--dry-run" ]; then dry_run=true; onto=${2:-}; fi
+# How long the auto-fix chat may work before it is stopped (Owner's choice: one
+# hour). Only a dry run can shorten it, for testing; the 05:00 job passes no arguments.
+autofix_limit=3600
+if [ "${1:-}" = "--dry-run" ]; then dry_run=true; onto=${2:-}; autofix_limit=${3:-$autofix_limit}; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd) # ~/src/t3code-fork
 state="$HOME/t3-fork"
 fork_repo="owner/t3code"
@@ -103,7 +106,7 @@ if ! prepare; then
   rebasing=
   git reset -q --hard "$before"
   autofix="$state/autofix/$(date +%Y%m%d-%H%M%S)"
-  fork/scripts/autofix.sh "$latest" "$before" "$problem" "$log" "$autofix"
+  fork/scripts/autofix.sh "$latest" "$before" "$problem" "$log" "$autofix" "$autofix_limit"
   [ -f "$autofix/thread.json" ] &&
     thread_url="$t3_url/$(/usr/bin/python3 -c 'import json,sys; t=json.load(open(sys.argv[1])); print(t["environmentId"]+"/"+t["threadId"])' "$autofix/thread.json")"
   autofix_note="Auto-fix by Claude: ${thread_url:-no chat started}
