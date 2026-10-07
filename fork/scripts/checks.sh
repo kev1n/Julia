@@ -12,7 +12,7 @@ vp i # a new upstream base can change dependencies
 IFS=$'\n'
 touched=($(git diff --name-only --diff-filter=AMR "$base"...HEAD -- '*.ts' '*.tsx'))
 vp run --filter @t3tools/contracts --filter @t3tools/web --filter t3 \
-  --filter @t3tools/desktop --filter @t3tools/scripts typecheck
+  --filter @t3tools/desktop --filter @t3tools/scripts --filter @t3tools/mobile typecheck
 vp lint --report-unused-disable-directives "${touched[@]}"
 tests=()
 for file in "${touched[@]}"; do
