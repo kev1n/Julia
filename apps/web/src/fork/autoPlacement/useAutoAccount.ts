@@ -100,7 +100,7 @@ function accountLogin(provider: ServerProvider): string | null {
 
 /**
  * The composer's Auto chip text (Owner picked this design on 2026-10-06) and its tooltip, which says what Auto chose
- * and why, e.g. "build-mac: most free memory · Claude alice (Pro): 91% session left".
+ * and why, e.g. "build-mac: most free memory · Claude alice (Pro): 91% left".
  */
 export function autoPlacementLabel(input: {
   readonly placement: {
@@ -129,26 +129,25 @@ export function autoPlacementLabel(input: {
     return { chip, detail: chip };
   }
   const driverLabel = providerClients.get(input.driver)?.label ?? input.driver;
-  const sessionLeft = input.account?.standing.sessionLeft;
+  // The tightest window is what the account can still spend (a fresh session on a used-up week is not).
+  const left = input.account?.standing.tightestLeft;
   const machineWhy =
     placement.lastChosen?.environmentId === environmentId
       ? `${machine.label}: ${placement.lastChosen.reason}`
       : machine.label;
   const accountWhy = input.account
     ? `${accountName(input.account.account, driverLabel)}${
-        sessionLeft !== null && sessionLeft !== undefined
-          ? `: ${Math.round(sessionLeft)}% session left`
-          : ""
+        left !== null && left !== undefined ? `: ${Math.round(left)}% left` : ""
       }`
     : `no ${driverLabel} account with usage left`;
   const detail = `Auto chose ${machineWhy} · ${accountWhy}`;
   const login = input.account ? accountLogin(input.account.account) : null;
-  // The chip names the machine, the account and its session left, e.g. "build-mac · alice · 88%".
+  // The chip names the machine, the account and what its tightest window has left, e.g. "build-mac · alice · 88%".
   const chip = input.account
     ? [
         machine.label,
         login ?? driverLabel,
-        sessionLeft !== null && sessionLeft !== undefined ? `${Math.round(sessionLeft)}%` : null,
+        left !== null && left !== undefined ? `${Math.round(left)}%` : null,
       ]
         .filter(Boolean)
         .join(" · ")
