@@ -17,8 +17,10 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { toastManager } from "../ui/toast";
 import { WizardFooter, WizardHeader, WizardPanel, WizardPopup } from "../ui/wizard";
 import { MultipleAccountsNote } from "./MultipleAccountsNote";
+import { AddEverywhereRow, useAddProviderEverywhere } from "./addProviderEverywhere";
 import { SettingsRow } from "./settingsLayout";
 
 const CODEX_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -41,6 +43,7 @@ export function AddCodexAccountDialog({
   const settings = useEnvironmentSettings(environmentId);
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
   const update = useAtomCommand(serverEnvironment.updateSettings, "Add ChatGPT account");
+  const everywhere = useAddProviderEverywhere(environmentId);
   const [name, setName] = useState("Personal");
   const displayName = `ChatGPT - ${name.trim()}`;
   const [instanceId, setInstanceId] = useState<ProviderInstanceId | null>(null);
@@ -55,23 +58,26 @@ export function AddCodexAccountDialog({
       return;
     setPending(true);
     const id = ProviderInstanceId.make(`codex_${randomUUID()}`);
+    const instance = {
+      driver: CODEX_DRIVER_KIND,
+      displayName,
+      enabled: true,
+      config: { enabled: true, setupMode: "managed" },
+    };
     const result = await update({
       environmentId,
       input: {
         patch: {
-          providerInstances: {
-            ...settings.providerInstances,
-            [id]: {
-              driver: CODEX_DRIVER_KIND,
-              displayName,
-              enabled: true,
-              config: { enabled: true, setupMode: "managed" },
-            },
-          },
+          providerInstances: { ...settings.providerInstances, [id]: instance },
         },
       },
     });
     if (result._tag === "Success") {
+      void everywhere.addToOtherMachines(id, instance).then((elsewhere) => {
+        if (elsewhere) {
+          toastManager.add({ type: "success", title: "Other machines", description: elsewhere });
+        }
+      });
       onAccountCreated?.(id, displayName);
       setInstanceId(id);
     }
@@ -123,6 +129,11 @@ export function AddCodexAccountDialog({
                 }
               />
               <MultipleAccountsNote environmentId={environmentId} driver={CODEX_DRIVER_KIND} />
+              <AddEverywhereRow
+                enabled={everywhere.enabled}
+                onEnabledChange={everywhere.setEnabled}
+                otherLabels={everywhere.otherLabels}
+              />
             </form>
           )}
         </WizardPanel>

@@ -1,4 +1,4 @@
-import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderDriverKind, ProviderSetupError } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -51,11 +51,13 @@ import {
 import {
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
+  makeClaudeEnvironment,
   mergeClaudeProcessEnvironment,
   resolveClaudeHomePath,
 } from "./ClaudeHome.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { makeClaudeMaintenanceResolution } from "./ClaudeMaintenance.ts";
+import { makeClaudeAuth } from "../../fork/claudeAuth.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
@@ -137,13 +139,20 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ? configDir
         : undefined,
     );
-    const stampIdentity = withInstanceIdentity({
+    const stampInstanceIdentity = withInstanceIdentity({
       instanceId,
       driverKind: DRIVER_KIND,
       displayName,
       accentColor,
       continuationGroupKey,
     });
+    // Fork: Claude signs in from Settings (see fork/claudeAuth.ts).
+    const stampIdentity: typeof stampInstanceIdentity = (draft) =>
+      stampInstanceIdentity({
+        ...draft,
+        setup: { canInstall: false, ...draft.setup, canAuthenticate: true },
+        auth: { ...draft.auth, canLogout: true },
+      });
 
     const scopedLimitNames = yield* makeClaudeScopedLimitNames;
     const orchestrationAdapter = yield* createClaudeAdapterV2(
@@ -303,6 +312,25 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       ),
     );
 
+    const auth = yield* makeClaudeAuth({
+      instanceId,
+      binaryPath: effectiveConfig.binaryPath,
+      configDir,
+      environment: yield* makeClaudeEnvironment(effectiveConfig, processEnv),
+      cwd: stateDir,
+      onChanged: Effect.fn("ClaudeDriver.onChanged")(function* (signedIn) {
+        yield* Cache.invalidateAll(capabilitiesProbeCache);
+        const provider = yield* snapshot.refresh;
+        if (signedIn && provider.auth.status !== "authenticated") {
+          return yield* new ProviderSetupError({
+            instanceId,
+            operation: "start",
+            detail: provider.message ?? "Could not verify the Claude sign-in. Try again.",
+          });
+        }
+      }),
+    });
+
     // Same rules as Codex: serialised on the config directory that holds the
     // login, one request id kept until Claude answers (a cooldown or rate
     // limit is an answer), then a re-probe.
@@ -394,6 +422,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       orchestrationAdapter,
       textGeneration,
       consumeResetCredit,
+      auth,
     } satisfies ProviderInstance;
   }),
 };
