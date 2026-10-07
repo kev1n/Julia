@@ -18,13 +18,20 @@ import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { THREAD_SIDEBAR_ROW_LAYOUT } from "./threadListAnimations";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useRef, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
+import {
+  groupThreadSidebarItems,
+  type GroupedSidebarRow,
+  type SidebarRow,
+} from "./threadSidebarGroups";
 import { GestureDetector, useNativeGesture } from "react-native-gesture-handler";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { FLOATING_TABS } from "../layout/workspace/floating-workspace-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
@@ -69,19 +76,11 @@ import {
   threadListV2ListItemsAreEqual,
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
-  type ThreadListV2ListItem,
 } from "./threadListV2";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 
-type SidebarListItem =
-  | ThreadListV2ListItem
-  | {
-      readonly type: "v2-show-more";
-      readonly key: string;
-      readonly hiddenCount: number;
-      readonly state?: "loading" | "failed";
-    };
+type SidebarListItem = GroupedSidebarRow;
 
 interface ThreadNavigationSidebarProps {
   readonly width: number;
@@ -121,6 +120,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const { fabClearance, fabSize } = useAndroidControlSizing();
   const projects = useProjects();
   const threads = useNavigationThreadShells();
+  const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<ReadonlySet<string>>(new Set());
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
@@ -290,7 +290,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     settledShelfExpanded,
     selectedThreadKey: props.selectedThreadKey ?? null,
   });
-  const listItems: readonly SidebarListItem[] =
+  const ungroupedListItems: readonly SidebarRow[] =
     settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0
       ? [
           ...threadListV2Items,
@@ -306,6 +306,15 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           },
         ]
       : threadListV2Items;
+  const listItems: readonly SidebarListItem[] =
+    props.searchQuery.trim().length > 0
+      ? ungroupedListItems
+      : groupThreadSidebarItems({
+          items: ungroupedListItems,
+          scopes: projectScopes,
+          collapsedKeys: collapsedProjectKeys,
+          selectedThreadKey: props.selectedThreadKey,
+        });
 
   const handleSwipeableWillOpen = (methods: SwipeableMethods) => {
     if (openSwipeableRef.current !== methods) {
@@ -359,7 +368,10 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     threadSearchMatchByKey,
     workingShelfEnabled,
   };
-  useThreadJumpShortcuts(listItems, handleSelectThread);
+  useThreadJumpShortcuts(
+    listItems.filter((item) => item.type !== "project-header"),
+    handleSelectThread,
+  );
   const sidebarItemsAreEqual = (previous: SidebarListItem, item: SidebarListItem): boolean => {
     if (isThreadListV2ListItem(previous) && isThreadListV2ListItem(item)) {
       return threadListV2ListItemsAreEqual(previous, item);
@@ -371,6 +383,62 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   };
   const renderListItem = ({ item }: { readonly item: SidebarListItem }) => {
     switch (item.type) {
+      case "project-header": {
+        const project = item.scope.representative;
+        return (
+          <View className="mt-2 flex-row items-center px-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${item.scope.title}, ${item.count} threads`}
+              accessibilityState={{ expanded: item.expanded }}
+              onPress={() =>
+                setCollapsedProjectKeys((keys) => {
+                  const next = new Set(keys);
+                  if (item.expanded) next.add(item.scope.key);
+                  else next.delete(item.scope.key);
+                  return next;
+                })
+              }
+              className="min-h-[44px] min-w-0 flex-1 flex-row items-center gap-2 px-2"
+            >
+              <SymbolView
+                name={item.expanded ? "chevron.down" : "chevron.right"}
+                size={12}
+                tintColor={materialTheme["--color-drawer-foreground-muted"]}
+              />
+              <ProjectFavicon
+                environmentId={project.environmentId}
+                faviconPath={project.faviconPath}
+                projectIcon={project.projectIcon}
+                projectTitle={project.title}
+                workspaceRoot={project.workspaceRoot}
+                size={16}
+              />
+              <Text
+                className="min-w-0 flex-1 text-sm font-t3-medium text-drawer-foreground"
+                numberOfLines={1}
+              >
+                {item.scope.title}
+              </Text>
+              <Text className="text-xs tabular-nums text-drawer-foreground-muted">
+                {item.count}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`New thread in ${item.scope.title}`}
+              onPress={() => props.onNewThreadInProject(project)}
+              className="size-11 items-center justify-center"
+            >
+              <SymbolView
+                name="plus"
+                size={16}
+                tintColor={materialTheme["--color-drawer-foreground-muted"]}
+              />
+            </Pressable>
+          </View>
+        );
+      }
       case "v2-pending": {
         const pendingScopeKey = scopedProjectKey(
           item.pendingTask.environmentId,
@@ -414,6 +482,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             onNewThreadOnBranch={props.onNewThreadOnBranch}
             thread={thread}
             variant={item.item.variant}
+            compact
             hasQueuedMessages={item.hasQueuedMessages}
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}

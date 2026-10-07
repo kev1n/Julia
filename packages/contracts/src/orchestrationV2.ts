@@ -463,7 +463,12 @@ export const OrchestrationV2AppThread = Schema.Struct({
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
-      Schema.Struct({ type: Schema.Literal("run"), threadId: ThreadId, runId: RunId }),
+      Schema.Struct({
+        type: Schema.Literal("run"),
+        threadId: ThreadId,
+        runId: RunId,
+        contextMode: Schema.optional(Schema.Literals(["full", "final_messages"])),
+      }),
       Schema.Struct({ type: Schema.Literal("node"), nodeId: NodeId }),
       Schema.Struct({
         type: Schema.Literal("provider_thread"),
@@ -3347,6 +3352,7 @@ export const OrchestrationV2Command = Schema.Union([
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
     title: Schema.optional(TrimmedNonEmptyString),
     sideChat: Schema.optional(Schema.Boolean),
+    contextMode: Schema.optional(Schema.Literals(["full", "final_messages"])),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

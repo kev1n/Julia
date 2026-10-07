@@ -1253,7 +1253,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {/* `contents` keeps one-line rows a single flex row. */}
             <div className={multiline ? "flex h-6 min-w-0 items-center gap-2.5" : "contents"}>
               {accessibleTitle}
-              {inFolder ? null : (
+              {/* The project header owns the favicon; rows identify the workspace. */}
+              {multiline ? null : (
                 <span
                   className={cn(
                     "flex shrink-0 items-center transition-opacity",
@@ -1261,9 +1262,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
                   )}
                 >
-                  {props.project ? (
-                    <ProjectFavicon project={props.project} className="size-4" />
-                  ) : null}
+                  <ThreadWorktreeIndicator thread={thread} />
                 </span>
               )}
               {draftIndicator}
@@ -1271,6 +1270,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {multiline ? titleLineIcons : null}
               {pinIndicator}
               {multiline ? null : terminalStatusIcon}
+              {!multiline && isRemote ? (
+                <EnvironmentMachineIcon
+                  aria-label={props.environmentLabel ?? "Remote environment"}
+                  kind={props.environmentMachine}
+                  className="size-3 shrink-0 text-muted-foreground"
+                />
+              ) : null}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
@@ -1373,6 +1379,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </TooltipTrigger>
                       <TooltipPopup side="top">Un-settle thread</TooltipPopup>
                     </Tooltip>
+                  ) : variantAction === "settle" && topStatus ? (
+                    <span
+                      role="status"
+                      className={cn("inline-flex items-center gap-1 text-xs", topStatus.className)}
+                    >
+                      {topStatus.icon === "working" ? (
+                        <CircleDashedIcon aria-hidden className="size-3" />
+                      ) : null}
+                      {topStatus.label}
+                    </span>
                   ) : (
                     <Tooltip>
                       <TooltipTrigger

@@ -36,7 +36,7 @@ const forkCases = (
     ["codex", "interrupted"],
     ["claudeAgent", "failed"],
   ] as const
-).map(([driverName, status]) => {
+).flatMap(([driverName, status]) => {
   const driver = ProviderDriverKind.make(driverName);
   const instanceId = ProviderInstanceId.make(driver);
   const modelSelection = { instanceId, model: "test-model" };
@@ -56,7 +56,20 @@ const forkCases = (
     { runEffectWorker: false },
   );
 
-  return { driver, status, instanceId, modelSelection, layer };
+  // Each failed status keeps both context modes; a completed run only forks its final messages.
+  return ([status, "completed"] as const).flatMap((caseStatus) =>
+    (caseStatus === "completed"
+      ? (["final_messages"] as const)
+      : (["full", "final_messages"] as const)
+    ).map((contextMode) => ({
+      driver,
+      status: caseStatus,
+      contextMode,
+      instanceId,
+      modelSelection,
+      layer,
+    })),
+  );
 });
 
 it.effect("a persisted fork leaves PR watching with its parent until explicitly opted in", () =>
@@ -205,8 +218,8 @@ it.effect("a persisted fork leaves PR watching with its parent until explicitly 
 );
 
 it.effect.each(forkCases)(
-  "bounds $driver context when continuing a fork of a $status run",
-  ({ driver, status, instanceId, modelSelection, layer }) =>
+  "bounds $driver $contextMode context when continuing a fork of a $status run",
+  ({ driver, status, contextMode, instanceId, modelSelection, layer }) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const eventSink = yield* EventSink.EventSinkV2;
@@ -398,6 +411,61 @@ it.effect.each(forkCases)(
           ],
         });
       }
+      const baseItem = {
+        threadId: sourceThreadId,
+        runId: sourceRunId,
+        nodeId: null,
+        providerThreadId,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        status: "completed" as const,
+        title: null,
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      };
+      for (const [index, text] of ["EXCLUDED_COMMENTARY", "INCLUDED_FINAL_REPLY"].entries()) {
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make(`reply-${index}`),
+              type: "turn-item.updated",
+              threadId: sourceThreadId,
+              runId: sourceRunId,
+              occurredAt: now,
+              payload: {
+                ...baseItem,
+                id: TurnItemId.make(`reply-${index}`),
+                ordinal: 10 + index,
+                type: "assistant_message",
+                messageId: MessageId.make(`reply-${index}`),
+                text,
+                streaming: false,
+              },
+            },
+          ],
+        });
+      }
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make("reasoning"),
+            type: "turn-item.updated",
+            threadId: sourceThreadId,
+            runId: sourceRunId,
+            occurredAt: now,
+            payload: {
+              ...baseItem,
+              id: TurnItemId.make("reasoning"),
+              ordinal: 12,
+              type: "reasoning",
+              text: "EXCLUDED_REASONING",
+              streaming: false,
+            },
+          },
+        ],
+      });
       yield* orchestrator.dispatch({
         type: "thread.fork",
         commandId: CommandId.make("fork-source"),
@@ -406,6 +474,7 @@ it.effect.each(forkCases)(
         sourcePoint: { type: "run", runId: sourceRunId },
         createdBy: "user",
         creationSource: "web",
+        contextMode,
       });
       yield* orchestrator.dispatch({
         type: "message.dispatch",
@@ -429,7 +498,122 @@ it.effect.each(forkCases)(
       assert.notInclude(`${handoff.summaryText}\n${history}`, "ROLLED_BACK_MARKER");
       assert.include(`${handoff.summaryText}\n${history}`, "INCLUDED_SOURCE_MARKER");
       assert.notInclude(`${handoff.summaryText}\n${history}`, "EXCLUDED_LATER_MARKER");
+      assert.include(history, "INCLUDED_FINAL_REPLY");
+      if (contextMode === "final_messages") {
+        assert.notInclude(history, "EXCLUDED_COMMENTARY");
+        assert.notInclude(history, "EXCLUDED_REASONING");
+      } else {
+        assert.include(history, "EXCLUDED_COMMENTARY");
+      }
       assert.isNull(target.providerThreads[0]?.forkedFrom);
+      assert.equal(target.thread.worktreePath, null);
+      const inherited = target.visibleTurnItems.filter((row) => row.visibility === "inherited");
+      assert.deepEqual(
+        inherited.map((row) => row.item.id),
+        [
+          TurnItemId.make("item-1"),
+          ...(contextMode === "full" ? [TurnItemId.make("reply-0")] : []),
+          TurnItemId.make("reply-1"),
+          ...(contextMode === "full" ? [TurnItemId.make("reasoning")] : []),
+        ],
+      );
+      const shell = yield* orchestrator.getThreadShell(targetThreadId);
+      assert.equal(shell?.visibleItemCount, target.visibleTurnItems.length);
+      const page = yield* orchestrator.getTimelinePage(targetThreadId, {
+        view: "activity",
+        limit: 100,
+      });
+      assert.deepEqual(
+        page.items.filter((row) => row.visibility === "inherited").map((row) => row.item.id),
+        inherited.map((row) => row.item.id),
+      );
+      if (contextMode === "final_messages" && status === "completed") {
+        const localRun = target.runs[0]!;
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make("target-completed"),
+              type: "run.updated",
+              threadId: targetThreadId,
+              runId: localRun.id,
+              occurredAt: now,
+              payload: { ...localRun, status: "completed", completedAt: now },
+            },
+          ],
+        });
+        for (const [index, text] of ["EXCLUDED_FORK_COMMENTARY", "INCLUDED_FORK_FINAL"].entries()) {
+          yield* eventSink.write({
+            events: [
+              {
+                id: EventId.make(`target-reply-${index}`),
+                type: "turn-item.updated",
+                threadId: targetThreadId,
+                runId: localRun.id,
+                occurredAt: now,
+                payload: {
+                  ...baseItem,
+                  threadId: targetThreadId,
+                  runId: localRun.id,
+                  id: TurnItemId.make(`target-reply-${index}`),
+                  ordinal: 10 + index,
+                  type: "assistant_message",
+                  messageId: MessageId.make(`target-reply-${index}`),
+                  text,
+                  streaming: false,
+                },
+              },
+            ],
+          });
+        }
+        const descendantThreadId = ThreadId.make("fork-of-fork");
+        yield* orchestrator.dispatch({
+          type: "thread.fork",
+          commandId: CommandId.make("fork-again"),
+          sourceThreadId: targetThreadId,
+          targetThreadId: descendantThreadId,
+          sourcePoint: { type: "run", runId: localRun.id },
+          contextMode,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("continue-again"),
+          threadId: descendantThreadId,
+          messageId: MessageId.make("continue-again"),
+          text: "Continue again",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const descendant = yield* orchestrator.getThreadProjection(descendantThreadId);
+        const descendantHistory = descendant.contextHandoffs[0]!.history!.messages.map(
+          (message) => message.text,
+        ).join("\n");
+        assert.include(descendantHistory, "INCLUDED_SOURCE_MARKER");
+        assert.include(descendantHistory, "INCLUDED_FINAL_REPLY");
+        assert.include(descendantHistory, "INCLUDED_FORK_FINAL");
+        assert.notInclude(descendantHistory, "EXCLUDED_COMMENTARY");
+        assert.notInclude(descendantHistory, "EXCLUDED_FORK_COMMENTARY");
+        assert.notInclude(descendantHistory, "EXCLUDED_LATER_MARKER");
+        const descendantPage = yield* orchestrator.getTimelinePage(descendantThreadId, {
+          view: "activity",
+          limit: 100,
+        });
+        assert.deepEqual(descendantPage.items, descendant.visibleTurnItems);
+        assert.equal(
+          (yield* orchestrator.getThreadShell(descendantThreadId))?.visibleItemCount,
+          descendantPage.totalItems,
+        );
+        assert.equal(
+          (yield* orchestrator.getShellSnapshot()).threads.find(
+            (thread) => thread.id === descendantThreadId,
+          )?.visibleItemCount,
+          descendantPage.totalItems,
+        );
+      }
     }).pipe(Effect.provide(layer)),
 );
 

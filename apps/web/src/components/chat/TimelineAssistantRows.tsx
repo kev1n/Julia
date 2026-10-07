@@ -96,6 +96,7 @@ function AssistantForkButton({
     sourceItemId: projectedItem.sourceItemId,
   });
   const canFork = canForkProjectedAssistantItem({
+    contextMode: "final_messages",
     projectedItem,
     capabilities: support.providerSession?.capabilities,
   });
@@ -125,7 +126,9 @@ function AssistantForkButton({
       >
         <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
       </TooltipTrigger>
-      <TooltipPopup side="top">Fork from this response</TooltipPopup>
+      <TooltipPopup side="top">
+        Fork from this response · user messages and final replies only
+      </TooltipPopup>
     </Tooltip>
   );
 }

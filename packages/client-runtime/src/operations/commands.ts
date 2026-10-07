@@ -223,6 +223,7 @@ export interface ForkThreadFromRunInput extends CommandMetadata {
   readonly targetThreadId: ThreadId;
   readonly runId: RunId;
   readonly title?: string;
+  readonly contextMode?: "full" | "final_messages";
 }
 
 export interface ForkSideChatInput extends CommandMetadata {
@@ -992,6 +993,7 @@ export const forkThreadFromRun = Effect.fn("EnvironmentCommands.forkThreadFromRu
     targetThreadId: input.targetThreadId,
     sourcePoint: { type: "run", runId: input.runId },
     ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.contextMode === undefined ? {} : { contextMode: input.contextMode }),
   });
 });
 
