@@ -2,7 +2,7 @@
 # When the daily sync cannot rebase, check or build the fork, hand the problem to
 # a Claude chat on this Mac's T3 Code server (it shows in Owner's app) and judge
 # what it leaves behind. Called by sync.sh; it never pushes or publishes.
-#   fork/scripts/autofix.sh <upstream-ref> <fork-head> <problem> <sync-log> <dir>
+#   fork/scripts/autofix.sh <upstream-ref> <fork-head> <problem> <sync-log> <dir> <limit-seconds>
 # The agent works in the git worktree <dir>/worktree on branch autofix/<stamp>,
 # started at <fork-head>, and writes <dir>/report.md. Exit 0 and <dir>/result
 # (the fixed commit) only when its branch is a finished rebase onto
@@ -15,6 +15,7 @@ before=${2:?fork head}
 problem=${3:?problem}
 sync_log=${4:?sync log}
 dir=${5:?work dir}
+limit=${6:?time limit in seconds}
 repo=$(git rev-parse --show-toplevel)
 here="$repo/fork/scripts"
 worktree="$dir/worktree"
@@ -73,11 +74,15 @@ Write \`$report\` (outside the repo). First line exactly \`RESOLVED\` or \`UNRES
 PROMPT
 
 echo "autofix: launching a Claude chat on $(hostname -s) in $worktree"
-node "$here/autofix-thread.mjs" "$repo" "$worktree" "Fork sync auto-fix: $latest" "$dir/prompt.md" > "$dir/thread.json" ||
+node "$here/autofix-thread.mjs" "$repo" "$worktree" "Fork sync auto-fix: $latest" "$dir/prompt.md" "$limit" > "$dir/thread.json" ||
   verdict "could not run the chat on the T3 Code server"
 cat "$dir/thread.json"
 status=$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$dir/thread.json")
 
+if [ "$status" = "timed out" ]; then
+  [ "$limit" = 3600 ] && took="1 hour" || took="$limit seconds"
+  verdict "timed out after $took; the chat's turn was stopped (UNRESOLVED)"
+fi
 [ -f "$report" ] || verdict "the agent stopped ($status) without writing $report"
 [ "$(head -1 "$report")" = "RESOLVED" ] || verdict "the agent could not resolve it (its report says $(head -1 "$report"))"
 git -C "$worktree" rev-parse -q --verify REBASE_HEAD >/dev/null && verdict "the agent left a rebase in progress"
