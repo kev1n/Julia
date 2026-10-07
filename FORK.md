@@ -171,7 +171,8 @@ phone, every launch ── GET /mobile/manifest  (expo-platform, expo-runtime-ve
 ```
 
 On a day whose upstream nightly changes native code the fingerprint changes: the sync builds a new
-APK (about 7 minutes on build-mac, versus about 1 minute for a JavaScript update), the installed app
+APK (Gradle took 7 minutes cold on build-mac and 3m20s with its cache, on 2026-10-06; a
+JavaScript-only update is an export of about a minute), the installed app
 keeps its last update, and the sync opens (or comments on) the issue **"Install the new phone app
 build"** on `owner/t3code` with the link. Owner taps it once on the phone; the APK is signed with
 the same key, so it installs over the old one and keeps the pairings.
