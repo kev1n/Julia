@@ -124,7 +124,6 @@ export function TextGeneratorsSettings({
                   <ProviderInstanceIcon
                     driverKind={textGeneratorBrand(config)}
                     displayName={name}
-                    badgeContent="none"
                   />
                   {name}
                 </span>
@@ -408,7 +407,6 @@ function TextGeneratorWizard({
                               <ProviderInstanceIcon
                                 driverKind={textGeneratorBrand(candidate)}
                                 displayName={candidate.label}
-                                badgeContent="none"
                               />
                             )}
                             {candidate.id === "custom" ? gt("Custom") : candidate.label}

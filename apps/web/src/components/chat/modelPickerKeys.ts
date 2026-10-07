@@ -2,7 +2,6 @@ import type { ProviderInstanceId } from "@t3tools/contracts";
 
 const MODEL_KEY_PREFIX = "model:";
 const LEGACY_SECTION_KEY_PREFIX = "legacy-models:";
-const SUB_PROVIDER_SECTION_KEY_PREFIX = "sub-provider:";
 
 export function modelPickerModelKey(instanceId: ProviderInstanceId, slug: string): string {
   return `${MODEL_KEY_PREFIX}${instanceId.length}:${instanceId}${slug}`;
@@ -45,11 +44,4 @@ export function parseModelPickerLegacySectionKey(key: string): ProviderInstanceI
   return key.startsWith(LEGACY_SECTION_KEY_PREFIX)
     ? (key.slice(LEGACY_SECTION_KEY_PREFIX.length) as ProviderInstanceId)
     : null;
-}
-
-export function modelPickerSubProviderSectionKey(
-  instanceId: ProviderInstanceId,
-  subProvider: string,
-): string {
-  return `${SUB_PROVIDER_SECTION_KEY_PREFIX}${instanceId.length}:${instanceId}${subProvider}`;
 }
