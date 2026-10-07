@@ -29,7 +29,9 @@ import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 const usageCommandOrder = new Map<KeybindingCommand, number>(
   [
     "usage.open" as const,
-    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].map((option) => option.command),
+    ...[...METRIC_OPTIONS, ...WINDOW_OPTIONS].flatMap((option) =>
+      option.command ? [option.command] : [],
+    ),
   ].map((command, index) => [command, index]),
 );
 
@@ -532,7 +534,8 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
 
 // Whole labels: search titles keep the encoded message, which cannot nest another one.
 const USAGE_COMMAND_LABELS: Record<
-  (typeof METRIC_OPTIONS)[number]["command"] | (typeof WINDOW_OPTIONS)[number]["command"],
+  | NonNullable<(typeof METRIC_OPTIONS)[number]["command"]>
+  | (typeof WINDOW_OPTIONS)[number]["command"],
   string
 > = {
   "usage.cost": msg("Usage: Cost"),

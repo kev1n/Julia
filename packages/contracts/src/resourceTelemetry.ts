@@ -87,6 +87,8 @@ export const HostResourcesSnapshot = Schema.Struct({
   diskTotalBytes: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
   /** Free bytes on the server's home volume. Absent on servers that predate it. */
   freeDiskBytes: Schema.optionalKey(NonNegativeInt),
+  /** Size of the server's home volume. Absent on servers that predate it. */
+  totalDiskBytes: Schema.optionalKey(NonNegativeInt),
 });
 export type HostResourcesSnapshot = typeof HostResourcesSnapshot.Type;
 

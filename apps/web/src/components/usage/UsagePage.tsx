@@ -80,6 +80,7 @@ import {
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { UsageAccessQuestion, type UsageAccessPrompt } from "./UsageAccessDialog";
 import { UsageLimitsSection } from "./UsageLimits";
+import { MachinesView } from "../../fork/machines/MachinesView";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
@@ -186,9 +187,11 @@ export function UsagePage() {
   const shortcutTitle = (
     option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number],
   ) => {
-    const shortcut = shortcutLabelForCommand(keybindings, option.command, {
-      context: { usagePageOpen: true },
-    });
+    const shortcut =
+      option.command &&
+      shortcutLabelForCommand(keybindings, option.command, {
+        context: { usagePageOpen: true },
+      });
     return shortcut
       ? gt("{label} ({shortcut})", { label: m(option.label), shortcut })
       : m(option.label);
@@ -203,6 +206,8 @@ export function UsagePage() {
   }));
   const metric = preferences.metric;
   const showingLimits = metric === "limits";
+  const showingMachines = metric === "machines";
+  const periodless = showingLimits || showingMachines;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const refreshingRef = useRef(false);
@@ -294,6 +299,7 @@ export function UsagePage() {
       return;
 
     const command = resolveUsageShortcut(event, keybindings);
+    if (!command) return; // Machines has no command; null must not match it.
     if (command === "usage.open") {
       event.preventDefault();
       event.stopPropagation();
@@ -307,7 +313,7 @@ export function UsagePage() {
     event.preventDefault();
     event.stopPropagation();
     if (metricOption) selectMetric(metricOption.value);
-    if (periodOption && !showingLimits) selectWindow(periodOption.days);
+    if (periodOption && !periodless) selectWindow(periodOption.days);
   });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window capture keydown listener for usage metric, period, and close shortcuts
@@ -402,8 +408,7 @@ export function UsagePage() {
             selectedEnvironments={selectedEnvironments}
             selectedEnvironmentIds={selectedEnvironmentIds}
             onSelectionChange={setSelectedEnvironmentIds}
-            showUsageStatus={!showingLimits}
-            refreshing={refreshingUsage}
+            showUsageStatus={!periodless}
             isPartial={isPartial}
             duplicateSources={merged.duplicateSources}
             contractMismatches={merged.contractMismatches}
@@ -418,7 +423,7 @@ export function UsagePage() {
           />
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {!showingLimits ? (
+      {!periodless ? (
         <span className="hidden min-w-0 truncate text-xs text-muted-foreground @7xl/usage-header:block">
           {windowLabel}
         </span>
@@ -426,7 +431,7 @@ export function UsagePage() {
       <div className="ms-auto hidden shrink-0 items-center justify-end gap-2 @4xl/usage-header:flex">
         {/* Limits are always current, so they have no period. The period sits before the metric
             tabs so dropping it never moves them. */}
-        {showingLimits ? null : (
+        {periodless ? null : (
           <ToggleGroup
             aria-label={gt("Usage period")}
             variant="segmented"
@@ -462,7 +467,7 @@ export function UsagePage() {
           onClick={refreshWindow}
           aria-label={showingLimits ? gt("Refresh limits") : gt("Refresh usage")}
           aria-busy={isRefreshing}
-          disabled={isRefreshing || (!showingLimits && !canReadDiagnostics)}
+          disabled={isRefreshing || showingMachines || (!showingLimits && !canReadDiagnostics)}
           size="icon-sm"
           variant="ghost"
         >
@@ -470,7 +475,7 @@ export function UsagePage() {
         </Button>
       </div>
       <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
-        {showingLimits ? null : (
+        {periodless ? null : (
           <Select value={String(windowDays)} onValueChange={(value) => selectWindow(Number(value))}>
             <SelectTrigger
               aria-label={gt("Usage period")}
@@ -519,7 +524,7 @@ export function UsagePage() {
           onClick={refreshWindow}
           aria-label={showingLimits ? gt("Refresh limits") : gt("Refresh usage")}
           aria-busy={isRefreshing}
-          disabled={isRefreshing || (!showingLimits && !canReadDiagnostics)}
+          disabled={isRefreshing || showingMachines || (!showingLimits && !canReadDiagnostics)}
           size="icon-sm"
           variant="ghost"
         >
@@ -551,6 +556,8 @@ export function UsagePage() {
                     ? gt("Select an environment to see limits.")
                     : gt("Select an environment to see usage.")}
               </p>
+            ) : showingMachines ? (
+              <MachinesView selectedEnvironmentIds={selectedEnvironmentIds} />
             ) : showingLimits ? (
               <UsageLimitsSection
                 selectedEnvironmentIds={selectedEnvironmentIds}
@@ -591,7 +598,7 @@ export function UsagePage() {
           </WorkspacePageContainer>
         </ScrollArea>
       </div>
-      {showingLimits ? null : (
+      {periodless ? null : (
         <UsageModelDialogHost
           models={merged.models}
           environments={selectedEnvironments}

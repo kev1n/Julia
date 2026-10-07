@@ -23,7 +23,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as Config from "../config.ts";
-import { readFreeDiskBytes } from "../fork/freeDisk.ts";
+import { readDiskBytes } from "../fork/freeDisk.ts";
 import * as NativeTelemetryClient from "./NativeTelemetryClient.ts";
 
 export class HostResources extends Context.Service<
@@ -505,9 +505,9 @@ const make = Effect.fn("makeHostResources")(function* () {
       );
     }
     const disk = yield* diskSpace;
-    const freeDiskBytes = yield* readFreeDiskBytes;
+    const forkDisk = yield* readDiskBytes;
     return {
-      ...(freeDiskBytes === null ? {} : { freeDiskBytes }),
+      ...forkDisk,
       sampledAt: DateTime.toEpochMillis(yield* DateTime.now),
       cpuUtilization,
       cpuCount,
