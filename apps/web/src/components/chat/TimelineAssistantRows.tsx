@@ -140,6 +140,7 @@ function AssistantForkButton({
     sourceItemId: projectedItem.sourceItemId,
   });
   const canFork = canForkProjectedAssistantItem({
+    contextMode: "final_messages",
     projectedItem,
     capabilities: support.providerSession?.capabilities,
   });
@@ -167,7 +168,7 @@ function AssistantForkButton({
       }
       label={
         <>
-          <T>Fork from this response</T>
+          <T>Fork from this response · user messages and final replies only</T>
         </>
       }
     >

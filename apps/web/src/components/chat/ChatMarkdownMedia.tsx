@@ -480,6 +480,18 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     pending: props.pending,
   });
 
+  if (assetUrl._tag === "Failure" && assetUrl.message && fallbackSrc === undefined) {
+    return (
+      <ChatMarkdownImageFallback
+        alt={props.alt}
+        detail={assetUrl.message}
+        kind={props.kind ?? "image"}
+        copyMarkdown={props.copyMarkdown}
+        actionsSource={actionsSource}
+      />
+    );
+  }
+
   if (props.kind === "video") {
     return (
       <ChatMarkdownVideo

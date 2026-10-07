@@ -276,6 +276,7 @@ export interface CommandPolicyV2Shape {
       readonly fromSpecificTurn: boolean;
       /** Later source runs are still active. */
       readonly sourceBusy: boolean;
+      readonly contextMode?: "full" | "final_messages" | undefined;
     },
   ) => Effect.Effect<ForkExecutionPolicyV2, CommandPolicyV2Error>;
   readonly ensureRollback: (
@@ -438,6 +439,7 @@ const ensureContextHandoff: CommandPolicyV2Shape["ensureContextHandoff"] = (inpu
 const decideForkExecution: CommandPolicyV2Shape["decideForkExecution"] = (input) => {
   // Unsuccessful runs may lack native cursors; fork bounded transcripts to exclude later turns.
   const canForkNatively =
+    input.contextMode !== "final_messages" &&
     (input.sourceRunStatus === "completed" || input.sourceRunStatus === "waiting") &&
     input.sameProvider &&
     input.hasStrongNativeSource &&

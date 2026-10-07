@@ -4,9 +4,27 @@ Use a separate thread for each task. Choose **New worktree** when a task needs i
 
 ## Start a thread
 
+The sidebar groups compact thread rows under their projects. Collapse a project to
+hide its rows, or use its **+** action to start a thread there. Pinned threads and
+the Working, Snoozed, and Settled shelves keep their separate lifecycle sections.
+
 - **Web and desktop**: **New thread** opens the project picker when you have multiple open projects (unless the sidebar is filtered to one project). `Shift`-click to start in the current project. To reuse an existing worktree, choose **New thread in this worktree** from the branch toolbar.
 - **Mobile**: **New thread** uses the current, filtered, or last-opened project. Disable **Settings → General → Use last project** to pick every time.
 - **Defaults**: New threads inherit your last model and mode unless the project sets its own model default.
+
+### Chats in one workspace
+
+On web and desktop, chats in the same working directory appear as tabs above the
+conversation. **New chat in this workspace** keeps that directory and branch.
+Closing a tab does not delete, archive, or stop its thread; reopen it from the tab
+menu or sidebar.
+
+Use **Fork chat with final replies only**, or the fork action on a finished
+response, to continue in a new conversation with your user messages and the last
+finished agent reply from each turn. Reasoning, tool activity, and intermediate
+updates stay in the original thread. The fork shares the workspace but starts a
+fresh provider session. Mobile's response-fork action carries the same compact
+history. Portable context limits still apply; see [Context in portable handoffs](./portable-handoffs.md).
 
 ### Start without a project
 

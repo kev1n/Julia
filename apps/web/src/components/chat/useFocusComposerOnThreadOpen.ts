@@ -21,6 +21,7 @@ export function useFocusComposerOnThreadOpen(
         frame = window.requestAnimationFrame(() => {
           // Double-clicking a sidebar row opens its thread and its rename field in one gesture.
           if (document.activeElement?.matches("[data-sidebar-row] input")) return;
+          if (document.activeElement?.closest("[data-workspace-chat-tabs]")) return;
           focusComposer();
         });
       },
