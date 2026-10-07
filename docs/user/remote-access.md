@@ -40,6 +40,17 @@ Join both devices to a tailnet with [MagicDNS and HTTPS certificates](https://ta
 
 On web and desktop with 2+ connected machines, enable **Settings → Environments → Load balancing** (per client) to auto-select a host for new threads in shared projects. Set each machine to **Prefer**, **Normal**, **Less often**, or **Manual only**.
 
+### Move an existing thread to another machine
+
+After the current turn finishes, choose another machine under **Run on** in the
+composer or thread details. On mobile, open **Thread settings → Run on**. The
+other machine must be connected and have the same project and model available.
+
+The move carries the branch, uncommitted files and recent conversation into a
+new thread on the destination, and closes the source thread. Provider-native
+session state and attachments do not move. To move back, use **Run on** in the
+new thread after its turn finishes.
+
 ## Desktop-managed SSH
 
 In the desktop app, open **Settings → Environments → Add environment → SSH** and enter a host or SSH alias (e.g. `user@example.com`). T3 Code downloads its runtime to `~/.t3/runtime` on the Linux or Apple Silicon macOS host, starts or reuses a server, and manages port forwarding automatically.

@@ -35,6 +35,10 @@
       "types": "./src/savedViews.ts",
       "default": "./src/savedViews.ts"
     },
+    "./thread-move": {
+      "types": "./src/threadMove.ts",
+      "default": "./src/threadMove.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"
