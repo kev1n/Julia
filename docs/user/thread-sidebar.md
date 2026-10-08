@@ -44,7 +44,7 @@ Threads don't require a project. Pick **No project** (or press `mod+alt+n` on we
 - **Resize or hide** (web/desktop): Drag the sidebar's right edge past its minimum width to hide it; hover the left window edge and click or drag the handle to bring it back.
 - **Drop files onto a thread** (web/desktop): Drag files from your computer onto any thread row to open it and attach them to its composer.
 - **Pin and reorder**: Pin a thread from its menu (on web and desktop, also from the pin button that appears when you hover or focus its card), or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
-- **Within a project**: A pinned thread stays at the top of its project, without a second project heading. Drag a thread within its project to reorder its pinned or active rows; reordering cannot move a thread to another project.
+- **Within a project**: A pinned thread stays at the top of its project, without a second project heading. Drag a thread within its project to reorder its pinned or active rows; reordering cannot move a thread to another project. On web and desktop, drop a thread on its project heading (**Pin here** while dragging) to pin it, even when the project has no pins.
 - **Undo** (web/desktop): Unpinning, settling, snoozing, archiving, or discarding a draft shows a 5-second **Undo** toast (`mod+z`).
 - **Titles**: Choose **Regenerate title** from a thread's menu, or customize title style in **Settings → Threads → Text generation → Thread title instructions** (global or per-project).
 

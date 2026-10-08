@@ -20,6 +20,7 @@ export function SidebarProjectHeader(props: {
   expanded: boolean;
   count: number;
   canCreate: boolean;
+  pinDropHint?: boolean;
   onToggle: () => void;
   onNewThread: () => void;
   onContextMenu: (position: { x: number; y: number }) => void;
@@ -110,8 +111,13 @@ export function SidebarProjectHeader(props: {
           />
           <ProjectFavicon project={props.project} className="size-4 shrink-0" />
           <span className="truncate">{props.project.displayName}</span>
-          <span className="text-xs font-normal tabular-nums text-sidebar-muted-foreground">
-            {props.count}
+          <span
+            className={cn(
+              "shrink-0 text-xs font-normal tabular-nums",
+              props.pinDropHint ? "text-primary" : "text-sidebar-muted-foreground",
+            )}
+          >
+            {props.pinDropHint ? "Pin here" : props.count}
           </span>
         </button>
         <button

@@ -40,21 +40,39 @@ export function createSidebarCollisionDetection(
   let previousPointerY = options.activationY;
   let boundarySection: "pinned" | "active" | undefined;
   return (args) => {
-    let collisions = closestCenter(args);
     const pointer = args.pointerCoordinates;
     const items = options.items;
+    // The pointer chooses a slot, not the centre of the card picked up.
+    const unified = items?.some((item) => item.kind === "project" && item.unified);
+    let collisions = closestCenter(
+      unified && pointer
+        ? {
+            ...args,
+            collisionRect: {
+              ...args.collisionRect,
+              top: pointer.y,
+              bottom: pointer.y,
+              left: pointer.x,
+              right: pointer.x,
+              height: 0,
+              width: 0,
+            },
+          }
+        : args,
+    );
     const source = items?.find((item) => item.kind === "thread" && item.key === args.active.id);
     const boundary = args.droppableContainers
-      .find((container) => container.id === sidebarMarkerId("pinned-divider"))
+      .find(
+        (container) =>
+          container.id ===
+          sidebarMarkerId(
+            "pinned-divider",
+            unified && source?.kind === "thread" ? source.projectKey : undefined,
+          ),
+      )
       ?.node.current?.querySelector(".sidebar-drag-boundary-label")
       ?.getBoundingClientRect();
-    if (
-      items &&
-      !items.some((item) => item.kind === "project" && item.unified) &&
-      boundary &&
-      source?.kind === "thread" &&
-      pointer
-    ) {
+    if (items && boundary && source?.kind === "thread" && pointer) {
       boundarySection ??= source.section === "pinned" ? "pinned" : "active";
       // Only pointer movement changes sections; opening the destination moves rows under stationary gestures.
       const previousY = previousPointerY ?? pointer.y;
@@ -107,6 +125,8 @@ export function createSidebarSortingStrategy(input: {
   cardHeight?: number;
   slimHeight?: number;
   boundaryLabelHeight?: number;
+  /** Expose the reserved destination for the outlined slot, never a floating card. */
+  includeActiveSlot?: boolean;
 }): SortingStrategy {
   if (input.enabled === false) return () => stationary;
   const { items } = input;
@@ -132,20 +152,22 @@ export function createSidebarSortingStrategy(input: {
       let index = 0;
       while (index < items.length) {
         const item = items[index++]!;
-        if (item.kind === "thread") {
-          if (item.key !== active.key) projected.push(item);
-          continue;
-        }
         if (item.kind !== "project") {
-          projected.push(item);
+          if (item.kind !== "thread" || item.key !== active.key) projected.push(item);
           continue;
         }
         const rows: ThreadItem[] = [];
+        const markers: Extract<SidebarListItem, { kind: "marker" }>[] = [];
         let containsActive = false;
-        while (items[index]?.kind === "thread") {
-          const row = items[index++] as ThreadItem;
-          if (row.key !== active.key) rows.push(row);
-          else containsActive = true;
+        while (index < items.length) {
+          const child = items[index]!;
+          if (child.kind === "thread") {
+            if (child.key === active.key) containsActive = true;
+            else rows.push(child);
+          } else if (child.kind === "marker" && child.projectKey === item.projectKey) {
+            markers.push(child);
+          } else break;
+          index++;
         }
         const destination =
           item.projectKey === active.projectKey &&
@@ -158,9 +180,8 @@ export function createSidebarSortingStrategy(input: {
           (target.section !== "settled" ||
             input.settledExpanded ||
             input.routeThreadKey === active.key)
-        ) {
+        )
           rows.push({ ...active, section: target.section });
-        }
         rows.sort((a, b) => {
           if (item.unified && a.section !== b.section) return a.section === "pinned" ? -1 : 1;
           const ranks =
@@ -173,7 +194,14 @@ export function createSidebarSortingStrategy(input: {
         });
         const count = item.threadCount - Number(containsActive) + Number(destination);
         if (item.unified || count > 0) {
-          projected.push(item, ...rows);
+          projected.push(item);
+          if (markers.length === 0) projected.push(...rows);
+          else {
+            projected.push(...markers.filter((marker) => marker.marker === "pinned-header"));
+            projected.push(...rows.filter((row) => row.section === "pinned"));
+            projected.push(...markers.filter((marker) => marker.marker !== "pinned-header"));
+            projected.push(...rows.filter((row) => row.section !== "pinned"));
+          }
         }
       }
       const result = items.map(() => hidden);
@@ -185,8 +213,20 @@ export function createSidebarSortingStrategy(input: {
           item.kind === "marker" &&
           (item.marker === "pinned-header" || item.marker === "pinned-divider")
         )
-          return (input.boundaryLabelHeight ?? 0) * scale;
+          return (
+            (item.projectKey === undefined || item.projectKey === active.projectKey
+              ? (input.boundaryLabelHeight ?? 0)
+              : 0) * scale
+          );
         return rect?.height ?? 0;
+      };
+      const gapAfter = (item: SidebarListItem) => {
+        const index = indices.get(sidebarListItemId(item));
+        const rect = index === undefined ? undefined : rects[index];
+        const next = index === undefined ? undefined : rects[index + 1];
+        return rect && next && !isShelfHeader(items[index! + 1])
+          ? Math.max(0, next.top - rect.bottom)
+          : 1;
       };
       let top = rects[0].top;
       const firstShelf = items.findIndex(isShelfHeader);
@@ -196,7 +236,8 @@ export function createSidebarSortingStrategy(input: {
               0,
               Math.max(...rects.map((rect) => rect?.bottom ?? 0)) -
                 top -
-                projected.reduce((sum, item) => sum + heightOf(item) + 1, -1),
+                projected.reduce((sum, item) => sum + heightOf(item) + gapAfter(item), 0) -
+                gapAfter(projected.at(-1)!),
             )
           : 0;
       let gapApplied = false;
@@ -208,9 +249,9 @@ export function createSidebarSortingStrategy(input: {
           gapApplied = true;
         }
         if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
-        top += heightOf(item) + 1;
+        top += heightOf(item) + gapAfter(item);
       }
-      result[activeIndex] = stationary;
+      if (!input.includeActiveSlot) result[activeIndex] = stationary;
       return result;
     }
     if (items.some((item) => item.kind === "project")) {
@@ -337,7 +378,7 @@ export function createSidebarSortingStrategy(input: {
         if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
         top += heightOf(item) + 1;
       }
-      result[activeIndex] = stationary;
+      if (!input.includeActiveSlot) result[activeIndex] = stationary;
       return result;
     }
     const groups: Record<SidebarSection, ThreadItem[]> = {
@@ -458,7 +499,7 @@ export function createSidebarSortingStrategy(input: {
       if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
       top += heights[projectedIndex]! + 1;
     }
-    result[activeIndex] = stationary;
+    if (!input.includeActiveSlot) result[activeIndex] = stationary;
     return result;
   }
 

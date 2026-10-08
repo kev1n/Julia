@@ -915,7 +915,121 @@ describe("unified project ordering", () => {
     expect(resolveSidebarDropTarget(multiProject, "other", "q-pin")?.section).toBe("pinned");
     expect(
       resolveSidebarDropTarget(multiProject, "b", sidebarProjectHeaderId("active", "p"))
-        ?.activeOrder,
-    ).toEqual(["b", "a", "other", "q-active"]);
+        ?.pinnedOrder,
+    ).toEqual(["b", "pin", "q-pin"]);
+  });
+  const localMarker = (marker: SidebarListMarker, projectKey = "p"): SidebarListItem => ({
+    kind: "marker",
+    marker,
+    projectKey,
+  });
+  const localItems = [
+    header("p"),
+    localMarker("pinned-header"),
+    row("pin", "pinned"),
+    localMarker("pinned-divider"),
+    localMarker("draft-block"),
+    row("a", "active"),
+    row("b", "active"),
+    header("q"),
+    localMarker("pinned-header", "q"),
+    row("other", "active", "q"),
+    settledHeader,
+  ];
+
+  it("accepts a project's empty pin target without a global Pins section", () => {
+    const emptyPins = localItems.filter((item) => item.kind !== "thread" || item.key !== "pin");
+    expect(
+      resolveSidebarDropTarget(emptyPins, "b", sidebarMarkerId("pinned-header", "p")),
+    ).toMatchObject({ section: "pinned", pinnedOrder: ["b"] });
+    expect(
+      resolveSidebarDropTarget(emptyPins, "b", sidebarProjectHeaderId("active", "p")),
+    ).toMatchObject({ section: "pinned", pinnedOrder: ["b"] });
+    expect(
+      resolveSidebarDropTarget(emptyPins, "b", sidebarMarkerId("pinned-header", "q")),
+    ).toBeNull();
+  });
+
+  it("can leave pins through the source project's active boundary", () => {
+    expect(
+      resolveSidebarDropTarget(localItems, "pin", sidebarMarkerId("pinned-divider", "p")),
+    ).toMatchObject({
+      section: "active",
+      pinnedOrder: [],
+      activeOrder: ["pin", "a", "b", "other"],
+    });
+  });
+
+  it.each(["a", sidebarMarkerId("pinned-header", "p"), sidebarMarkerId("draft-block", "p")])(
+    "reserves a nonoverlapping outlined slot over %s, including measured drafts",
+    (over) => {
+      const args = layout(localItems, "b", over, 1, 36);
+      const draftIndex = localItems.findIndex(
+        (item) => sidebarListItemId(item) === sidebarMarkerId("draft-block", "p"),
+      );
+      const draft = args.rects[draftIndex]!;
+      const extra = 72 - draft.height;
+      args.rects[draftIndex] = { ...draft, height: 72, bottom: draft.top + 72 };
+      for (let index = draftIndex + 1; index < args.rects.length; index++) {
+        const rect = args.rects[index]!;
+        args.rects[index] = { ...rect, top: rect.top + extra, bottom: rect.bottom + extra };
+      }
+      const strategy = createSidebarSortingStrategy({
+        items: localItems,
+        includeActiveSlot: true,
+        settledOrder: [],
+        settledExpanded: false,
+      });
+      const activeTransform = strategy({ ...args, index: args.activeIndex })!;
+      const slot = args.rects[args.activeIndex]!;
+      const top = slot.top + activeTransform.y;
+      for (let index = 0; index < localItems.length; index++) {
+        if (index === args.activeIndex) continue;
+        const transform = strategy({ ...args, index })!;
+        if (transform.scaleY === 0) continue;
+        const rect = args.rects[index]!;
+        // Zero-height pin targets don't occupy visual space.
+        const item = localItems[index]!;
+        if (
+          item.kind === "marker" &&
+          (item.marker === "pinned-header" || item.marker === "pinned-divider")
+        )
+          continue;
+        expect(
+          rect.bottom + transform.y <= top || rect.top + transform.y >= top + slot.height,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("targets the pointer's pin slot regardless of where the original row was picked up", () => {
+    const args = layout(localItems, "b", "a", 1, 36);
+    const pinRect = args.rects[1]!;
+    const collisionRect = args.rects[args.activeIndex]!;
+    const detector = createSidebarCollisionDetection(
+      (id) => resolveSidebarDropTarget(localItems, "b", id) !== null,
+      { items: localItems },
+    );
+    const collisions = detector({
+      active: {
+        id: "b",
+        data: { current: {} },
+        rect: { current: { initial: collisionRect, translated: collisionRect } },
+      },
+      collisionRect,
+      droppableRects: new Map(
+        localItems.map((item, index) => [sidebarListItemId(item), args.rects[index]!]),
+      ),
+      droppableContainers: localItems.map((item, index) => ({
+        id: sidebarListItemId(item),
+        key: sidebarListItemId(item),
+        disabled: false,
+        data: { current: {} },
+        node: { current: null },
+        rect: { current: args.rects[index]! },
+      })),
+      pointerCoordinates: { x: 100, y: pinRect.top },
+    });
+    expect(collisions[0]?.id).toBe(sidebarMarkerId("pinned-header", "p"));
   });
 });
