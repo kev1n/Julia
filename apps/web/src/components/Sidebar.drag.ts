@@ -141,6 +141,59 @@ export function createSidebarSortingStrategy(input: {
     const target = resolveSidebarDropTarget(items, active.key, sidebarListItemId(over));
     if (!target) return [];
     if (items.some((item) => item.kind === "project" && item.unified)) {
+      // Pins and active rows share a fixed project footprint. Reorder only
+      // that block: a gap after its last row belongs to the next header, not
+      // to the row when it moves upward. Other projects never participate.
+      const headerIndex = items.findIndex(
+        (item) => item.kind === "project" && item.unified && item.projectKey === active.projectKey,
+      );
+      if (
+        headerIndex >= 0 &&
+        (active.section === "pinned" || active.section === "active") &&
+        (target.section === "pinned" || target.section === "active")
+      ) {
+        let end = headerIndex + 1;
+        while (
+          end < items.length &&
+          items[end]?.kind !== "project" &&
+          items[end]?.projectKey === active.projectKey
+        )
+          end++;
+        const block = items.slice(headerIndex + 1, end);
+        const ranks = new Map(
+          [...target.pinnedOrder, ...(input.activeOrder ?? target.activeOrder)].map(
+            (key, index) => [key, index],
+          ),
+        );
+        const rows = block.flatMap((item) =>
+          item.kind === "thread"
+            ? [{ ...item, section: item.key === active.key ? target.section : item.section }]
+            : [],
+        );
+        rows.sort((a, b) => (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity));
+        const projected = [
+          ...block.filter((item) => item.kind === "marker" && item.marker === "pinned-header"),
+          ...rows.filter((item) => item.section === "pinned"),
+          ...block.filter((item) => item.kind === "marker" && item.marker !== "pinned-header"),
+          ...rows.filter((item) => item.section !== "pinned"),
+        ];
+        const result = items.map((item) =>
+          item.kind === "project" && !item.visible ? hidden : stationary,
+        );
+        let top = rects[headerIndex + 1]?.top ?? rects[headerIndex]!.bottom;
+        for (const [slot, item] of projected.entries()) {
+          const index = indices.get(sidebarListItemId(item))!;
+          const rect = rects[index];
+          if (!rect) continue;
+          result[index] = { ...stationary, y: top - rect.top };
+          const original = rects[headerIndex + 1 + slot];
+          const next = rects[headerIndex + 2 + slot];
+          const gap = original && next ? Math.min(1, Math.max(0, next.top - original.bottom)) : 0;
+          top += rect.height + gap;
+        }
+        if (!input.includeActiveSlot) result[activeIndex] = stationary;
+        return result;
+      }
       // Keep one measured header per project. Only the destination project
       // receives the lifted row; pins and active rows retain independent ranks.
       const pinnedRanks = new Map(target.pinnedOrder.map((key, index) => [key, index]));
@@ -148,10 +201,16 @@ export function createSidebarSortingStrategy(input: {
         (input.activeOrder ?? target.activeOrder).map((key, index) => [key, index]),
       );
       const settledRanks = new Map(input.settledOrder.map((key, index) => [key, index]));
+      const floatingPinTarget =
+        items[0]?.kind === "marker" &&
+        items[0].marker === "pinned-header" &&
+        rects[0].height > 0 &&
+        rects[0].bottom <= (rects[1]?.top ?? 0);
       const projected: SidebarListItem[] = [];
       let index = 0;
       while (index < items.length) {
         const item = items[index++]!;
+        if (floatingPinTarget && index === 1) continue;
         if (item.kind !== "project") {
           if (item.kind !== "thread" || item.key !== active.key) projected.push(item);
           continue;
@@ -228,7 +287,7 @@ export function createSidebarSortingStrategy(input: {
           ? Math.max(0, next.top - rect.bottom)
           : 1;
       };
-      let top = rects[0].top;
+      let top = floatingPinTarget ? rects[1]!.top : rects[0].top;
       const firstShelf = items.findIndex(isShelfHeader);
       const shelfGap =
         firstShelf > 0 && rects[firstShelf]!.top > rects[firstShelf - 1]!.bottom + 1
