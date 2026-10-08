@@ -71,8 +71,17 @@ const threadMetadataDependencies = [
 
 const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
   description:
-    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works.",
-  parameters: OrchestratorMcpCapabilitiesInput,
+    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works. `machine` lists another of Owner's machines (MacBook, mac-a, build-mac; see `t3_fleet_list`) before `delegate_task` there.",
+  // Fork (Owner): `machine` reads another fleet machine's catalog (fork/fleet/remoteTasks.ts).
+  parameters: Schema.Struct({
+    ...OrchestratorMcpCapabilitiesInput.fields,
+    machine: Schema.optional(
+      Schema.String.annotate({
+        description:
+          "Machine whose catalog to list: a label such as MacBook, mac-a or build-mac, or an environmentId. Omit for this machine.",
+      }),
+    ),
+  }),
   success: OrchestratorMcpCapabilitiesResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
@@ -85,7 +94,7 @@ const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. No secrets in `task`.",
+    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. No secrets in `task`. `machine` runs it on another of Owner's machines (MacBook, mac-a, build-mac; see `t3_fleet_list`) in a fresh worktree of the base branch without this checkout's uncommitted or unpushed work, so make the task self-contained; its taskId starts with fleet: and its result wakes this thread the same way.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: OrchestratorMcpDelegateTaskResult,
   failure: OrchestratorMcpFailure,
