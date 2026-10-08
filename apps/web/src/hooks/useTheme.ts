@@ -150,6 +150,9 @@ function readStoredFollowSystem(theme: Theme): boolean {
     const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
     if (raw === "true") return true;
     if (raw === "false") return false;
+    // Fresh fork profiles use Codex in the system appearance. Saved picks retain
+    // their legacy appearance behavior.
+    if (theme === "codex" && window.localStorage.getItem(STORAGE_KEY) === null) return true;
   } catch {}
 
   return theme === "system";
@@ -196,7 +199,8 @@ export function readThemePreference(): Theme {
       cause,
     });
   }
-  if (raw !== null && isKnownThemePreference(raw)) {
+  if (raw === null) return "codex";
+  if (isKnownThemePreference(raw)) {
     return canonicalThemePreference(raw);
   }
   return DEFAULT_THEME_SNAPSHOT.theme;
