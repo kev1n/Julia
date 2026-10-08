@@ -4,6 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { OrchestrationV2DomainEvent } from "@t3tools/contracts";
+import * as LimitFailover from "../fork/limitFailover.ts";
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
 import * as DueHint from "../scheduling/DueHint.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import { forkParked } from "../serverActivation.ts";
@@ -92,6 +94,7 @@ const makeSweep = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const providers = yield* ProviderRegistry;
   const due = DueHint.make();
   yield* forkParked(
     Stream.runForEach(orchestrator.streamDomainEvents, (event) =>
@@ -105,13 +108,39 @@ const makeSweep = Effect.gen(function* () {
     if (yield* due.isIdle(nowMs)) return;
     const readVersion = yield* due.version;
     const preferences = yield* settings.getSettings;
+    // Fork (Owner): with failover on, every newly limited thread is a candidate.
+    const failover = preferences.continueLimitedThreadsElsewhere;
     const candidates = yield* projections.getLimitRecoveryCandidates({
       now,
-      autoResume: preferences.autoResumeLimitedThreads,
+      autoResume: preferences.autoResumeLimitedThreads || failover,
       snooze: preferences.snoozeLimitedThreads,
     });
     let acted = false;
+    const providerList = failover && candidates.length > 0 ? yield* providers.getProviders : [];
     for (const thread of candidates) {
+      // Fork (Owner): an account's limit can free up without a domain event, so keep re-checking.
+      if (failover) acted = true;
+      if (
+        failover &&
+        (yield* LimitFailover.continueLimitedThreadElsewhere(
+          thread,
+          preferences.limitFailoverModelSelections,
+          providerList,
+          projections,
+          threads,
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Effect.as(
+              Effect.logWarning("orchestration-v2.limit-failover.failed", {
+                threadId: thread.id,
+                cause,
+              }),
+              false,
+            ),
+          ),
+        ))
+      )
+        continue;
       const command = limitRecoveryCommand(
         thread,
         preferences.autoResumeLimitedThreads,

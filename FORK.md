@@ -64,6 +64,18 @@ skipped. New logins are covered as soon as T3 sees them. Machine-local and off b
 on in one environment, since each one with it on pings. It replaces the standalone build-mac
 `window-keepalive` script.
 
+**Continue limited threads on another account** (`apps/server/src/fork/limitFailover.ts`). When a
+turn stops on a usage limit, the server forks the thread into a new tab of the same chat (title
+unchanged) and sends it "continue where you left off" on the first model in Settings > General >
+Continue limited threads on another account whose provider has an account other than the limited
+one with usage left, on the account Auto would pick. The default list is Claude Opus 5.5, then
+GPT-6.1 Sol; on by default. The source thread's limit recovery is set off for that run, which marks
+it handled and keeps auto-resume from also resuming it; with no account left anywhere, auto-resume
+and snooze apply as before. Subagent threads are left alone (their result belongs to the parent's
+run). It runs inside upstream's usage-limit sweep, so it works with no client connected and
+survives restarts; its command ids derive from the failed run, so a sweep cut short repeats the
+same commands. The phone has the switch (Settings > Threads); the model list is on desktop and web.
+
 **Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
 `apps/server/src/fork/freeDisk.ts`). Usage > **Machines**, beside Limits, shows one card per paired
 environment (respecting the page's environment filter) with its picture, name and three bars: CPU
@@ -297,7 +309,15 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `packages/contracts/src/settings.ts` (again): `syncAutofixModelSelections`, the auto-fix chat's
   models in order (default Claude Opus, then GPT-6.1).
 - `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts` (again): its row
-  (`SyncAutofixModelsSettings.tsx`) and restore entry.
+  (`ModelOrderSettings.tsx`) and restore entry.
+- `packages/contracts/src/settings.ts` (again): `continueLimitedThreadsElsewhere` (on by default) and
+  `limitFailoverModelSelections` (default Claude Opus 5.5, then GPT-6.1 Sol).
+- `apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts`: its sweep offers each newly
+  limited thread to `fork/limitFailover.ts` first; `src/scheduling/Scheduler.integration.test.ts`
+  mocks the provider registry the sweep now reads.
+- `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts` (again): its row
+  (`LimitFailoverRow` in `ModelOrderSettings.tsx`) and restore entry.
+- `apps/mobile/src/features/settings/SettingsThreadsRouteScreen.tsx`: its switch.
 - `apps/web/src/components/ChatView.tsx`: Auto's candidates, rule and hook (replacing upstream's
   weighted balance), the Auto account, the Auto chip text and tooltip; the moved-thread banner.
 - `apps/web/src/components/BranchToolbar.tsx`, `apps/web/src/components/BranchToolbarEnvironmentSelector.tsx`:
