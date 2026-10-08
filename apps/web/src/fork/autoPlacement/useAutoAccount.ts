@@ -3,10 +3,17 @@
  * picks among the chosen machine's instances of the selected provider, and
  * the composer line says what Auto chose and why.
  */
-import type { ProviderDriverKind, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ServerProvider,
+  UnifiedSettings,
+} from "@t3tools/contracts";
 import {
   accountStanding,
-  chooseAutoInstance,
+  chooseAutoAccount,
+  usableInstances,
   type AccountChoice,
 } from "@t3tools/shared/accountChoice";
 import { useEffect, useMemo, useRef } from "react";
@@ -14,11 +21,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { providerClients } from "../../components/settings/providerDriverMeta";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { shortPlanLabel } from "./planLabel";
+import { resolveNewChatModelSelection } from "../../modelSelection";
 
 /**
- * Applies the Auto account to the draft once per machine/driver/choice, so
- * a user who then picks another account in the model picker keeps it until
- * Auto's answer changes.
+ * Applies the Auto account to each draft once per machine/model/choice.
+ * Explicit account or model picks stay picked even if Auto's answer changes.
  */
 export function useAutoAccount(input: {
   readonly enabled: boolean;
@@ -26,61 +33,93 @@ export function useAutoAccount(input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly driver: string;
   readonly currentInstanceId: ProviderInstanceId | null;
+  readonly model: string | undefined;
+  readonly explicit: boolean;
+  readonly draftId: string | null;
   readonly select: (instanceId: ProviderInstanceId) => void;
 }) {
-  const { enabled, environmentId, providers, driver, currentInstanceId, select } = input;
+  const {
+    enabled,
+    environmentId,
+    providers,
+    driver,
+    currentInstanceId,
+    model,
+    explicit,
+    draftId,
+    select,
+  } = input;
   // Minute resolution is enough: a window that resets re-ranks within the minute.
   const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
   const choice = useMemo(
-    () => (enabled && environmentId ? chooseAutoInstance(providers, driver, now) : null),
-    [enabled, environmentId, providers, driver, now],
+    () =>
+      enabled && environmentId
+        ? chooseAutoAccount(
+            usableInstances(providers, driver).filter((provider) =>
+              provider.models.some((candidate) => candidate.slug === model),
+            ),
+            (provider) => provider.usageLimits,
+            now,
+          )
+        : null,
+    [enabled, environmentId, providers, driver, model, now],
   );
   const appliedRef = useRef<string | null>(null);
   const chosenInstanceId = choice?.account.instanceId ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes Auto's account choice into the draft store once per draft and model
   useEffect(() => {
-    if (!enabled || !environmentId || chosenInstanceId === null) return;
-    const key = `${environmentId}|${driver}|${chosenInstanceId}`;
+    if (!enabled || !environmentId || explicit || chosenInstanceId === null) return;
+    const key = `${draftId}|${environmentId}|${driver}|${model}|${chosenInstanceId}`;
     if (appliedRef.current === key) return;
     appliedRef.current = key;
     if (currentInstanceId !== chosenInstanceId) select(chosenInstanceId);
-  }, [enabled, environmentId, driver, chosenInstanceId, currentInstanceId, select]);
+  }, [
+    enabled,
+    environmentId,
+    explicit,
+    draftId,
+    driver,
+    model,
+    chosenInstanceId,
+    currentInstanceId,
+    select,
+  ]);
   return choice;
 }
 
 /**
- * Outside Auto (a machine picked by hand), a new chat still moves off an
- * account with no limit left, once per draft and provider, to the account
- * Auto would pick on that machine. Picking the limited account again by hand
- * then sticks.
+ * New chats move off exhausted defaults on either an automatic or manually
+ * chosen machine. Prefer a compatible account, then another pinned model.
+ * A model picked by hand in the draft stays picked.
  */
 export function useLimitedAccountSwitch(input: {
   readonly draftId: string | null;
   readonly providers: ReadonlyArray<ServerProvider>;
-  readonly driver: string;
-  readonly currentInstanceId: ProviderInstanceId | null;
-  readonly select: (instanceId: ProviderInstanceId) => void;
+  readonly settings: UnifiedSettings;
+  readonly currentSelection: ModelSelection | null;
+  readonly explicit: boolean;
+  readonly select: (selection: ModelSelection) => void;
 }) {
-  const { draftId, providers, driver, currentInstanceId, select } = input;
+  const { draftId, providers, settings, currentSelection, explicit, select } = input;
   const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
   const target = useMemo(() => {
-    if (draftId === null || currentInstanceId === null) return null;
-    const current = providers.find((provider) => provider.instanceId === currentInstanceId);
+    if (draftId === null || explicit || currentSelection === null) return null;
+    const current = providers.find(
+      (provider) => provider.instanceId === currentSelection.instanceId,
+    );
     if (!current || !accountStanding(current.usageLimits, now).limited) return null;
-    const choice = chooseAutoInstance(providers, driver, now);
-    return choice && choice.account.instanceId !== currentInstanceId
-      ? choice.account.instanceId
-      : null;
-  }, [draftId, providers, driver, currentInstanceId, now]);
+    const choice = resolveNewChatModelSelection(currentSelection, settings, providers, now);
+    return choice !== currentSelection ? choice : null;
+  }, [draftId, providers, settings, currentSelection, explicit, now]);
   const appliedRef = useRef<string | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves a draft off a depleted account in the draft store once per draft
   useEffect(() => {
     if (draftId === null || target === null) return;
-    const key = `${draftId}|${driver}`;
+    const key = draftId;
     if (appliedRef.current === key) return;
     appliedRef.current = key;
     select(target);
-  }, [draftId, driver, target, select]);
+  }, [draftId, target, select]);
 }
 
 /** `Claude owner (Max 20x)`: the instance name, with the plan unless the name has one. */

@@ -142,7 +142,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: { focusComposer?: boolean },
+    options?: { focusComposer?: boolean; automatic?: boolean },
   ) => {
     if (!activeThread) return;
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
@@ -208,9 +208,9 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     setComposerDraftModelSelection(
       scopeThreadRef(activeThread.environmentId, activeThread.id),
       nextModelSelection,
-      { explicit: true, replaceOptions: true },
+      { explicit: options?.automatic !== true, replaceOptions: true },
     );
-    setStickyComposerModelSelection(nextModelSelection);
+    if (!options?.automatic) setStickyComposerModelSelection(nextModelSelection);
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);
