@@ -177,7 +177,8 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   } = input;
   const navigate = useNavigate();
   const router = useRouter();
-  const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
+  const { settleThread, unsettleThread, unsnoozeThread, pinThread, confirmAndUnpinThread } =
+    useThreadActions();
   const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
   const switchGitRef = useAtomCommand(vcsEnvironment.switchRef, { reportFailure: false });
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
@@ -226,9 +227,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   });
   const activeThreadSettled =
     serverConfigLoaded && activeThreadShell?.settledOverride === "settled";
-  const unsettleThreadMutation = useOrchestrationCommand(threadEnvironment.unsettle, {
-    reportFailure: false,
-  });
   const [unsettlingThreadKey, setUnsettlingThreadKey] = useState<string | null>(null);
   const isUnsettling = unsettlingThreadKey !== null && unsettlingThreadKey === activeThreadKey;
   const handleUnsettleActiveThread = async () => {
@@ -240,10 +238,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     const threadKey = scopedThreadKey(activeThreadRef);
     setUnsettlingThreadKey(threadKey);
     // Commands settle into a result, so this always runs.
-    const result = await unsettleThreadMutation({
-      environmentId: activeThreadRef.environmentId,
-      input: { threadId: activeThreadRef.threadId, reason: "user" },
-    });
+    const result = await unsettleThread(activeThreadRef);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       toastManager.add(
@@ -257,9 +252,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     setUnsettlingThreadKey((current) => (current === threadKey ? null : current));
   };
   const handleUnsettleActiveThreadStable = useStableCallback(handleUnsettleActiveThread);
-  const unsnoozeThreadMutation = useOrchestrationCommand(threadEnvironment.unsnooze, {
-    reportFailure: false,
-  });
   const [unsnoozingThreadKey, setUnsnoozingThreadKey] = useState<string | null>(null);
   const isUnsnoozing = unsnoozingThreadKey !== null && unsnoozingThreadKey === activeThreadKey;
   const handleUnsnoozeActiveThread = async () => {
@@ -285,10 +277,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
             limitRecovery: { runId: recovery.runId, resetAt: recovery.resetAt, snooze: false },
           },
         })
-      : await unsnoozeThreadMutation({
-          environmentId: activeThreadRef.environmentId,
-          input: { threadId: activeThreadRef.threadId, reason: "user" },
-        });
+      : await unsnoozeThread(activeThreadRef);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       toastManager.add(

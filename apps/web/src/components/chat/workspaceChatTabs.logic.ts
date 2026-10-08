@@ -16,6 +16,27 @@ export function workspaceChatKey(
   ]);
 }
 
+/** Every open chat in one tab strip (by `workspaceChatKey`), oldest first.
+ * The strip is one thread to the user, so lifecycle actions move all of it. */
+export function workspaceChatTabs<
+  T extends WorkspaceChat &
+    Pick<EnvironmentThreadShell, "archivedAt"> & {
+      readonly lineage: Pick<EnvironmentThreadShell["lineage"], "relationshipToParent">;
+    },
+>(threads: readonly T[], key: string): T[] {
+  return threads
+    .filter(
+      (chat) =>
+        chat.archivedAt === null &&
+        chat.lineage.relationshipToParent !== "subagent" &&
+        workspaceChatKey(chat) === key,
+    )
+    .toSorted(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+    );
+}
+
 type WorkspaceChat = Pick<
   EnvironmentThreadShell,
   | "environmentId"

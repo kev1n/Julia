@@ -56,10 +56,14 @@ const threadShell = vi.hoisted(() => ({
 }));
 // Archived rows have no loaded shell, so deleting one takes the unresolved path.
 const shellLoaded = vi.hoisted(() => ({ current: true }));
+// Chats sharing one checkout, i.e. the tabs of one thread.
+const tabs = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 vi.mock("../state/entities", async (original) => ({
   ...(await original<typeof import("../state/entities")>()),
   readEnvironmentServerConfigLoaded: () => true,
-  readThreadShell: () => (shellLoaded.current ? threadShell : null),
+  readThreadShell: (ref: { threadId: string }) =>
+    shellLoaded.current ? (tabs.find((tab) => tab.id === ref.threadId) ?? threadShell) : null,
+  readThreadShells: () => tabs,
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
@@ -109,6 +113,7 @@ beforeEach(() => {
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
   shellLoaded.current = true;
+  tabs.length = 0;
 });
 afterEach(() => {
   vi.runAllTimers();
@@ -366,4 +371,40 @@ describe("archive and delete Undo expiry", () => {
       expect(commands.unarchive).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("tabbed threads", () => {
+  const tab = (id: string, settledOverride: "settled" | null = null) => ({
+    ...threadShell,
+    id,
+    environmentId: target.environmentId,
+    worktreePath: "/repo/worktrees/feature",
+    createdAt: `2026-10-08T10:00:0${tabs.length}Z`,
+    archivedAt: null,
+    lineage: { relationshipToParent: null },
+    settledOverride,
+  });
+  const settleCalls = () =>
+    commands.settle.mock.calls.map(([call]) => (call as { input: { threadId: string } }).input);
+
+  it("settles every open tab in one action and restores them with one Undo", async () => {
+    tabs.push(tab("thread"), tab("second"), tab("already settled", "settled"));
+    tabs.push({ ...tab("other checkout"), worktreePath: "/repo/worktrees/other" });
+    await useThreadActions().settleThread(target);
+    expect(settleCalls()).toEqual([{ threadId: "thread" }, { threadId: "second" }]);
+    expect(useThreadUndoNotice.getState().notice).toMatchObject({ action: "Settled", count: 1 });
+    await currentUndo()();
+    expect(
+      commands.unsettle.mock.calls.map(([call]) => (call as { input: unknown }).input),
+    ).toEqual([
+      { threadId: "thread", reason: "user" },
+      { threadId: "second", reason: "user" },
+    ]);
+  });
+
+  it("un-settles the whole strip from any tab", async () => {
+    tabs.push(tab("thread", "settled"), tab("second", "settled"));
+    await useThreadActions().unsettleThread(target);
+    expect(commands.unsettle).toHaveBeenCalledTimes(2);
+  });
 });
