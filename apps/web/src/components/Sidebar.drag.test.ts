@@ -937,6 +937,48 @@ describe("unified project ordering", () => {
     settledHeader,
   ];
 
+  it("does not carry the next project's spacing upward with the last thread", () => {
+    const args = layout(localItems, "b", "a", 1, 36);
+    const nextProject = localItems.findIndex(
+      (item) => item.kind === "project" && item.projectKey === "q",
+    );
+    for (let index = nextProject; index < args.rects.length; index++) {
+      const rect = args.rects[index]!;
+      args.rects[index] = { ...rect, top: rect.top + 48, bottom: rect.bottom + 48 };
+    }
+    const strategy = createSidebarSortingStrategy({
+      items: localItems,
+      includeActiveSlot: true,
+      settledOrder: [],
+      settledExpanded: false,
+    });
+    const aIndex = localItems.findIndex((item) => sidebarListItemId(item) === "a");
+    const bIndex = args.activeIndex;
+    const aTop = args.rects[aIndex]!.top + strategy({ ...args, index: aIndex })!.y;
+    const bTop = args.rects[bIndex]!.top + strategy({ ...args, index: bIndex })!.y;
+    expect(bTop).toBe(args.rects[aIndex]!.top);
+    expect(aTop).toBe(args.rects[bIndex]!.top);
+    for (let index = nextProject; index < localItems.length; index++) {
+      expect(strategy({ ...args, index })).toEqual(stationary);
+    }
+  });
+
+  it.each(["other", sidebarProjectHeaderId("active", "q"), sidebarMarkerId("pinned-header", "q")])(
+    "rejects foreign project destination %s without changing any row's section",
+    (over) => {
+      expect(resolveSidebarDropTarget(localItems, "b", over)).toBeNull();
+      const args = layout(localItems, "b", over, 1, 36);
+      const strategy = createSidebarSortingStrategy({
+        items: localItems,
+        includeActiveSlot: true,
+        settledOrder: [],
+        settledExpanded: false,
+      });
+      for (let index = 0; index < localItems.length; index++)
+        expect(strategy({ ...args, index })).toEqual(stationary);
+    },
+  );
+
   it("accepts a project's empty pin target without a global Pins section", () => {
     const emptyPins = localItems.filter((item) => item.kind !== "thread" || item.key !== "pin");
     expect(

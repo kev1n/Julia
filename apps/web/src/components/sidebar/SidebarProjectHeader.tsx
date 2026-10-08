@@ -25,14 +25,15 @@ export function SidebarProjectHeader(props: {
   onContextMenu: (position: { x: number; y: number }) => void;
   onProjectDrop: (draggedProjectKey: string, position: SidebarProjectDropPosition) => void;
 }) {
-  const { setNodeRef, transform, transition, isSorting } = useSortable({
+  const { setNodeRef, transform, transition } = useSortable({
     id: props.sortableId,
     disabled: { draggable: true },
     animateLayoutChanges: animateSidebarLayoutChanges,
     transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" },
   });
-  const visible =
-    transform?.scaleY === 0 ? false : props.visible || (isSorting && transform !== null);
+  // Empty shelf headers have zero-height boxes with absolutely positioned
+  // contents. A stationary/invalid drag must never reveal those contents.
+  const visible = props.visible && transform?.scaleY !== 0;
   const [dropPosition, setDropPosition] = useState<SidebarProjectDropPosition | null>(null);
   const positionFor = (event: DragEvent<HTMLLIElement>): SidebarProjectDropPosition => {
     const rect = event.currentTarget.getBoundingClientRect();
