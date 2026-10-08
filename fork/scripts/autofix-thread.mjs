@@ -1,9 +1,10 @@
-// Runs one Claude chat on this Mac's T3 Code server and waits for it to finish,
+// Runs one agent chat on this Mac's T3 Code server and waits for it to finish,
 // so the sync's auto-fix shows up in Owner's app like any other thread.
 //   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
-// existing git worktree <worktree> on Claude owner (instance claudeAgent,
-// Max) with full access, and blocks until its run ends or <limit-seconds> pass;
+// existing git worktree <worktree> with full access on the account
+// `autofixModelSelection` picks (Claude with usage left, else GPT-6.1 on Codex),
+// and blocks until its run ends or <limit-seconds> pass;
 // then it stops the chat's turn (as the Stop button does) and reports
 // status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
 // It speaks the server's WebSocket RPC (Effect RPC JSON) with a short-lived
@@ -13,9 +14,13 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
 
+import { autofixModelSelection } from "../../apps/server/src/fork/autofixAccount.ts";
+
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
 if (!limitSeconds)
-  throw new Error("usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>");
+  throw new Error(
+    "usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>",
+  );
 const server = "http://127.0.0.1:3773";
 const t3 = `${process.env.HOME}/.local/bin/t3`;
 const root = realpathSync(repoRoot);
@@ -25,7 +30,16 @@ const ended = new Set(["idle", "completed", "interrupted", "failed", "cancelled"
 // The daily sync starts a fresh run every 24 h, so a session never needs to
 // outlive one day; it is revoked when we exit.
 const session = JSON.parse(
-  execFileSync(t3, ["auth", "session", "issue", "--ttl", "24h", "--label", "fork-autofix", "--json"]),
+  execFileSync(t3, [
+    "auth",
+    "session",
+    "issue",
+    "--ttl",
+    "24h",
+    "--label",
+    "fork-autofix",
+    "--json",
+  ]),
 );
 const revoke = () => {
   try {
@@ -100,12 +114,16 @@ if (!project) {
 conn.ws.close();
 conn = await connect();
 
+const { providers } = await conn.call("server.getConfig", {});
+const modelSelection = autofixModelSelection(providers, Date.now());
+console.error(`autofix: running on ${modelSelection.instanceId} (${modelSelection.model})`);
+
 const launch = await conn.call("orchestration.launchThread", {
   commandId: randomUUID(),
   creationSource: "server",
   projectId: project.id,
   title,
-  modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" },
+  modelSelection,
   runtimeMode: "full-access",
   interactionMode: "default",
   workspaceStrategy: { type: "existing_worktree", worktreePath: worktree },
@@ -120,19 +138,22 @@ let started = false;
 let current = conn;
 let runId = null;
 const status = await new Promise((resolve, reject) => {
-  setTimeout(() => {
-    if (runId === null) return resolve("timed out");
-    current
-      .call("orchestration.dispatchCommand", {
-        type: "run.interrupt",
-        commandId: randomUUID(),
-        threadId,
-        runId,
-        reason: "Fork sync auto-fix time limit reached",
-        holdQueue: true,
-      })
-      .then(() => resolve("timed out"), reject);
-  }, Number(limitSeconds) * 1000);
+  setTimeout(
+    () => {
+      if (runId === null) return resolve("timed out");
+      current
+        .call("orchestration.dispatchCommand", {
+          type: "run.interrupt",
+          commandId: randomUUID(),
+          threadId,
+          runId,
+          reason: "Fork sync auto-fix time limit reached",
+          holdQueue: true,
+        })
+        .then(() => resolve("timed out"), reject);
+    },
+    Number(limitSeconds) * 1000,
+  );
   const watch = (c) => {
     current = c;
     const check = (thread) => {
@@ -143,7 +164,8 @@ const status = await new Promise((resolve, reject) => {
         !thread.activeRunId &&
         ended.has(thread.status) &&
         (thread.pendingBackgroundTasks ?? []).length === 0;
-      if (thread.pendingRuntimeRequest) resolve(`waiting for input (${thread.pendingRuntimeRequest.kind})`);
+      if (thread.pendingRuntimeRequest)
+        resolve(`waiting for input (${thread.pendingRuntimeRequest.kind})`);
       else if (started && idle) resolve(thread.status);
       else if (!started && thread.latestRunCompletedAt && idle) resolve(thread.status);
     };

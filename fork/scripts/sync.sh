@@ -102,7 +102,7 @@ $conflicts"
   tar -czf "$out/fork-scripts.tar.gz" -C fork/scripts .
 }
 
-# On a failure a Claude chat on this Mac's T3 Code server gets the problem
+# On a failure an agent chat on this Mac's T3 Code server gets the problem
 # (autofix.sh). Its branch is published only if it passes autofix.sh's guards
 # and then the very same prepare() above; otherwise the issue gets its report.
 autofix_note=
@@ -115,7 +115,7 @@ if ! prepare; then
   fork/scripts/autofix.sh "$latest" "$before" "$problem" "$log" "$autofix" "$autofix_limit"
   [ -f "$autofix/thread.json" ] &&
     thread_url="$t3_url/$(/usr/bin/python3 -c 'import json,sys; t=json.load(open(sys.argv[1])); print(t["environmentId"]+"/"+t["threadId"])' "$autofix/thread.json")"
-  autofix_note="Auto-fix by Claude: ${thread_url:-no chat started}
+  autofix_note="Auto-fix chat: ${thread_url:-no chat started}
 Verdict: $(cat "$autofix/verdict" 2>/dev/null)
 
 $(cat "$autofix/report.md" 2>/dev/null)"
