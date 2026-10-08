@@ -600,6 +600,32 @@ export function ThreadTerminalStatusButton({
   );
 }
 
+/** Branch state exists for checkout-root threads too, independently of worktree metadata. */
+export function ThreadBranchIndicator({
+  thread,
+  toneClassName,
+}: {
+  thread: Pick<SidebarThreadSummary, "branch">;
+  toneClassName?: string | undefined;
+}) {
+  const label = thread.branch ? `Branch: ${thread.branch}` : "Current checkout";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span role="img" aria-label={label} className="inline-flex shrink-0 items-center" />
+        }
+      >
+        <GitBranchIcon
+          aria-hidden
+          className={cn("size-3", toneClassName ?? "text-sidebar-muted-foreground")}
+        />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 export function ThreadWorktreeIndicator({
   thread,
   toneClassName,
