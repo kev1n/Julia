@@ -88,21 +88,15 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-On web and desktop, drag a thread between sections to change its state. Drag a thread up into
-the pinned rows in its project to pin it at the spot you drop it; drag a pinned thread down into
-that project's active rows to unpin it. Dragging a thread onto the **Settled** header settles it, and dragging a settled
-thread into the active list un-settles it. A snoozed thread can be dragged out of the snoozed
-shelf, which wakes it, but threads cannot be dragged into the shelf because snoozing needs a wake
-time. Dragging a pinned thread out of the pinned section does not ask for unpin confirmation.
-Pinned and active boundary labels appear only while dragging, without moving the rows. The
-other rows slide aside to show where the thread will land. When you cross into another section,
-the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
-**Settle**, **Un-settle**, or **Wake**. Its status and hover actions hide during the drag. A pinned
-thread keeps its pin only while it stays in the pinned section; once it leaves, the badge takes
-over. Reordering within the same section shows no badge. When there are no pins, drag to the top
-edge to pin a thread. Section labels stay readable for the whole drag, and the section the
-thread is over takes the accent color. Section labels also
-identify empty sections and a collapsed settled shelf.
+On web and desktop, drag a thread onto its project heading (**Pin here** while dragging)
+or into that project's pinned rows to pin it. This also works when the project has no pins.
+Drag a pinned thread into its project's active rows to unpin it, without a confirmation.
+The outlined slot shows where the thread will land; neighboring rows move aside without
+being covered by the dragged thread.
+
+Drag onto **Settled** to settle a thread, or back into its project's active rows to
+un-settle it. Dragging a snoozed thread out of the shelf wakes it; threads cannot be
+dragged into that shelf because snoozing needs a wake time.
 
 Drag a thread within its project to change the order of its pinned or active rows. Other rows
 slide aside to show the spot where the thread will land. Drops into either section keep the position you choose. On

@@ -2372,6 +2372,10 @@ code {
   animation: preview-loading-progress 5.3s cubic-bezier(0.1, 0.5, 0.2, 1) forwards;
 }
 
+@utility sidebar-drop-slot {
+  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .preview-loading-progress,
   .preview-loading-progress[data-loading="true"] {
