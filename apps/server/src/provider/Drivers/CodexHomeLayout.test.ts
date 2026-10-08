@@ -261,50 +261,53 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
         }),
     );
 
-    it.effect.skipIf(!symlinksSupported)(
-      "accepts Codex-created shadow-local runtime directories",
-      () =>
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const sharedHome = yield* makeTempDir("t3code-codex-shared-");
-          const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
-          const shadowHome = path.join(shadowRoot, "shadow");
+    it.effect.skipIf(!symlinksSupported)("accepts Codex-created shadow-local runtime entries", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const sharedHome = yield* makeTempDir("t3code-codex-shared-");
+        const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
+        const shadowHome = path.join(shadowRoot, "shadow");
 
-          yield* fileSystem.makeDirectory(path.join(sharedHome, "log"));
-          yield* fileSystem.makeDirectory(path.join(sharedHome, "memories"));
-          yield* fileSystem.makeDirectory(path.join(sharedHome, "tmp"));
-          yield* writeTextFile(path.join(sharedHome, "config.toml"), 'model = "gpt-5-codex"\n');
-          yield* writeTextFile(path.join(shadowHome, "auth.json"), '{"shadow":true}\n');
-          yield* fileSystem.makeDirectory(path.join(shadowHome, "log"), { recursive: true });
-          yield* fileSystem.makeDirectory(path.join(shadowHome, "memories"), { recursive: true });
-          yield* fileSystem.makeDirectory(path.join(shadowHome, "tmp"), { recursive: true });
+        yield* fileSystem.makeDirectory(path.join(sharedHome, "log"));
+        yield* fileSystem.makeDirectory(path.join(sharedHome, "memories"));
+        yield* fileSystem.makeDirectory(path.join(sharedHome, "tmp"));
+        yield* writeTextFile(path.join(sharedHome, "config.toml"), 'model = "gpt-5-codex"\n');
+        yield* writeTextFile(path.join(shadowHome, "auth.json"), '{"shadow":true}\n');
+        yield* fileSystem.makeDirectory(path.join(shadowHome, "log"), { recursive: true });
+        yield* fileSystem.makeDirectory(path.join(shadowHome, "memories"), { recursive: true });
+        yield* fileSystem.makeDirectory(path.join(shadowHome, "tmp"), { recursive: true });
+        yield* writeTextFile(path.join(sharedHome, "version.json"), '{"shared":true}\n');
+        yield* writeTextFile(path.join(shadowHome, "version.json"), '{"shadow":true}\n');
 
-          const layout = yield* resolveCodexHomeLayout(
-            decodeCodexSettings({
-              homePath: sharedHome,
-              shadowHomePath: shadowHome,
-            }),
-          );
+        const layout = yield* resolveCodexHomeLayout(
+          decodeCodexSettings({
+            homePath: sharedHome,
+            shadowHomePath: shadowHome,
+          }),
+        );
 
-          yield* materializeCodexShadowHome(layout);
+        yield* materializeCodexShadowHome(layout);
 
-          const configTarget = yield* fileSystem.readLink(path.join(shadowHome, "config.toml"));
-          const logLinkResult = yield* fileSystem
-            .readLink(path.join(shadowHome, "log"))
-            .pipe(Effect.result);
-          const memoriesLinkResult = yield* fileSystem
-            .readLink(path.join(shadowHome, "memories"))
-            .pipe(Effect.result);
-          const tmpLinkResult = yield* fileSystem
-            .readLink(path.join(shadowHome, "tmp"))
-            .pipe(Effect.result);
+        const configTarget = yield* fileSystem.readLink(path.join(shadowHome, "config.toml"));
+        const logLinkResult = yield* fileSystem
+          .readLink(path.join(shadowHome, "log"))
+          .pipe(Effect.result);
+        const memoriesLinkResult = yield* fileSystem
+          .readLink(path.join(shadowHome, "memories"))
+          .pipe(Effect.result);
+        const tmpLinkResult = yield* fileSystem
+          .readLink(path.join(shadowHome, "tmp"))
+          .pipe(Effect.result);
 
-          expect(configTarget).toBe(path.join(sharedHome, "config.toml"));
-          expect(logLinkResult._tag).toBe("Failure");
-          expect(memoriesLinkResult._tag).toBe("Failure");
-          expect(tmpLinkResult._tag).toBe("Failure");
-        }),
+        expect(configTarget).toBe(path.join(sharedHome, "config.toml"));
+        expect(logLinkResult._tag).toBe("Failure");
+        expect(memoriesLinkResult._tag).toBe("Failure");
+        expect(tmpLinkResult._tag).toBe("Failure");
+        expect(yield* fileSystem.readFileString(path.join(shadowHome, "version.json"))).toBe(
+          '{"shadow":true}\n',
+        );
+      }),
     );
 
     it.effect("rejects shadow homes that point at the shared home", () =>

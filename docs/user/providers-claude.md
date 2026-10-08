@@ -18,7 +18,9 @@ Use a separate Claude config directory (`CLAUDE_CONFIG_DIR`) for each account or
 
 **Copy account slot to other machines** copies the account's settings and ID to connected, paired T3 servers, but not Claude's credentials; each server uses its own login directory.
 
-During sign-in, choose **Sign in on this machine** for a local login, or **Share login with connected machines** to create a subscription token and save it on the connected servers (creating the slot if missing). Saving or clearing **Subscription token** in provider settings copies that change too. These are one-time copies: offline machines are skipped, and the result message lists which succeeded. Native mobile supports machine-local sign-in only; use web or desktop to share a token.
+During sign-in, choose **Sign in on this machine** for a local login, or **Share login with connected machines** to create a subscription token and save it on the connected servers (creating the slot if missing). Saving or clearing **Subscription token** in provider settings copies that change too. These are one-time copies: offline machines are skipped, and the result message lists which succeeded. Native mobile supports machine-local sign-in only; use web or desktop to share a token or sign in on every machine.
+
+A shared token cannot read the account's email or plan, and its usage can be unavailable. For a full login everywhere, choose **Sign in on every machine**: it starts Claude's sign-in on each connected machine, lists them together, and takes the code from each machine's sign-in page in that machine's row. This replaces a shared token on those machines and creates the slot where it is missing.
 
 ## Compact long conversations
 
