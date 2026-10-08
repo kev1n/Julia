@@ -5,7 +5,8 @@
  * `limitFailoverModelSelections` whose provider has an account with usage left
  * (on the account Auto would pick, never the limited one). The source thread's
  * limit recovery is then configured off for that run, which both records that
- * it was handled and keeps upstream's auto-resume from also resuming it. With no
+ * it was handled and keeps upstream's auto-resume from also resuming it, and
+ * names the new tab in `continuedIn` so clients stop calling the source Limited. With no
  * account left anywhere, upstream's recovery (auto-resume, snooze) applies.
  *
  * Called from `UsageLimitRecoveryWorker`'s sweep, so it shares its persisted
@@ -116,7 +117,13 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     type: "thread.metadata.update",
     commandId: CommandId.make(`limit-failover:${identity}:handled`),
     threadId: candidate.id,
-    limitRecovery: { runId, resetAt, autoResume: false, snooze: false },
+    limitRecovery: {
+      runId,
+      resetAt,
+      autoResume: false,
+      snooze: false,
+      continuedIn: targetThreadId,
+    },
   });
   yield* Effect.logInfo("orchestration-v2.limit-failover.continued", {
     threadId: candidate.id,
