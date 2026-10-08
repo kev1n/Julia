@@ -79,3 +79,4 @@ export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./forkMoveThread.ts";
+export * from "./forkFleet.ts";
