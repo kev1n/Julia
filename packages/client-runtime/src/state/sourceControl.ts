@@ -34,6 +34,16 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:repository",
       tag: WS_METHODS.sourceControlLookupRepository,
     }),
+    // Fork (Owner): a fresh thread's project setup waits for its clone before registering.
+    cloneRepository: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:clone-repository",
+      tag: WS_METHODS.sourceControlCloneRepository,
+      scheduler: commandScheduler,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
     // Clone-backed project creation. The RPC returns once the project exists
     // and the clone runs in the background; `projectClones` carries progress.
     startProjectClone: createEnvironmentRpcCommand(runtime, {

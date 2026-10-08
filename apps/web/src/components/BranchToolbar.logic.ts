@@ -12,7 +12,10 @@ export { deriveLocalBranchNameFromRemoteRef, sanitizeNewRefName } from "@t3tools
 
 export interface EnvironmentOption {
   environmentId: EnvironmentId;
+  /** Null when the destination needs project setup (or a Scratch folder). */
   projectId: ProjectId | null;
+  detail?: string;
+  disabled?: boolean;
   label: string;
   isPrimary: boolean;
   machine: EnvironmentMachineKind;

@@ -54,7 +54,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   const composerFloatingLayerProps = useComposerMenuProps();
   const moveThread = useMoveThread(envLocked ? (threadRef ?? null) : null);
   const canMove = envLocked && moveThread.choices.length > 0;
-  const options = canMove
+  const options: readonly Omit<EnvironmentOption, "projectId" | "isPrimary">[] = canMove
     ? [
         {
           environmentId,
@@ -86,7 +86,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
       : []),
     ...options.map((env) => ({
       value: environmentValue(env.environmentId),
-      label: env.label,
+      label: `${env.label}${env.detail === "Project setup required" ? " · Set up project" : ""}`,
     })),
     ...(showAddToMachine ? [{ value: ADD_MACHINE_VALUE, label: "Add to another machine" }] : []),
   ];
@@ -203,15 +203,19 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
               key={env.environmentId}
               value={environmentValue(env.environmentId)}
               disabled={
-                canMove
+                env.disabled === true ||
+                (canMove
                   ? moveThread.disabledReason !== null || env.environmentId === environmentId
-                  : onEnvironmentChange === undefined && env.environmentId !== environmentId
+                  : onEnvironmentChange === undefined && env.environmentId !== environmentId)
               }
             >
               <span className="inline-flex items-center gap-1.5">
                 <EnvironmentMachineIcon kind={env.machine} className="size-3" />
                 {env.label}
               </span>
+              {env.detail ? (
+                <span className="block text-xs text-muted-foreground">{env.detail}</span>
+              ) : null}
               {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
               <MachineUsageLine environmentId={env.environmentId} />
             </SelectItem>
