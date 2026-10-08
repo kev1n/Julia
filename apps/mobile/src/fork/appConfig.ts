@@ -14,7 +14,7 @@ export function withOwnerFork(
   if (!updatesUrl) throw new Error("T3CODE_MOBILE_OWNER=1 needs T3CODE_MOBILE_UPDATES_URL");
   return {
     ...config,
-    name: "T3 Code (Owner)",
+    name: "Julia",
     scheme: "julia-fork",
     android: { ...config.android, package: "com.example.julia" },
     updates: {

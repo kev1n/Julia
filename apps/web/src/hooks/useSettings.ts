@@ -383,16 +383,18 @@ export function useMergedSettings<T = UnifiedSettings>(
   });
 }
 
-function resolveEnvironmentIdentificationMode(input: {
+export function resolveEnvironmentIdentificationMode(input: {
   mode: EnvironmentIdentificationMode;
   settingsHydrated: boolean;
   paletteThemeActive?: boolean;
   paletteThemeAllowsArtwork?: boolean;
 }): EnvironmentIdentificationMode {
   if (!input.settingsHydrated) return "none";
+  // Don't replace unsupported artwork with an unsolicited build badge.
+  // Palette themes keep a clean header unless identification is explicitly enabled.
   const isArtwork = input.mode !== "pill" && input.mode !== "none";
   return input.paletteThemeActive && !input.paletteThemeAllowsArtwork && isArtwork
-    ? "pill"
+    ? "none"
     : input.mode;
 }
 

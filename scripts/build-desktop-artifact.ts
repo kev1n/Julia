@@ -2751,8 +2751,8 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+    ? "Julia (Nightly)"
+    : (desktopPackageJson.productName ?? "Julia");
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -2825,12 +2825,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
       extendInfo: {
+        CFBundleDisplayName: "Julia",
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
         NSLocalNetworkUsageDescription:
-          "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
+          "Julia connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
         NSScreenCaptureUsageDescription:
-          "T3 Code captures the active window when you use the window capture shortcut.",
+          "Julia captures the active window when you use the window capture shortcut.",
         NSCameraUsageDescription:
           "T3 Code lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:

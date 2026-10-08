@@ -25,7 +25,7 @@ const observeEndpointUrl = repoEnv.T3CODE_RELAY_URL?.trim()
   : "https://observe.invalid";
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
-const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
+const androidAdaptiveForeground = "./assets/android-icon-foreground-julia.png";
 
 if (
   isIosPersonalTeamBuild &&
@@ -42,11 +42,11 @@ const DEVELOPMENT_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#347FF8",
-  androidAdaptiveBackgroundImage: "./assets/android-icon-background-dev.png",
-  androidSplashIcon: "./assets/android-splash-icon-dev.png",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidAdaptiveBackgroundColor: "#202322",
+  androidAdaptiveBackgroundImage: "./assets/android-icon-background-julia.png",
+  androidSplashIcon: "./assets/android-splash-icon-julia.png",
+  androidMonochromeIcon: "./assets/android-icon-mark-julia.png",
+  androidNotificationIcon: "./assets/android-icon-mark-julia.png",
   androidNotificationColor: "#00639B",
 } as const;
 
@@ -55,11 +55,11 @@ const PREVIEW_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#111533",
-  androidAdaptiveBackgroundImage: "./assets/android-icon-background-nightly.png",
-  androidSplashIcon: "./assets/android-splash-icon-nightly.png",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidAdaptiveBackgroundColor: "#202322",
+  androidAdaptiveBackgroundImage: "./assets/android-icon-background-julia.png",
+  androidSplashIcon: "./assets/android-splash-icon-julia.png",
+  androidMonochromeIcon: "./assets/android-icon-mark-julia.png",
+  androidNotificationIcon: "./assets/android-icon-mark-julia.png",
   androidNotificationColor: "#7565C7",
 } as const;
 
@@ -68,17 +68,17 @@ const RELEASE_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#000000",
+  androidAdaptiveBackgroundColor: "#202322",
   androidAdaptiveBackgroundImage: undefined,
-  androidSplashIcon: "./assets/android-splash-icon-prod.png",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidSplashIcon: "./assets/android-splash-icon-julia.png",
+  androidMonochromeIcon: "./assets/android-icon-mark-julia.png",
+  androidNotificationIcon: "./assets/android-icon-mark-julia.png",
   androidNotificationColor: "#FFFFFF",
 } as const;
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
+    appName: "Julia Dev",
     scheme: "t3code-dev",
     iosBundleIdentifier: "com.t3tools.t3code.dev",
     androidPackage: "com.t3tools.t3code.dev",
@@ -86,7 +86,7 @@ const VARIANT_CONFIG = {
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
+    appName: "Julia Preview",
     scheme: "t3code-preview",
     iosBundleIdentifier: "com.t3tools.t3code.preview",
     androidPackage: "com.t3tools.t3code.preview",
@@ -94,7 +94,7 @@ const VARIANT_CONFIG = {
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
+    appName: "Julia",
     scheme: "t3code",
     iosBundleIdentifier: "com.t3tools.t3code",
     androidPackage: "com.t3tools.t3code",
@@ -138,7 +138,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
-        description: "Subscription quotas from your connected T3 Code environments.",
+        description: "Subscription quotas from your connected Julia environments.",
         ios: {
           configuration: {
             title: "Subscription usage",
@@ -188,7 +188,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "AgentActivity",
         displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
+        description: "Shows the current state of active Julia agents.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },
@@ -265,8 +265,8 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+        "Allow Julia to connect to Julia servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow Julia to save images to your photo library.",
       // System picture in picture needs background audio to start and survive outside the app.
       UIBackgroundModes: ["audio"],
       ITSAppUsesNonExemptEncryption: false,
@@ -365,7 +365,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
+        microphonePermission: "Allow Julia to use your microphone for voice input.",
         recordAudioAndroid: false,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -374,7 +374,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission: "Allow Julia to access your camera so you can scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,

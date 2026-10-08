@@ -1,12 +1,12 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import { ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
-import { T3Wordmark } from "../T3Wordmark";
+import { JuliaMark } from "../JuliaMark";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -24,7 +24,6 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -117,15 +116,25 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1 text-sm font-medium tracking-tight">
-      <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
+    // The mark is the first letter, not a separate icon beside a repeated J.
+    <span
+      role="img"
+      aria-label="Julia"
+      className="inline-flex min-w-0 items-baseline text-sm font-medium tracking-tight"
+    >
+      <JuliaMark
+        aria-hidden
+        viewBox="5 0 24 32"
+        className="h-5 w-[0.9375rem] shrink-0 translate-y-0.5"
+      />
       <span
+        aria-hidden
         className={cn(
           "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
-          onBackdrop ? "text-white/70" : "text-muted-foreground",
+          onBackdrop ? "text-white" : "text-foreground",
         )}
       >
-        Code
+        ulia
       </span>
     </span>
   );
@@ -158,11 +167,7 @@ function SidebarUtilityItem({
 
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
-  const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile } = useSidebar();
-  const isOnUtilityPage = useLocation({
-    select: (location) => isSidebarUtilityPage(location.pathname),
-  });
   const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
@@ -188,41 +193,21 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/usage" });
   };
 
-  const handleBackClick = () => {
-    closeMobileSidebar();
-    void navigateToMainApp();
-  };
-
   return (
     <SidebarMenu className="flex-row items-center">
-      {isOnUtilityPage ? (
-        <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarMenuButton onClick={handleBackClick}>
-            <ArrowLeftIcon />
-            <span>Back</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : (
-        <>
-          <SidebarUtilityItem
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={handleSettingsClick}
-          />
-          {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<PullRequestGlyph.pullRequest />}
-              label="Pull requests"
-              onClick={handlePullRequestsClick}
-            />
-          ) : null}
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
-        </>
-      )}
+      <SidebarUtilityItem icon={<SettingsIcon />} label="Settings" onClick={handleSettingsClick} />
+      {pullRequestsSupported ? (
+        <SidebarUtilityItem
+          icon={<PullRequestGlyph.pullRequest />}
+          label="Pull requests"
+          onClick={handlePullRequestsClick}
+        />
+      ) : null}
+      <SidebarUtilityItem
+        icon={<ChartNoAxesColumnIcon />}
+        label="Usage"
+        onClick={handleUsageClick}
+      />
       <SidebarUpdatePill />
     </SidebarMenu>
   );
