@@ -404,6 +404,9 @@ export interface ProjectionTimelinePageOptions {
   readonly itemId?: TurnItemId;
   readonly attachmentId?: string;
   readonly view?: "messages" | "activity";
+  /** Select on the index before hydrating response payloads. */
+  readonly finalMessagesOnly?: boolean;
+  readonly throughRunId?: RunId;
   readonly limit: number;
 }
 export interface ProjectionTimelinePage {
@@ -1451,6 +1454,43 @@ function visibleTurnItemsThroughRun(input: {
   return [...inheritedPrefix, ...localPrefix];
 }
 
+function selectTimelineHistory<
+  T extends {
+    readonly item: Pick<
+      OrchestrationV2TurnItem,
+      "id" | "threadId" | "runId" | "type" | "status" | "parentItemId"
+    > & { readonly streaming?: boolean };
+  },
+>(
+  rows: readonly T[],
+  thread: Pick<OrchestrationV2AppThread, "id" | "historyOrigin">,
+  runs: readonly OrchestrationV2Run[],
+  options: ProjectionTimelinePageOptions,
+): readonly T[] {
+  if (options.throughRunId === undefined && !options.finalMessagesOnly) return rows;
+  const throughRun = runs.find((run) => run.id === options.throughRunId);
+  const ordinals = new Map(runs.map((run) => [run.id, run.ordinal]));
+  const prefix =
+    options.throughRunId === undefined
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.item.threadId !== thread.id ||
+            (throughRun !== undefined &&
+              isTurnItemAtOrBeforeRun({
+                historyOrigin: thread.historyOrigin,
+                itemRunId: row.item.runId,
+                runOrdinalById: ordinals,
+                sourceRunOrdinal: throughRun.ordinal,
+              })),
+        );
+  if (!options.finalMessagesOnly) return prefix;
+  const ids = new Set(
+    selectFinalMessageHistory(prefix.map((row) => row.item)).map((item) => item.id),
+  );
+  return prefix.filter((row) => ids.has(row.item.id));
+}
+
 // Side chats show only their own rows; the fork transfer carries the parent's context to the model.
 function inheritedRunFork(thread: Pick<OrchestrationV2AppThread, "forkedFrom" | "lineage">) {
   return thread.forkedFrom?.type === "run" && thread.lineage.sideChat !== true
@@ -1962,6 +2002,9 @@ function shellFromState(input: {
     interactionMode: input.state.thread.interactionMode,
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
+    ...(input.state.thread.chatGroupId === undefined
+      ? {}
+      : { chatGroupId: input.state.thread.chatGroupId }),
     pullRequests: threadPullRequestsOf(input.state.thread),
     ...(input.state.thread.linkedPullRequest === undefined
       ? {}
@@ -6145,8 +6188,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       (row) => `${row.thread_id}:${row.turn_item_id}`,
                     ),
                   );
-            const matching = index.visible
-              .map((row, position) => ({ ...row, position }))
+            const matching = selectTimelineHistory(
+              index.visible.map((row, position) => ({ ...row, position })),
+              index.records.thread,
+              index.records.runs,
+              options,
+            )
               .filter((row) =>
                 options.itemId === undefined
                   ? row.position > (options.afterPosition ?? -1) &&
@@ -6603,14 +6650,30 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     const selectShellRunItemCounts = (threadIds: ReadonlyArray<ThreadId>) =>
       sql<ShellRunItemCountRow>`
+        WITH terminal AS (
+          SELECT thread_id, run_id, ordinal, type, status, parent_item_id,
+            CASE WHEN type IN ('assistant_message', 'proposed_plan')
+              THEN COALESCE(json_extract(payload_json, '$.streaming'), 0) ELSE 0 END AS streaming,
+            MAX(CASE WHEN type IN ('assistant_message', 'proposed_plan')
+            AND status = 'completed' AND parent_item_id IS NULL
+            AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0
+            THEN ordinal END) OVER (PARTITION BY thread_id, run_id) AS last_reply_ordinal
+          FROM orchestration_v2_projection_turn_items
+          WHERE run_id IS NOT NULL AND thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
+        ), bounded AS (
+          SELECT *, MAX(CASE WHEN type NOT IN ('user_message', 'assistant_message', 'proposed_plan')
+            AND parent_item_id IS NULL AND ordinal < last_reply_ordinal THEN ordinal END)
+            OVER (PARTITION BY thread_id, run_id) AS last_activity_ordinal
+          FROM terminal
+        )
         SELECT thread_id, run_id, COUNT(*) AS item_count,
-          SUM(CASE WHEN type = 'user_message' THEN 1 ELSE 0 END) +
-          MAX(CASE WHEN type = 'assistant_message' AND status = 'completed'
+          SUM(CASE WHEN type = 'user_message' OR (
+            type IN ('assistant_message', 'proposed_plan') AND status = 'completed'
             AND parent_item_id IS NULL
-            AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0 THEN 1 ELSE 0 END) AS final_message_count
-        FROM orchestration_v2_projection_turn_items
-        WHERE run_id IS NOT NULL AND thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
-        GROUP BY thread_id, run_id
+            AND streaming = 0
+            AND ordinal > COALESCE(last_activity_ordinal, -1)
+          ) THEN 1 ELSE 0 END) AS final_message_count
+        FROM bounded GROUP BY thread_id, run_id
       `;
 
     // Count all selected threads in one index walk; fork sources still need per-run counts.
@@ -6625,7 +6688,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             AS runless_final_message_count
         FROM (
           SELECT thread_id, run_id, COUNT(*) AS item_count,
-            SUM(CASE WHEN run_id IS NULL AND (type = 'user_message' OR (type = 'assistant_message'
+            SUM(CASE WHEN run_id IS NULL AND (type = 'user_message' OR (type IN ('assistant_message', 'proposed_plan')
               AND status = 'completed' AND parent_item_id IS NULL
               AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0)) THEN 1 ELSE 0 END)
               AS final_message_count
@@ -7251,10 +7314,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       pendingTurnItemRows,
     }: Effect.Success<ReturnType<typeof readShellSnapshotRows>>) {
       const { runOrdinalsByThreadId, itemCountsByThreadId, finalMessageCountsByThreadId } =
-            runMapsByThreadId({
-        runRows,
-        itemCountRows,
-      });
+        runMapsByThreadId({
+          runRows,
+          itemCountRows,
+        });
       const shellItemCountsByThreadId = shellItemCountMap(shellItemCountRows);
       const { providerThreadsByThreadId, pendingTurnItemsByThreadId } =
         yield* pendingBackgroundDataByThreadId({ providerThreadRows, pendingTurnItemRows });
@@ -7660,10 +7723,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ),
             ]);
             const { runOrdinalsByThreadId, itemCountsByThreadId, finalMessageCountsByThreadId } =
-            runMapsByThreadId({
-              runRows,
-              itemCountRows,
-            });
+              runMapsByThreadId({
+                runRows,
+                itemCountRows,
+              });
             const shellItemCountsByThreadId = shellItemCountMap(shellItemCountRows);
             const { providerThreadsByThreadId, pendingTurnItemsByThreadId } =
               yield* pendingBackgroundDataByThreadId({ providerThreadRows, pendingTurnItemRows });

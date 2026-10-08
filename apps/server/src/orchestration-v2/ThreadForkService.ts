@@ -61,6 +61,8 @@ export interface ThreadForkServiceV2Shape {
     readonly title?: string;
     readonly sideChat?: boolean;
     readonly contextMode?: "full" | "final_messages";
+    readonly destination?: "tab" | "thread";
+    readonly chatGroupId?: ThreadId | null;
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
     readonly createdAt: DateTime.Utc;
@@ -111,6 +113,12 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         createdBy: input.createdBy,
         creationSource: input.creationSource,
         id: input.targetThreadId,
+        chatGroupId:
+          input.destination === "thread"
+            ? input.targetThreadId
+            : input.chatGroupId === null
+              ? undefined
+              : (input.chatGroupId ?? input.sourceProjection.thread.chatGroupId),
         title: input.title ?? `${input.sourceProjection.thread.title} fork`,
         // The source's title job completes only on the source thread.
         titleRegeneration: null,

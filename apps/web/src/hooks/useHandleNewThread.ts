@@ -65,6 +65,7 @@ export function readLastUsedProjectKey(): string | null {
 interface NewThreadWorkspaceOptions {
   branch?: string | null;
   worktreePath?: string | null;
+  chatGroupId?: ThreadId | undefined;
   envMode?: DraftThreadEnvMode;
   startFromOrigin?: boolean;
 }
@@ -73,6 +74,7 @@ function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undef
   return {
     ...(options?.branch !== undefined ? { branch: options.branch } : {}),
     ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
+    chatGroupId: options?.chatGroupId,
     ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
     ...(options?.startFromOrigin !== undefined ? { startFromOrigin: options.startFromOrigin } : {}),
   };
@@ -95,6 +97,7 @@ export function createNewThreadHandler(router: AnyRouter) {
     options?: {
       branch?: string | null;
       worktreePath?: string | null;
+      chatGroupId?: ThreadId | undefined;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
       replace?: boolean;
@@ -412,6 +415,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         createdAt,
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
+        chatGroupId: options?.chatGroupId,
         envMode: initialEnvMode,
         startFromOrigin:
           options?.startFromOrigin ??

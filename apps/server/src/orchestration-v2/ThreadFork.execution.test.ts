@@ -425,7 +425,32 @@ it.effect.each(forkCases)(
         completedAt: now,
         updatedAt: now,
       };
-      for (const [index, text] of ["EXCLUDED_COMMENTARY", "INCLUDED_FINAL_REPLY"].entries()) {
+      for (const [index, text] of [
+        "EXCLUDED_COMMENTARY",
+        "INCLUDED_HEADING_AND_TABLE",
+        "INCLUDED_FINAL_REPLY",
+      ].entries()) {
+        if (index === 1) {
+          yield* eventSink.write({
+            events: [
+              {
+                id: EventId.make("reasoning"),
+                type: "turn-item.updated",
+                threadId: sourceThreadId,
+                runId: sourceRunId,
+                occurredAt: now,
+                payload: {
+                  ...baseItem,
+                  id: TurnItemId.make("reasoning"),
+                  ordinal: 11,
+                  type: "reasoning",
+                  text: "EXCLUDED_REASONING",
+                  streaming: false,
+                },
+              },
+            ],
+          });
+        }
         yield* eventSink.write({
           events: [
             {
@@ -437,7 +462,7 @@ it.effect.each(forkCases)(
               payload: {
                 ...baseItem,
                 id: TurnItemId.make(`reply-${index}`),
-                ordinal: 10 + index,
+                ordinal: 10 + index * 2,
                 type: "assistant_message",
                 messageId: MessageId.make(`reply-${index}`),
                 text,
@@ -447,28 +472,10 @@ it.effect.each(forkCases)(
           ],
         });
       }
-      yield* eventSink.write({
-        events: [
-          {
-            id: EventId.make("reasoning"),
-            type: "turn-item.updated",
-            threadId: sourceThreadId,
-            runId: sourceRunId,
-            occurredAt: now,
-            payload: {
-              ...baseItem,
-              id: TurnItemId.make("reasoning"),
-              ordinal: 12,
-              type: "reasoning",
-              text: "EXCLUDED_REASONING",
-              streaming: false,
-            },
-          },
-        ],
-      });
       yield* orchestrator.dispatch({
         type: "thread.fork",
         commandId: CommandId.make("fork-source"),
+        destination: "thread",
         sourceThreadId,
         targetThreadId,
         sourcePoint: { type: "run", runId: sourceRunId },
@@ -499,6 +506,7 @@ it.effect.each(forkCases)(
       assert.include(`${handoff.summaryText}\n${history}`, "INCLUDED_SOURCE_MARKER");
       assert.notInclude(`${handoff.summaryText}\n${history}`, "EXCLUDED_LATER_MARKER");
       assert.include(history, "INCLUDED_FINAL_REPLY");
+      assert.include(history, "INCLUDED_HEADING_AND_TABLE");
       if (contextMode === "final_messages") {
         assert.notInclude(history, "EXCLUDED_COMMENTARY");
         assert.notInclude(history, "EXCLUDED_REASONING");
@@ -507,17 +515,20 @@ it.effect.each(forkCases)(
       }
       assert.isNull(target.providerThreads[0]?.forkedFrom);
       assert.equal(target.thread.worktreePath, null);
+      assert.equal(target.thread.chatGroupId, targetThreadId);
       const inherited = target.visibleTurnItems.filter((row) => row.visibility === "inherited");
       assert.deepEqual(
         inherited.map((row) => row.item.id),
         [
           TurnItemId.make("item-1"),
           ...(contextMode === "full" ? [TurnItemId.make("reply-0")] : []),
-          TurnItemId.make("reply-1"),
           ...(contextMode === "full" ? [TurnItemId.make("reasoning")] : []),
+          TurnItemId.make("reply-1"),
+          TurnItemId.make("reply-2"),
         ],
       );
       const shell = yield* orchestrator.getThreadShell(targetThreadId);
+      assert.equal(shell?.chatGroupId, targetThreadId);
       assert.equal(shell?.visibleItemCount, target.visibleTurnItems.length);
       const page = yield* orchestrator.getTimelinePage(targetThreadId, {
         view: "activity",
@@ -542,6 +553,29 @@ it.effect.each(forkCases)(
           ],
         });
         for (const [index, text] of ["EXCLUDED_FORK_COMMENTARY", "INCLUDED_FORK_FINAL"].entries()) {
+          if (index === 1) {
+            yield* eventSink.write({
+              events: [
+                {
+                  id: EventId.make("target-work"),
+                  type: "turn-item.updated",
+                  threadId: targetThreadId,
+                  runId: localRun.id,
+                  occurredAt: now,
+                  payload: {
+                    ...baseItem,
+                    threadId: targetThreadId,
+                    runId: localRun.id,
+                    id: TurnItemId.make("target-work"),
+                    ordinal: 11,
+                    type: "reasoning",
+                    text: "EXCLUDED_FORK_REASONING",
+                    streaming: false,
+                  },
+                },
+              ],
+            });
+          }
           yield* eventSink.write({
             events: [
               {
@@ -555,7 +589,7 @@ it.effect.each(forkCases)(
                   threadId: targetThreadId,
                   runId: localRun.id,
                   id: TurnItemId.make(`target-reply-${index}`),
-                  ordinal: 10 + index,
+                  ordinal: 10 + index * 2,
                   type: "assistant_message",
                   messageId: MessageId.make(`target-reply-${index}`),
                   text,
@@ -592,7 +626,9 @@ it.effect.each(forkCases)(
         const descendantHistory = descendant.contextHandoffs[0]!.history!.messages.map(
           (message) => message.text,
         ).join("\n");
+        assert.equal(descendant.thread.chatGroupId, targetThreadId);
         assert.include(descendantHistory, "INCLUDED_SOURCE_MARKER");
+        assert.include(descendantHistory, "INCLUDED_HEADING_AND_TABLE");
         assert.include(descendantHistory, "INCLUDED_FINAL_REPLY");
         assert.include(descendantHistory, "INCLUDED_FORK_FINAL");
         assert.notInclude(descendantHistory, "EXCLUDED_COMMENTARY");

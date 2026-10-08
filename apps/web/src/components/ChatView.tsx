@@ -3402,14 +3402,16 @@ export default function ChatView(props: ChatViewProps) {
             void handleNewThread(activeProjectRef, {
               branch: activeThread.branch,
               worktreePath: activeThread.worktreePath,
+              chatGroupId: activeThread.chatGroupId,
               envMode: activeThread.worktreePath ? "worktree" : "local",
             });
           }}
-          onForkChat={async () => {
+          onForkChat={async (destination) => {
             if (!activeLatestRun) return;
             await onForkFromRunStable({
               sourceThreadId: activeThread.id,
               runId: activeLatestRun.runId,
+              destination,
             });
           }}
         />

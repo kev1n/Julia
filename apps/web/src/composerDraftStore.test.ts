@@ -835,6 +835,27 @@ describe("composerDraftStore project draft thread mapping", () => {
     resetComposerDraftStore();
   });
 
+  it("keeps a new tab in its forked thread group across reloads and can clear the group", () => {
+    const store = useComposerDraftStore.getState();
+    const chatGroupId = ThreadId.make("forked-thread-group");
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId, chatGroupId });
+    store.setPrompt(draftId, "Continue this separate thread");
+    store.setDraftThreadContext(draftId, { branch: "feature/next" });
+
+    const reloaded = useComposerDraftStore.persist.getOptions().merge!(
+      JSON.parse(
+        JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+      ),
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(Object.values(reloaded.draftThreadsByThreadKey)).toEqual([
+      expect.objectContaining({ threadId, chatGroupId }),
+    ]);
+
+    store.setDraftThreadContext(draftId, { chatGroupId: undefined });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.chatGroupId).toBeUndefined();
+  });
+
   it("clears composer data for one environment without touching another", () => {
     const store = useComposerDraftStore.getState();
     const localThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
