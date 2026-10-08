@@ -174,7 +174,7 @@ const STATUS_VISUALS: Record<
 > = {
   pending: { dotClass: "bg-info", label: "Queued" },
   running: { dotClass: "bg-info", label: "Running" },
-  waiting: { dotClass: "bg-info", label: "Waiting" },
+  waiting: { dotClass: "bg-info", label: "Working" },
   idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
   completed: { dotClass: "bg-success", label: "Completed" },
   failed: { dotClass: "bg-destructive", label: "Failed" },

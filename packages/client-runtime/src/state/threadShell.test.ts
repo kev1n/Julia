@@ -57,6 +57,68 @@ function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environment
 }
 
 describe("v2 thread shell lists", () => {
+  it("groups only live subagent children by scoped parent without hydrating history", () => {
+    const harness = makeHarness([environmentId, remoteEnvironmentId]);
+    const parentId = ThreadId.make("parent");
+    const child = {
+      ...v2ThreadShell,
+      id: ThreadId.make("child"),
+      lineage: {
+        parentThreadId: parentId,
+        rootThreadId: parentId,
+        relationshipToParent: "subagent" as const,
+      },
+    };
+    const snapshot = {
+      ...v2ShellSnapshot,
+      threads: [
+        v2ThreadShell,
+        child,
+        { ...child, id: ThreadId.make("archived"), archivedAt: child.updatedAt },
+        { ...child, id: ThreadId.make("deleted"), deletedAt: child.updatedAt },
+        {
+          ...child,
+          id: ThreadId.make("fork"),
+          lineage: { ...child.lineage, relationshipToParent: "fork" as const },
+        },
+      ],
+    };
+    harness.registry.set(harness.snapshotAtom(environmentId), snapshot);
+    harness.registry.set(harness.snapshotAtom(remoteEnvironmentId), {
+      ...v2ShellSnapshot,
+      threads: [],
+    });
+    const atom = harness.threads.subagentThreadShellsAtom({ environmentId, threadId: parentId });
+    const dispose = harness.registry.mount(atom);
+    try {
+      const before = harness.registry.get(atom);
+      expect(before.map((thread) => thread.id)).toEqual([child.id]);
+      expect(
+        harness.registry.get(
+          harness.threads.subagentThreadShellsAtom({
+            environmentId: remoteEnvironmentId,
+            threadId: parentId,
+          }),
+        ),
+      ).toEqual([]);
+      harness.registry.set(harness.snapshotAtom(environmentId), {
+        ...snapshot,
+        threads: snapshot.threads.map((thread) =>
+          thread.id === v2ThreadShell.id ? { ...thread, title: "Unrelated update" } : thread,
+        ),
+      });
+      expect(harness.registry.get(atom)).toBe(before);
+      harness.registry.set(harness.snapshotAtom(environmentId), {
+        ...snapshot,
+        threads: snapshot.threads.filter((thread) => thread.id !== child.id),
+      });
+      expect(harness.registry.get(atom)).toEqual([]);
+    } finally {
+      dispose();
+      harness.registry.dispose();
+    }
+  });
+
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {
