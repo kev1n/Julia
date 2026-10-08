@@ -281,6 +281,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
+  --color-sidebar-branch-active: var(--color-purple-500);
   --color-sidebar-control-surface: var(--sidebar-control-surface);
   --color-sidebar-row-hover: var(--sidebar-row-hover);
   --color-sidebar-row-active: var(--sidebar-row-active);
