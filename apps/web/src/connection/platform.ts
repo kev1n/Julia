@@ -79,14 +79,23 @@ const layerConnectivity = Connectivity.layer({
       Effect.sync(() => {
         const online = () => Queue.offerUnsafe(queue, "online");
         const offline = () => Queue.offerUnsafe(queue, "offline");
+        const active = () => {
+          if (document.visibilityState === "visible") {
+            Queue.offerUnsafe(queue, currentNetworkStatus());
+          }
+        };
         window.addEventListener("online", online);
         window.addEventListener("offline", offline);
-        return { online, offline };
+        window.addEventListener("focus", active);
+        document.addEventListener("visibilitychange", active);
+        return { online, offline, active };
       }),
-      ({ online, offline }) =>
+      ({ online, offline, active }) =>
         Effect.sync(() => {
           window.removeEventListener("online", online);
           window.removeEventListener("offline", offline);
+          window.removeEventListener("focus", active);
+          document.removeEventListener("visibilitychange", active);
         }),
     ).pipe(Effect.asVoid),
   ),
@@ -134,11 +143,15 @@ const layerWakeups = Wakeups.layer({
               }
             };
             document.addEventListener("visibilitychange", listener);
+            // A desktop window can lose focus to a crash report or another app
+            // without becoming hidden. Returning must still wake its reconnect.
+            window.addEventListener("focus", listener);
             return listener;
           }),
           (listener) =>
             Effect.sync(() => {
               document.removeEventListener("visibilitychange", listener);
+              window.removeEventListener("focus", listener);
             }),
         ).pipe(Effect.asVoid),
       ),
