@@ -68,4 +68,11 @@ if [ ! -f "$settings" ]; then
   mkdir -p "$(dirname "$settings")"
   printf '{"localEnvironmentEnabled":false}\n' > "$settings"
 fi
+# Older pull jobs only recognize the legacy bundle. Upgrade that entry point too.
+release_puller="$(dirname "$0")/pull-deploy.sh"
+if [ -f "$release_puller" ]; then
+  mkdir -p "$HOME/t3-fork"
+  cp "$release_puller" "$HOME/t3-fork/pull-deploy.sh"
+  chmod 700 "$HOME/t3-fork/pull-deploy.sh"
+fi
 echo "Installed $destination $(/usr/bin/defaults read "$destination/Contents/Info" CFBundleShortVersionString)"
