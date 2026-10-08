@@ -6583,3 +6583,112 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 });
+
+it.layer(layerTest)("native subagent sidebar lifecycle", (it) => {
+  it.effect("publishes runless lifecycle and stable completion time through both shell paths", () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = ThreadId.make("thread:native-sidebar");
+      const parentId = ThreadId.make("thread:native-sidebar-parent");
+      const nodeId = NodeId.make("node:native-sidebar");
+      const now = DateTime.makeUnsafe("2026-10-08T00:00:00.000Z");
+      yield* store.apply({
+        id: EventId.make("event:native-sidebar:thread"),
+        type: "thread.created",
+        threadId,
+        occurredAt: now,
+        payload: {
+          createdBy: "agent",
+          creationSource: "provider",
+          id: threadId,
+          projectId: ProjectId.make("project:native-sidebar"),
+          title: "Native child",
+          providerInstanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: null,
+          lineage: {
+            parentThreadId: parentId,
+            rootThreadId: parentId,
+            relationshipToParent: "subagent",
+          },
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+      });
+      const node = {
+        id: nodeId,
+        threadId,
+        runId: null,
+        parentNodeId: null,
+        rootNodeId: nodeId,
+        kind: "root_turn" as const,
+        status: "running" as const,
+        countsForRun: false,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        runtimeRequestId: null,
+        checkpointScopeId: null,
+        startedAt: now,
+        completedAt: null,
+      };
+      for (const [ordinal, status] of (
+        ["running", "completed", "running", "failed"] as const
+      ).entries()) {
+        const at = DateTime.add(now, { minutes: ordinal });
+        const completedAt = status === "running" ? null : at;
+        yield* store.apply({
+          id: EventId.make(`event:native-sidebar:node:${ordinal}`),
+          type: "node.updated",
+          threadId,
+          nodeId,
+          occurredAt: at,
+          payload: { ...node, status, completedAt },
+        });
+        const projection = yield* store.getThreadProjection(threadId);
+        const memory = ProjectionStore.threadShellFromProjection(projection);
+        const sql = yield* store.getThreadShell(threadId);
+        const snapshot = (yield* store.getShellSnapshot()).threads.find(
+          (thread) => thread.id === threadId,
+        );
+        const expected = {
+          status,
+          completedAt: completedAt === null ? null : DateTime.formatIso(completedAt),
+        };
+        assert.deepEqual(sql?.nativeSubagentActivity, expected);
+        assert.deepEqual(memory.nativeSubagentActivity, expected);
+        assert.deepEqual(snapshot?.nativeSubagentActivity, expected);
+        assert.isNull(sql?.latestRunId);
+        assert.isNull(sql?.activeRunId);
+      }
+      // A newer runless turn takes precedence over the prior failed turn.
+      const resumedAt = DateTime.add(now, { minutes: 4 });
+      const resumedId = NodeId.make("node:native-sidebar:resumed");
+      yield* store.apply({
+        id: EventId.make("event:native-sidebar:resumed"),
+        type: "node.updated",
+        threadId,
+        nodeId: resumedId,
+        occurredAt: resumedAt,
+        payload: { ...node, id: resumedId, rootNodeId: resumedId, startedAt: resumedAt },
+      });
+      const projection = yield* store.getThreadProjection(threadId);
+      const shell = yield* store.getThreadShell(threadId);
+      assert.deepEqual(shell?.nativeSubagentActivity, { status: "running", completedAt: null });
+      assert.deepEqual(
+        ProjectionStore.threadShellFromProjection(projection).nativeSubagentActivity,
+        shell?.nativeSubagentActivity,
+      );
+    }),
+  );
+});

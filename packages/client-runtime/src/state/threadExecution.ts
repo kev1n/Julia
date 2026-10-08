@@ -181,7 +181,7 @@ const SUBAGENT_STATUS_LABELS: Record<OrchestrationV2ExecutionNode["status"], str
   idle: "Idle",
   pending: "Working",
   running: "Working",
-  waiting: "Waiting",
+  waiting: "Working",
   completed: "Completed",
   interrupted: "Interrupted",
   failed: "Failed",
@@ -342,13 +342,9 @@ export function presentPendingBackgroundWork(
   if (items.length === 1 && only !== undefined) {
     const noun = BACKGROUND_WORK_KINDS[only.kind].singular;
     const named = only.label !== noun;
-    const title = waiting
-      ? named
-        ? `${only.kind === "monitor" ? "" : `Waiting on ${noun} `}${only.label}`
-        : `Waiting on a ${noun}`
-      : named
-        ? `Running: ${only.label}`
-        : `Running a ${noun}`;
+    const title = named
+      ? `${only.kind === "monitor" ? "" : "Running: "}${only.label}`
+      : `Running a ${noun}`;
     return { title, items, waiting };
   }
   const counts = new Map<BackgroundWorkKind, number>();
@@ -357,7 +353,11 @@ export function presentPendingBackgroundWork(
     const { singular, plural } = BACKGROUND_WORK_KINDS[kind];
     return `${count} ${count === 1 ? singular : plural}`;
   });
-  return { title: `${waiting ? "Waiting on" : "Running"} ${joinWithAnd(groups)}`, items, waiting };
+  return {
+    title: `Running ${joinWithAnd(groups)}`,
+    items,
+    waiting,
+  };
 }
 
 export interface ProviderGoalPresentation {

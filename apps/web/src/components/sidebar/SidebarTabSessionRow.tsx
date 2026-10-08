@@ -1,4 +1,9 @@
-import { useCallback, useState } from "react";
+import {
+  SidebarSubagentDisclosure,
+  SidebarSubagentRows,
+  useSidebarSubagents,
+} from "./SidebarSubagentRows";
+import { useCallback } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AlarmClockOffIcon, CheckIcon, PinIcon, Undo2Icon } from "lucide-react";
@@ -27,6 +32,7 @@ import { useEnvironmentScope } from "../../state/session";
 export function SidebarTabSessionRow(props: {
   session: WorkspaceChatSession;
   isActive: boolean;
+  activeThreadKey: string | null;
   jumpLabel: string | null;
   onNavigate: (thread: ScopedThreadRef) => void;
   onContextMenu: (thread: ScopedThreadRef, position: { x: number; y: number }) => void;
@@ -37,18 +43,11 @@ export function SidebarTabSessionRow(props: {
 }) {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
-  const canOperateThread = useEnvironmentScope(
-    session.thread.environmentId,
-    AuthOrchestrationOperateScope,
+  const subagents = useSidebarSubagents(threadRef);
+  const childSelected = subagents.all.some(
+    (child) =>
+      scopedThreadKey(scopeThreadRef(child.environmentId, child.id)) === props.activeThreadKey,
   );
-  const [tabMenuOpen, setTabMenuOpen] = useState(false);
-  const primaryAction = canOperateThread ? props.primaryAction : null;
-  const actionLabel =
-    primaryAction?.kind === "unsnooze"
-      ? "Wake thread now"
-      : primaryAction?.kind === "unsettle"
-        ? "Un-settle thread"
-        : "Settle thread";
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   // Sessions are not draggable as a unit, but must participate in the layout
   // preview so single-chat drags move their rows and headers together.
@@ -100,9 +99,7 @@ export function SidebarTabSessionRow(props: {
           ? "Failed"
           : statuses.has("limited")
             ? "Limited"
-            : statuses.has("waiting")
-              ? "Waiting"
-              : null;
+            : null;
   const relativeTime = formatRelativeTimeLabel(session.latestSentAt);
   const time = relativeTime === "just now" ? "now" : relativeTime.replace(/ ago$/, "");
   return (
@@ -116,7 +113,7 @@ export function SidebarTabSessionRow(props: {
       <div
         className={cn(
           "group/session flex h-9 items-center gap-1 rounded-md",
-          props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
+          props.isActive || childSelected ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
         )}
       >
         <Tooltip>
@@ -170,19 +167,32 @@ export function SidebarTabSessionRow(props: {
             {session.title} · {session.chats.length} chat tabs
           </TooltipPopup>
         </Tooltip>
-        <span className="relative mr-1 flex h-7 min-w-7 shrink-0 items-center justify-end">
-          <Menu open={tabMenuOpen} onOpenChange={setTabMenuOpen}>
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`Chat tabs in ${session.title}`}
-                  className={cn(
-                    "peer flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground transition-opacity hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    primaryAction !== null &&
-                      !tabMenuOpen &&
-                      "not-focus-visible:group-any-hover/session:pointer-events-none not-focus-visible:group-any-hover/session:opacity-0",
-                  )}
+        <SidebarSubagentDisclosure
+          count={subagents.threads.length}
+          expanded={subagents.expanded}
+          onToggle={() => subagents.setExpanded((expanded) => !expanded)}
+        />
+        <Menu>
+          <MenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label={`Chat tabs in ${session.title}`}
+                className="mr-1 flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            }
+          >
+            {session.chats.length}
+          </MenuTrigger>
+          <MenuPopup side="right" align="start">
+            {session.chats.map((chat) => (
+              <MenuItem
+                key={chat.id}
+                onClick={() => props.onNavigate(scopeThreadRef(chat.environmentId, chat.id))}
+              >
+                <CheckIcon
+                  aria-hidden
+                  className={cn("size-3.5", chat.id !== session.thread.id && "invisible")}
                 />
               }
             >
@@ -236,6 +246,12 @@ export function SidebarTabSessionRow(props: {
           ) : null}
         </span>
       </div>
+      <SidebarSubagentRows
+        threads={subagents.threads}
+        expanded={subagents.expanded}
+        activeThreadKey={props.activeThreadKey}
+        onNavigate={(_event, ref) => props.onNavigate(ref)}
+      />
     </li>
   );
 }

@@ -66,6 +66,7 @@ export type ThreadListV2Status =
   | "input"
   | "request"
   | "working"
+  // Blocked on another thread's result; background work alone still reads as working.
   | "waiting"
   | "failed"
   | "limited"
@@ -229,7 +230,7 @@ export function resolveThreadListV2Status(
     return "working";
   }
   if (thread.runtime?.status === "idle") {
-    return "waiting";
+    return "working";
   }
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
