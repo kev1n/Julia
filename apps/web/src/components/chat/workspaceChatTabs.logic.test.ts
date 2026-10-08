@@ -125,3 +125,26 @@ it("does not merge sessions from different environments, projects, or checkouts"
     2,
   );
 });
+
+it("keeps a new-thread fork separate on the same checkout, and its tab forks together", () => {
+  const source = chat("source");
+  const tab = chat("tab fork");
+  const thread = { ...chat("thread fork"), chatGroupId: ThreadId.make("thread fork") };
+  const nestedTab = { ...chat("nested tab"), chatGroupId: thread.chatGroupId };
+  const nestedThread = { ...chat("nested thread"), chatGroupId: ThreadId.make("nested thread") };
+  const groups = groupWorkspaceChatSessions(
+    [source, tab, thread, nestedTab, nestedThread],
+    null,
+    (item) => item.section,
+  );
+  expect(groups).toHaveLength(3);
+  expect(groups.find((group) => group.key === workspaceChatKey(source))?.chats).toEqual([
+    source,
+    tab,
+  ]);
+  expect(groups.find((group) => group.key === workspaceChatKey(thread))?.chats).toEqual([
+    nestedTab,
+    thread,
+  ]);
+  expect(workspaceChatKey(nestedThread)).not.toBe(workspaceChatKey(thread));
+});

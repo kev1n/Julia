@@ -6962,6 +6962,9 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           if (/^SEARCH (r|run) /.test(detail)) {
             assert.include(detail, "COVERING INDEX", detail);
           }
+          // Fork: final-message fork counts read a thread's own turn items through its index.
+          if (detail.includes("orchestration_v2_projection_turn_items_thread_run_idx (thread_id=?"))
+            continue;
           if (detail.includes("orchestration_v2_projection_turn_items")) {
             // Only held input is read from the sparse index; transcript history stays unread.
             assert.include(

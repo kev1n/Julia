@@ -479,6 +479,7 @@ function AssistantForkButton(props: {
             title: `${props.sourceTitle} fork`,
             creationSource: "mobile",
             contextMode: "final_messages",
+            destination: "thread",
           },
         })
           .then(async (result) => {

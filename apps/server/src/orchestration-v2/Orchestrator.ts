@@ -16,7 +16,6 @@ import {
 import { threadIssueKeysEqual } from "@t3tools/contracts";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
-import { selectFinalMessageHistory } from "@t3tools/shared/finalMessageHistory";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
@@ -3769,6 +3768,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       interactionMode: command.interactionMode,
       branch: command.branch,
       worktreePath: command.worktreePath,
+      ...(command.chatGroupId === undefined ? {} : { chatGroupId: command.chatGroupId }),
       activeProviderThreadId: null,
       pullRequests: [],
       ...(command.linkOrigin === undefined ? {} : { linkOrigin: command.linkOrigin }),
@@ -5780,6 +5780,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(command.title === undefined ? {} : { title: command.title }),
         ...(command.sideChat ? { sideChat: true } : {}),
         ...(command.contextMode === undefined ? {} : { contextMode: command.contextMode }),
+        ...(command.destination === undefined ? {} : { destination: command.destination }),
+        ...(command.chatGroupId === undefined ? {} : { chatGroupId: command.chatGroupId }),
         createdBy: command.createdBy,
         creationSource: command.creationSource,
         createdAt: now,
@@ -8646,6 +8648,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const history = yield* projectionStore
         .getTimelinePage(sourceProjection.thread.id, {
           view: "messages",
+          finalMessagesOnly: true,
+          throughRunId: sourceRun.id,
           limit: Number.MAX_SAFE_INTEGER,
         })
         .pipe(
@@ -8657,18 +8661,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               }),
           ),
         );
-      const runOrdinals = new Map(sourceProjection.runs.map((run) => [run.id, run.ordinal]));
-      portableForkItems = selectFinalMessageHistory(
-        history.items
-          .map((row) => row.item)
-          .filter(
-            (item) =>
-              item.threadId !== sourceProjection.thread.id ||
-              (item.runId === null
-                ? sourceProjection.thread.historyOrigin === "v1_import"
-                : (runOrdinals.get(item.runId) ?? Infinity) <= sourceRun.ordinal),
-          ),
-      );
+      portableForkItems = history.items.map((row) => row.item);
     }
     const portableForkHandoff =
       !requiresPortableFork ||

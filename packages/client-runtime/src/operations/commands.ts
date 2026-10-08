@@ -91,6 +91,7 @@ export interface CreateThreadInput extends CommandMetadata {
   readonly interactionMode: ProviderInteractionMode;
   readonly branch: string | null;
   readonly worktreePath: string | null;
+  readonly chatGroupId?: ThreadId | undefined;
 }
 
 export interface ThreadCommandInput extends CommandMetadata {
@@ -168,6 +169,7 @@ interface StartThreadBootstrap {
     readonly interactionMode: ProviderInteractionMode;
     readonly branch: string | null;
     readonly worktreePath: string | null;
+    readonly chatGroupId?: ThreadId | undefined;
     readonly createdAt: string;
   };
   readonly prepareWorktree?: {
@@ -240,6 +242,8 @@ export interface ForkThreadFromRunInput extends CommandMetadata {
   readonly runId: RunId;
   readonly title?: string;
   readonly contextMode?: "full" | "final_messages";
+  readonly destination?: "tab" | "thread";
+  readonly chatGroupId?: ThreadId | null;
 }
 
 export interface ForkSideChatInput extends CommandMetadata {
@@ -488,6 +492,7 @@ export const createThread = Effect.fn("EnvironmentCommands.createThread")(functi
     interactionMode: input.interactionMode,
     branch: input.branch,
     worktreePath: input.worktreePath,
+    ...(input.chatGroupId === undefined ? {} : { chatGroupId: input.chatGroupId }),
   });
 });
 
@@ -796,6 +801,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       creationSource: input.creationSource ?? "web",
       threadId: input.threadId,
       ...(bootstrap === undefined ? { reuseExistingThread: true } : {}),
+      ...(bootstrap?.chatGroupId === undefined ? {} : { chatGroupId: bootstrap.chatGroupId }),
       projectId: thread.projectId,
       title: input.titleSeed ?? thread.title,
       generateTitle: input.titleSeed !== undefined,
@@ -1087,6 +1093,8 @@ export const forkThreadFromRun = Effect.fn("EnvironmentCommands.forkThreadFromRu
     sourcePoint: { type: "run", runId: input.runId },
     ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.contextMode === undefined ? {} : { contextMode: input.contextMode }),
+    ...(input.destination === undefined ? {} : { destination: input.destination }),
+    ...(input.chatGroupId === undefined ? {} : { chatGroupId: input.chatGroupId }),
   });
 });
 
