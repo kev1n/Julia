@@ -1,8 +1,8 @@
 #!/bin/bash
 # Build the fork's macOS arm64 server runtime archive and desktop app.
 #   fork/scripts/build.sh <version> <output-dir>
-# <version> is the upstream nightly version plus build metadata, e.g.
-# 0.0.46-nightly.20261005.2702+owner.1a2b3c4. Writes
+# <version> is the upstream nightly plus an ordered fork revision and hash, e.g.
+# 0.0.46-nightly.20261007.2787.owner.1791429000+owner.1a2b3c4. Writes
 #   <output-dir>/t3-<version>-darwin-arm64.tar.gz   (server runtime)
 #   <output-dir>/T3-Code-*-arm64.zip                (T3 Code (Owner).app)
 set -euo pipefail

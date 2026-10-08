@@ -66,7 +66,7 @@ echo "upstream latest $latest, fork based on $base, last release ${current_relea
 
 # Rebase onto $latest, check and build HEAD; on failure say why in $problem.
 prepare() {
-  local base
+  local base fork_revision
   base=$(git describe --tags --abbrev=0 --match 'v*-nightly.*' HEAD)
   if [ "$latest" != "$base" ]; then
     rebasing=1
@@ -81,7 +81,13 @@ $conflicts"
   sha=$(git rev-parse --short=7 HEAD)
   upstream_version=$(git show HEAD:apps/server/package.json | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
   case "$latest" in v*-nightly.*) upstream_version=${latest#v} ;; esac
-  version="$upstream_version+owner.$sha"
+  # A hash is artifact identity, not SemVer precedence. A numeric prerelease
+  # revision lets the existing stock launcher order builds of one nightly.
+  fork_revision=$(date +%s)
+  case "$upstream_version" in
+    *-*) version="$upstream_version.owner.$fork_revision+owner.$sha" ;;
+    *) version="$upstream_version-owner.$fork_revision+owner.$sha" ;; # dry-run against a stable ref
+  esac
   tag="owner-$upstream_version-$sha"
   if ! $dry_run && [ "$current_release" = "$tag" ]; then
     echo "Release $tag already published; nothing to do."

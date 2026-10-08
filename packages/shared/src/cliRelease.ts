@@ -43,12 +43,17 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
 }
 
 const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
+const FORK_RELEASE_BASE_URL = "https://build-mac-host.example.ts.net:8444";
 
-export function cliReleaseDownloadBaseUrl(
-  version: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+/** Location of a release's archives and checksums, honoring explicit mirrors. */
+export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string | undefined): string {
+  const mirror = baseUrl?.trim();
+  // The private fork publishes binaries on the tailnet under the exact version,
+  // not upstream's v<version> release tags. Explicit mirrors still take priority.
+  if (!mirror && /\+owner\.[0-9a-f]+$/.test(version)) {
+    return `${FORK_RELEASE_BASE_URL}/${version}`;
+  }
+  return `${(mirror || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
 }
 
 /** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */

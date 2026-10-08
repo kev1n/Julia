@@ -420,9 +420,18 @@ data dir, label, port 3773 and Tailscale Serve. Because the launcher binary does
 the MacBook's Full Disk Access grant for it keeps applying. It keeps the stock runtime and the
 previous fork runtime on disk.
 
-Fork versions are `<upstream nightly>+owner.<sha>`. Build metadata keeps semver order equal to
-the upstream nightly, so the server never offers itself an "update" to a stock build, and the
-version no longer matches upstream's nightly pattern, so the fork reports the stable channel.
+Fork versions are `<upstream nightly>.owner.<build epoch seconds>+owner.<sha>`. The numeric
+prerelease revision orders fork builds of one nightly; the hash is only artifact identity.
+The existing stock launcher understands this ordering without changing its binary or privacy
+grants. A newer upstream nightly still sorts after every fork build of the previous nightly.
+The fork remains outside upstream's nightly-channel pattern, so it reports the stable channel.
+
+Fork runtime downloads use build-mac's tailnet artifact server and exact-version directories,
+including checksum verification; `T3CODE_RELEASE_BASE_URL` still overrides the source for an
+explicit mirror. The built-in **Update all** can then synchronize older servers with the
+client's fork version. Builds using the old `<upstream nightly>+owner.<sha>` scheme need one
+bootstrap deploy through `pull-deploy.sh` on each Mac, then a relaunch of the updated desktop
+app: their old code cannot fetch fork artifacts or order fork revisions correctly.
 
 ### Rollback (one line per machine)
 
