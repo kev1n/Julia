@@ -2,6 +2,8 @@
 
 T3 Code clients and servers can run on different machines and must share a compatible orchestration protocol. When a server or provider is behind, the sidebar update button and **Settings → Environments** handle updates.
 
+When a server is behind your web or desktop app, choose **Review** in the update notice to see the affected machines and update them. **Update all** starts updates together for connected machines that support remote updates; machines that need a manual update keep their individual instructions.
+
 ## Update everything at once
 
 Click the **Update** button at the bottom of the sidebar (web or desktop) to update outdated providers, behind servers, and the desktop app in one step.
