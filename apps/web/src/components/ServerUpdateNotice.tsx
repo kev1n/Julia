@@ -1,6 +1,5 @@
 import { Toast } from "@base-ui/react/toast";
-import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useEnvironments } from "../state/environments";
 import {
@@ -8,7 +7,13 @@ import {
   dismissVersionMismatch,
   isVersionMismatchDismissed,
   resolveServerConfigVersionMismatch,
+  resolveServerSelfUpdateCapability,
+  supportsDesktopAppUpdate,
 } from "../versionSkew";
+import {
+  ServerUpdateReviewDialog,
+  type ServerUpdateReviewTarget,
+} from "./ServerUpdateReviewDialog";
 import { ToastProvider, type ThreadToastData } from "./ui/toast";
 
 const toastManager = Toast.createToastManager<ThreadToastData>();
@@ -24,27 +29,26 @@ export function ServerUpdateNotice() {
 
 function UpdateNotification() {
   const { environments } = useEnvironments();
-  const navigate = useNavigate();
+  const { add, close, update } = Toast.useToastManager<ThreadToastData>();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewTargets, setReviewTargets] = useState<ReadonlyArray<ServerUpdateReviewTarget>>([]);
   const toastId = useRef<ReturnType<typeof toastManager.add> | null>(null);
   const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const pendingKeys = useMemo(
-    () =>
-      environments.flatMap((environment) => {
-        if (environment.connection.phase !== "connected") return [];
-        const mismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
-        if (!mismatch) return [];
-        const key = buildVersionMismatchDismissalKey(environment.environmentId, mismatch);
-        return dismissedKeys.has(key) || isVersionMismatchDismissed(key) ? [] : [key];
-      }),
-    [environments, dismissedKeys],
-  );
-
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- shows, updates and closes the imperative toast
   useEffect(() => {
-    if (pendingKeys.length === 0) {
+    // Derived here, not in render: updating the toast re-renders this component,
+    // and a fresh key list each render would re-run the effect without end.
+    const pendingKeys = environments.flatMap((environment) => {
+      if (environment.connection.phase !== "connected") return [];
+      const mismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
+      if (!mismatch) return [];
+      const key = buildVersionMismatchDismissalKey(environment.environmentId, mismatch);
+      return dismissedKeys.has(key) || isVersionMismatchDismissed(key) ? [] : [key];
+    });
+    if (pendingKeys.length === 0 || reviewOpen) {
       const previousId = toastId.current;
       toastId.current = null;
-      if (previousId !== null) toastManager.close(previousId);
+      if (previousId !== null) close(previousId);
       return;
     }
 
@@ -62,27 +66,54 @@ function UpdateNotification() {
       onClose: dismiss,
       actionProps: {
         children: "Review",
-        onClick: () => void navigate({ to: "/settings/connections" }),
+        onClick: () => {
+          setReviewTargets(
+            environments.flatMap((environment): ServerUpdateReviewTarget[] => {
+              if (environment.connection.phase !== "connected") return [];
+              const mismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
+              if (!mismatch) return [];
+              return [
+                {
+                  environmentId: environment.environmentId,
+                  serverLabel: environment.label,
+                  serverVersion: mismatch.serverVersion,
+                  targetVersion: mismatch.clientVersion,
+                  selfUpdate: resolveServerSelfUpdateCapability(environment.serverConfig),
+                  installation:
+                    environment.serverConfig?.environment.capabilities.serverInstallation,
+                  desktopAppUpdate: supportsDesktopAppUpdate(environment.serverConfig),
+                },
+              ];
+            }),
+          );
+          setReviewOpen(true);
+        },
       },
       data: { onClose: dismiss },
     };
     if (id === null) {
-      id = toastManager.add(options);
+      id = add(options);
       toastId.current = id;
     } else {
-      toastManager.update(id, options);
+      update(id, options);
     }
-  }, [pendingKeys, navigate]);
+  }, [dismissedKeys, environments, reviewOpen, add, close, update]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the imperative toast when the notice unmounts
   useEffect(
     () => () => {
       const id = toastId.current;
       toastId.current = null;
-      if (id !== null) toastManager.close(id);
+      if (id !== null) close(id);
     },
-    [],
+    [close],
   );
 
-  return null;
+  return (
+    <ServerUpdateReviewDialog
+      open={reviewOpen}
+      onOpenChange={setReviewOpen}
+      targets={reviewTargets}
+    />
+  );
 }
