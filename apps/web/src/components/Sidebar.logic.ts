@@ -194,10 +194,23 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 
 export type SidebarListItem =
   | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
+  | {
+      readonly kind: "project";
+      readonly key: string;
+      readonly projectKey: string;
+      readonly section: SidebarSection;
+      readonly expanded: boolean;
+      readonly threadCount: number;
+      readonly visible: boolean;
+    }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
 
+export function sidebarProjectHeaderId(section: SidebarSection, projectKey: string): string {
+  return `sidebar-project-${section}-${projectKey}`;
+}
+
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
+  return item.kind === "marker" ? sidebarMarkerId(item.marker) : item.key;
 }
 
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
@@ -243,8 +256,10 @@ export function resolveSidebarDropTarget(
         item.marker === "settled-header"
       )
         break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
-    else activeOrder.push(item.key);
+    } else if (item.kind === "thread") {
+      if (currentSection === "pinned") pinnedOrder.push(item.key);
+      else activeOrder.push(item.key);
+    }
   }
   return { section, pinnedOrder, activeOrder };
 }

@@ -21,6 +21,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
+  hiddenProjectKeys?: string[];
   threadLastVisitedAtById?: Record<string, string>;
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
@@ -36,6 +37,8 @@ export interface PersistedUiState {
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
+  // Logical project keys the user hid from the sidebar.
+  hiddenProjectKeys: string[];
   sidebarProjectScopeKeys: string[];
 }
 
@@ -58,6 +61,7 @@ export interface UiState
 const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
+  hiddenProjectKeys: [],
   sidebarProjectScopeKeys: [],
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
@@ -145,6 +149,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
   return {
     projectExpandedById,
     projectOrder,
+    hiddenProjectKeys: sanitizeStringArray(parsed.hiddenProjectKeys),
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
     threadChangedFilesExpandedById:
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
@@ -225,6 +230,7 @@ export function persistState(state: UiState): void {
       JSON.stringify({
         projectExpandedById,
         projectOrder: state.projectOrder,
+        hiddenProjectKeys: state.hiddenProjectKeys,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKeys: state.sidebarProjectScopeKeys,
@@ -441,6 +447,8 @@ interface UiStateStore extends UiState {
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
   ) => void;
+  setProjectOrder: (projectOrder: readonly string[]) => void;
+  setProjectHidden: (projectKey: string, hidden: boolean) => void;
 }
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
@@ -462,6 +470,13 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) =>
       reorderProjects(state, currentProjectOrder, draggedProjectIds, targetProjectIds),
     ),
+  setProjectOrder: (projectOrder) => set({ projectOrder: [...projectOrder] }),
+  setProjectHidden: (projectKey, hidden) =>
+    set((state) => ({
+      hiddenProjectKeys: hidden
+        ? [...state.hiddenProjectKeys.filter((key) => key !== projectKey), projectKey]
+        : state.hiddenProjectKeys.filter((key) => key !== projectKey),
+    })),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
