@@ -26,10 +26,19 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsRow } from "./settingsLayout";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { useShareProviderSecret } from "./addProviderEverywhere";
+import { ClaudeSignInEverywherePanel } from "./ClaudeSignInEverywhere";
+import { useEnvironments } from "../../state/environments";
 import { readClaudeSetupToken } from "./addProviderEverywhere.logic";
 import { toastManager } from "../ui/toast";
 
 const ProviderAuthTerminal = lazy(() => import("./ProviderAuthTerminal"));
+
+const EVERYWHERE_METHOD = {
+  id: "everywhere",
+  name: "Sign in on every machine",
+  description:
+    "Signs in separately on this machine and each connected machine, so each keeps its own login and shows the account's email, plan and usage. Opens one sign-in page per machine; paste each page's code back here. Replaces a shared login token.",
+};
 
 export function ProviderAuthenticationSection({
   environmentId,
@@ -59,6 +68,8 @@ export function ProviderAuthenticationSection({
   const pendingRef = useRef(false);
   const terminalQueue = useRef<ProviderAuthRespondInput[]>([]);
   const terminalSending = useRef(false);
+  const [everywhereOpen, setEverywhereOpen] = useState(false);
+  const { environments } = useEnvironments();
   const auth = query.data;
   const interaction = auth?.interaction;
   const active =
@@ -77,30 +88,39 @@ export function ProviderAuthenticationSection({
     !signedIn &&
     (provider.setup?.canAuthenticate === false ||
       (provider.driver === "acpRegistry" && auth?.methods?.length === 0));
-  const accountDescription = active
-    ? auth?.phase === "starting"
-      ? (auth.message ?? "Starting sign-in…")
-      : auth?.phase === "verifying"
-        ? "Checking your account…"
-        : interaction?.type === "terminal"
-          ? "Complete sign-in in the terminal below."
-          : interaction?.type === "credentials"
-            ? "Enter your credentials below."
-            : "Finish signing in in your browser."
-    : signedIn
-      ? "Signed in."
-      : isDiscovering
-        ? "Discovering sign-in methods…"
-        : needsExternalSetup
-          ? "No in-app sign-in advertised. Follow the provider's docs to finish setup."
-          : `Sign in on ${environmentLabel}.`;
+  const accountDescription = everywhereOpen
+    ? "Signing in on every machine."
+    : active
+      ? auth?.phase === "starting"
+        ? (auth.message ?? "Starting sign-in…")
+        : auth?.phase === "verifying"
+          ? "Checking your account…"
+          : interaction?.type === "terminal"
+            ? "Complete sign-in in the terminal below."
+            : interaction?.type === "credentials"
+              ? "Enter your credentials below."
+              : "Finish signing in in your browser."
+      : signedIn
+        ? "Signed in."
+        : isDiscovering
+          ? "Discovering sign-in methods…"
+          : needsExternalSetup
+            ? "No in-app sign-in advertised. Follow the provider's docs to finish setup."
+            : `Sign in on ${environmentLabel}.`;
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
   const defaultMethod =
     provider.driver === "claudeAgent"
       ? auth?.methods?.find((method) => method.id === "claudeai")
       : undefined;
-  const selectedMethod = auth?.methods?.find((method) => method.id === methodId) ?? defaultMethod;
+  // Claude only, and only with another machine to sign in on. Client-side: each
+  // machine runs its ordinary "claudeai" login.
+  const everywhereMethod =
+    provider.driver === "claudeAgent" && environments.length > 1 ? EVERYWHERE_METHOD : undefined;
+  const selectedMethod =
+    (methodId === EVERYWHERE_METHOD.id ? everywhereMethod : undefined) ??
+    auth?.methods?.find((method) => method.id === methodId) ??
+    defaultMethod;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
   const values = draft.id === draftId ? draft.values : {};
   const url =
@@ -203,9 +223,14 @@ export function ProviderAuthenticationSection({
       }
       control={
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {!active && (auth?.methods?.length ?? 0) > 1 ? (
+          {everywhereOpen ? null : !active && (auth?.methods?.length ?? 0) > 1 ? (
             <Select
-              value={auth?.methods?.some((method) => method.id === methodId) ? methodId : ""}
+              value={
+                auth?.methods?.some((method) => method.id === methodId) ||
+                (everywhereMethod && methodId === everywhereMethod.id)
+                  ? methodId
+                  : ""
+              }
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
@@ -214,11 +239,7 @@ export function ProviderAuthenticationSection({
                 aria-label="Sign-in method"
                 className={provider.driver === "claudeAgent" ? "w-72 max-w-full" : "w-44"}
               >
-                <SelectValue>
-                  {auth?.methods?.find((method) => method.id === methodId)?.name ??
-                    defaultMethod?.name ??
-                    "Provider default"}
-                </SelectValue>
+                <SelectValue>{selectedMethod?.name ?? "Provider default"}</SelectValue>
               </SelectTrigger>
               <SelectPopup>
                 <SelectItem value="">{defaultMethod?.name ?? "Provider default"}</SelectItem>
@@ -229,10 +250,13 @@ export function ProviderAuthenticationSection({
                     </SelectItem>
                   ) : null,
                 )}
+                {everywhereMethod ? (
+                  <SelectItem value={everywhereMethod.id}>{everywhereMethod.name}</SelectItem>
+                ) : null}
               </SelectPopup>
             </Select>
           ) : null}
-          {url ? (
+          {url && !everywhereOpen ? (
             <>
               <Button
                 size="sm"
@@ -269,88 +293,102 @@ export function ProviderAuthenticationSection({
               </Tooltip>
             </>
           ) : null}
-          <>
-            {needsExternalSetup && provider.setup?.documentationUrl ? (
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <a href={provider.setup.documentationUrl} target="_blank" rel="noreferrer" />
-                }
-              >
-                Open docs
-              </Button>
-            ) : active && auth?.flowId ? (
-              <Button
-                size="sm"
-                variant="ghost-muted"
-                aria-label="Cancel sign-in"
-                disabled={disabled}
-                onClick={() =>
-                  void run(() =>
-                    cancel({ environmentId, input: { instanceId, flowId: auth.flowId! } }),
-                  )
-                }
-              >
-                Cancel
-              </Button>
-            ) : !active && !needsExternalSetup && provider.setup?.canAuthenticate !== false ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={disabled || !provider.enabled || !provider.installed || !auth}
-                onClick={() =>
-                  void run(() =>
-                    start({
-                      environmentId,
-                      input: {
-                        instanceId,
-                        ...(methodId && auth?.methods?.some((method) => method.id === methodId)
-                          ? { methodId }
-                          : {}),
-                      },
-                    }),
-                  )
-                }
-              >
-                {signedIn
-                  ? "Change account"
-                  : auth?.phase === "failed" || auth?.phase === "cancelled"
-                    ? "Retry sign-in"
-                    : "Sign in"}
-              </Button>
-            ) : null}
-            {!active && signedIn && (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={disabled || !auth}
-                onClick={() => {
-                  void ensureLocalApi()
-                    .dialogs.confirm(
-                      `Sign out of ${provider.displayName ?? provider.driver} on ${environmentLabel}? This stops running threads that share this sign-in. Thread history is kept.`,
+          {everywhereOpen ? null : (
+            <>
+              {needsExternalSetup && provider.setup?.documentationUrl ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  render={
+                    <a href={provider.setup.documentationUrl} target="_blank" rel="noreferrer" />
+                  }
+                >
+                  Open docs
+                </Button>
+              ) : active && auth?.flowId ? (
+                <Button
+                  size="sm"
+                  variant="ghost-muted"
+                  aria-label="Cancel sign-in"
+                  disabled={disabled}
+                  onClick={() =>
+                    void run(() =>
+                      cancel({ environmentId, input: { instanceId, flowId: auth.flowId! } }),
                     )
-                    .then((confirmed) => {
-                      if (confirmed) void run(() => logout(target));
-                    });
-                }}
-              >
-                Sign out
-              </Button>
-            ) : null}
-          </>
+                  }
+                >
+                  Cancel
+                </Button>
+              ) : !active && !needsExternalSetup && provider.setup?.canAuthenticate !== false ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled || !provider.enabled || !provider.installed || !auth}
+                  onClick={() =>
+                    everywhereMethod && methodId === everywhereMethod.id
+                      ? setEverywhereOpen(true)
+                      : void run(() =>
+                          start({
+                            environmentId,
+                            input: {
+                              instanceId,
+                              ...(methodId &&
+                              auth?.methods?.some((method) => method.id === methodId)
+                                ? { methodId }
+                                : {}),
+                            },
+                          }),
+                        )
+                  }
+                >
+                  {signedIn
+                    ? "Change account"
+                    : auth?.phase === "failed" || auth?.phase === "cancelled"
+                      ? "Retry sign-in"
+                      : "Sign in"}
+                </Button>
+              ) : null}
+              {!active &&
+              signedIn &&
+              (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={disabled || !auth}
+                  onClick={() => {
+                    void ensureLocalApi()
+                      .dialogs.confirm(
+                        `Sign out of ${provider.displayName ?? provider.driver} on ${environmentLabel}? This stops running threads that share this sign-in. Thread history is kept.`,
+                      )
+                      .then((confirmed) => {
+                        if (confirmed) void run(() => logout(target));
+                      });
+                  }}
+                >
+                  Sign out
+                </Button>
+              ) : null}
+            </>
+          )}
         </div>
       }
     >
-      {!active && provider.driver === "claudeAgent" && selectedMethod?.description ? (
+      {everywhereOpen ? (
+        <ClaudeSignInEverywherePanel
+          sourceEnvironmentId={environmentId}
+          instanceId={instanceId}
+          onClose={() => setEverywhereOpen(false)}
+        />
+      ) : !active && provider.driver === "claudeAgent" && selectedMethod?.description ? (
         <p className="py-2 text-xs text-muted-foreground">{selectedMethod.description}</p>
       ) : null}
-      {interaction?.type === "terminal" ||
-      interaction?.type === "credentials" ||
-      interaction?.type === "deviceCode" ||
-      (url && (interaction?.type === "browser" ? interaction.acceptsCallback : !interaction)) ||
-      error ||
-      query.error ? (
+      {!everywhereOpen &&
+      (interaction?.type === "terminal" ||
+        interaction?.type === "credentials" ||
+        interaction?.type === "deviceCode" ||
+        (url && (interaction?.type === "browser" ? interaction.acceptsCallback : !interaction)) ||
+        error ||
+        query.error) ? (
         <>
           {interaction?.type === "deviceCode" ? (
             <p className="py-2 text-sm text-muted-foreground">
