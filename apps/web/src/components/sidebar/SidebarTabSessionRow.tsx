@@ -1,9 +1,13 @@
+import { useCallback } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { CheckIcon, PinIcon } from "lucide-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import {
+  animateSidebarLayoutChanges,
   resolveSidebarThreadStatus,
   hasUnseenCompletion,
   resolveThreadLastVisitedAt,
@@ -29,6 +33,21 @@ export function SidebarTabSessionRow(props: {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
+  // Sessions are not draggable as a unit, but must participate in the layout
+  // preview so single-chat drags move their rows and headers together.
+  const { setNodeRef, transform, transition } = useSortable({
+    id: scopedThreadKey(threadRef),
+    disabled: { draggable: true },
+    animateLayoutChanges: animateSidebarLayoutChanges,
+    transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+  });
+  const attachRow = useCallback(
+    (node: HTMLLIElement | null) => {
+      setNodeRef(node);
+      rowRef(node);
+    },
+    [setNodeRef, rowRef],
+  );
   const pr = useLinkedThreadPullRequest(
     session.thread.environmentId,
     session.thread.linkedPullRequest,
@@ -71,7 +90,8 @@ export function SidebarTabSessionRow(props: {
   const time = relativeTime === "just now" ? "now" : relativeTime.replace(/ ago$/, "");
   return (
     <li
-      ref={rowRef}
+      ref={attachRow}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       data-thread-item={scopedThreadKey(threadRef)}
       data-tab-session={session.key}
       className="list-none"
