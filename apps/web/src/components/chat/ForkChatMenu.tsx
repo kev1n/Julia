@@ -36,7 +36,11 @@ export function ForkChatMenu(props: {
         >
           <GitForkIcon aria-hidden className="size-3.5" />
         </TooltipTrigger>
-        <TooltipPopup>{props.label} · conversation without work activity</TooltipPopup>
+        <TooltipPopup>
+          <T>
+            <Var>{props.label}</Var> · conversation without tool results
+          </T>
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup>
         <MenuItem onClick={() => fork("tab")}>
