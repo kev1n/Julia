@@ -121,6 +121,20 @@
               chrome: "oklch(0.225975 0.031062 293.741)",
             },
           },
+          codex: {
+            light: {
+              background: "oklch(1 0 0)",
+              foreground: "oklch(0.159066 0 0)",
+              accent: "oklch(0.532145 0.191511 258.041)",
+              chrome: "oklch(1 0 0)",
+            },
+            dark: {
+              background: "oklch(0.209036 0 0)",
+              foreground: "oklch(0.970151 0 0)",
+              accent: "oklch(0.716226 0.140293 258.072)",
+              chrome: "oklch(0.209036 0 0)",
+            },
+          },
         };
         const BUILT_IN_THEME_MODES = Object.fromEntries(
           Object.entries(BUILT_IN_THEME_PALETTES).map(([id, palettes]) => [
@@ -137,6 +151,7 @@
           "ocean",
           "ember",
           "iris",
+          "codex",
           "t3-chat-dark",
           "t3-grove",
           "t3-ocean",

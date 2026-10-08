@@ -21,7 +21,9 @@ import {
   resolveThemeAppearance,
   serializeThemeFile,
   T3_CHAT_THEME,
+  CODEX_THEME,
   GROVE_THEME,
+  themeAllowsSidebarArtwork,
   updateCustomTheme,
   updateThemeColorFamily,
   CUSTOM_THEMES_STORAGE_KEY,
@@ -60,6 +62,20 @@ function contrastRatio(first: string, second: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function compositeThemeColor(foreground: string, background: string, opacity: number): string {
+  const channels = [foreground, background].map((value) => {
+    const hex = asHex(value).slice(1);
+    return [0, 1, 2].map((channel) => Number.parseInt(hex.slice(channel * 2, channel * 2 + 2), 16));
+  });
+  return `#${channels[0]!
+    .map((channel, index) =>
+      Math.round(channel * opacity + channels[1]![index]! * (1 - opacity))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
 describe("theme files", () => {
   it("keeps built-in and standard search pairs readable and distinct from inline code", () => {
     const toOklab = converter("oklab");
@@ -87,6 +103,67 @@ describe("theme files", () => {
         expect(distance(colors.searchMatchBackground, background)).toBeGreaterThan(0.08);
         expect(distance(colors.searchMatchActiveBackground, background)).toBeGreaterThan(0.08);
       }
+    }
+  });
+
+  it("keeps Codex labels readable on raised surfaces and selected sidebar rows", () => {
+    expect(themeAllowsSidebarArtwork(CODEX_THEME.id)).toBe(false);
+    for (const mode of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(CODEX_THEME, mode)!;
+      for (const foreground of ["textMuted", "placeholder", "secondaryLabel"] as const) {
+        for (const background of [
+          "canvas",
+          "surface",
+          "surfaceRaised",
+          "surfaceOverlay",
+          "secondary",
+          "messageSurface",
+          "accentSurface",
+        ] as const) {
+          expect(
+            contrastRatio(colors[foreground], colors[background]),
+            `${mode}: ${foreground} on ${background}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      for (const background of [
+        "sidebar",
+        "sidebarControlSurface",
+        "sidebarRowHover",
+        "sidebarRowActive",
+        "sidebarRowSelected",
+      ] as const) {
+        expect(
+          contrastRatio(colors.sidebarMutedForeground, colors[background]),
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          contrastRatio(
+            compositeThemeColor(colors.sidebarMutedForeground, colors[background], 0.8),
+            colors[background],
+          ),
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(
+        contrastRatio(
+          compositeThemeColor(colors.sidebarMutedForeground, colors.sidebar, 0.6),
+          colors.sidebar,
+        ),
+      ).toBeGreaterThanOrEqual(3);
+      for (const background of ["canvas", "surface", "surfaceRaised"] as const) {
+        expect(
+          contrastRatio(
+            compositeThemeColor(colors.mutedForeground, colors[background], 0.7),
+            colors[background],
+          ),
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          contrastRatio(
+            compositeThemeColor(colors.placeholder, colors[background], 0.75),
+            colors[background],
+          ),
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(contrastRatio(colors.focus, colors.surfaceRaised)).toBeGreaterThanOrEqual(3);
     }
   });
 
