@@ -1,8 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckIcon, PinIcon } from "lucide-react";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { AlarmClockOffIcon, CheckIcon, PinIcon, Undo2Icon } from "lucide-react";
+import { AuthOrchestrationOperateScope, type ScopedThreadRef } from "@t3tools/contracts";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -20,6 +20,7 @@ import { useUiStateStore } from "../../uiStateStore";
 import type { WorkspaceChatSession } from "../chat/workspaceChatTabs.logic";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+import { useEnvironmentScope } from "../../state/session";
 
 /** Session actions select a chat; lifecycle actions still target that chat,
  * never silently settle, rename or delete the other tabs in its workspace. */
@@ -29,9 +30,25 @@ export function SidebarTabSessionRow(props: {
   jumpLabel: string | null;
   onNavigate: (thread: ScopedThreadRef) => void;
   onContextMenu: (thread: ScopedThreadRef, position: { x: number; y: number }) => void;
+  primaryAction: {
+    kind: "settle" | "unsettle" | "unsnooze";
+    onSelect: (thread: ScopedThreadRef) => void;
+  } | null;
 }) {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
+  const canOperateThread = useEnvironmentScope(
+    session.thread.environmentId,
+    AuthOrchestrationOperateScope,
+  );
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const primaryAction = canOperateThread ? props.primaryAction : null;
+  const actionLabel =
+    primaryAction?.kind === "unsnooze"
+      ? "Wake thread now"
+      : primaryAction?.kind === "unsettle"
+        ? "Un-settle thread"
+        : "Settle thread";
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   // Sessions are not draggable as a unit, but must participate in the layout
   // preview so single-chat drags move their rows and headers together.
@@ -153,41 +170,71 @@ export function SidebarTabSessionRow(props: {
             {session.title} · {session.chats.length} chat tabs
           </TooltipPopup>
         </Tooltip>
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Chat tabs in ${session.title}`}
-                className="mr-1 flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            }
-          >
-            {session.chats.length}
-          </MenuTrigger>
-          <MenuPopup side="right" align="start">
-            {session.chats.map((chat) => (
-              <MenuItem
-                key={chat.id}
-                onClick={() => props.onNavigate(scopeThreadRef(chat.environmentId, chat.id))}
-              >
-                <CheckIcon
-                  aria-hidden
-                  className={cn("size-3.5", chat.id !== session.thread.id && "invisible")}
+        <span className="relative mr-1 flex h-7 min-w-7 shrink-0 items-center justify-end">
+          <Menu open={tabMenuOpen} onOpenChange={setTabMenuOpen}>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Chat tabs in ${session.title}`}
+                  className={cn(
+                    "peer flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground transition-opacity hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    primaryAction !== null &&
+                      !tabMenuOpen &&
+                      "not-focus-visible:group-any-hover/session:pointer-events-none not-focus-visible:group-any-hover/session:opacity-0",
+                  )}
                 />
-                {chat.title}
-              </MenuItem>
-            ))}
-            <MenuSeparator />
-            <MenuItem
-              onClick={(event) =>
-                props.onContextMenu(threadRef, { x: event.clientX, y: event.clientY })
               }
             >
-              Current chat actions
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
+              {session.chats.length}
+            </MenuTrigger>
+            <MenuPopup side="right" align="start">
+              {session.chats.map((chat) => (
+                <MenuItem
+                  key={chat.id}
+                  onClick={() => props.onNavigate(scopeThreadRef(chat.environmentId, chat.id))}
+                >
+                  <CheckIcon
+                    aria-hidden
+                    className={cn("size-3.5", chat.id !== session.thread.id && "invisible")}
+                  />
+                  {chat.title}
+                </MenuItem>
+              ))}
+              <MenuSeparator />
+              <MenuItem
+                onClick={(event) =>
+                  props.onContextMenu(threadRef, { x: event.clientX, y: event.clientY })
+                }
+              >
+                Current chat actions
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+          {primaryAction !== null && !tabMenuOpen ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={actionLabel}
+                    onClick={() => primaryAction.onSelect(threadRef)}
+                    className="pointer-events-none absolute inset-0 inline-flex cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/session:pointer-events-auto group-any-hover/session:opacity-100 peer-focus-visible:pointer-events-none peer-focus-visible:opacity-0"
+                  />
+                }
+              >
+                {primaryAction.kind === "unsnooze" ? (
+                  <AlarmClockOffIcon aria-hidden className="size-3" />
+                ) : primaryAction.kind === "unsettle" ? (
+                  <Undo2Icon aria-hidden className="size-3.5" />
+                ) : (
+                  <CheckIcon aria-hidden className="size-3" />
+                )}
+              </TooltipTrigger>
+              <TooltipPopup>{actionLabel}</TooltipPopup>
+            </Tooltip>
+          ) : null}
+        </span>
       </div>
     </li>
   );
