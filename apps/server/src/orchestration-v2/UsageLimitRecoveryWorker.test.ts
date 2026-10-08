@@ -8,6 +8,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -39,6 +40,7 @@ it.effect("idle sweeps skip SQL until the next wake time or a relevant event", (
               ),
           }),
           Layer.mock(ThreadManagement.ThreadManagementService)({}),
+          Layer.mock(ProviderRegistry)({}),
           Layer.mock(Orchestrator.OrchestratorV2)({
             streamDomainEvents: Stream.fromQueue(events),
           }),
