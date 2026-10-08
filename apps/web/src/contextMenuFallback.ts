@@ -36,6 +36,22 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "rect", attrs: { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" } },
     { tag: "path", attrs: { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" } },
   ],
+  "eye-off": [
+    {
+      tag: "path",
+      attrs: {
+        d: "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
+      },
+    },
+    { tag: "path", attrs: { d: "M14.084 14.158a3 3 0 0 1-4.242-4.242" } },
+    {
+      tag: "path",
+      attrs: {
+        d: "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
+      },
+    },
+    { tag: "path", attrs: { d: "m2 2 20 20" } },
+  ],
   folder: [
     {
       tag: "path",
@@ -239,6 +255,7 @@ export function dismissContextMenu(restoreFocus = true): void {
   activeContextMenuDismiss = null;
 }
 
+/** Imperative DOM-based context menu, used on every surface including desktop. */
 export function showContextMenuFallback<T extends string>(
   items: readonly ContextMenuItem<T>[],
   position?: { x: number; y: number },
@@ -389,7 +406,7 @@ export function showContextMenuFallback<T extends string>(
       menu.className =
         "dropdown-glass fixed z-[10000] min-w-32 max-w-sm overflow-hidden rounded-lg bg-clip-padding text-popover-foreground outline-none";
       menu.style.cssText =
-        "position:fixed;z-index:10000;min-width:8rem;max-width:24rem;overflow:hidden;border-radius:var(--radius-lg);background-clip:padding-box;color:var(--contrast-popover-foreground);outline:none;pointer-events:auto;";
+        "position:fixed;z-index:10000;min-width:8rem;max-width:24rem;overflow:hidden;border-radius:var(--radius-lg);background-clip:padding-box;color:var(--contrast-popover-foreground);outline:none;pointer-events:auto;-webkit-app-region:no-drag;";
       menu.style.left = `${preferredLeft}px`;
       menu.style.top = `${preferredTop}px`;
       menu.dataset.level = String(level);
@@ -403,6 +420,13 @@ export function showContextMenuFallback<T extends string>(
         "max-h-[calc(100vh-0.5rem)] min-w-0 max-w-sm overflow-y-auto overflow-x-hidden p-1";
       inner.style.cssText =
         "max-height:calc(100vh - 0.5rem);min-width:0;max-width:24rem;overflow-x:hidden;overflow-y:auto;padding:0.25rem;";
+
+      const reserveIconSlot = entries.some(
+        (entry) =>
+          entry.header !== true &&
+          (typeof entry.checked === "boolean" ||
+            (typeof entry.icon === "string" && entry.icon in ICON_PATHS)),
+      );
 
       for (const item of entries) {
         if (item.separatorBefore === true && inner.children.length > 0) {
@@ -452,24 +476,24 @@ export function showContextMenuFallback<T extends string>(
           button.style.pointerEvents = "none";
         }
 
+        // Rows without an icon keep the slot empty when any sibling has one,
+        // so labels in a mixed menu line up.
+        let leading: Element | null = null;
         if (typeof item.checked === "boolean") {
           button.setAttribute("role", "menuitemradio");
           button.setAttribute("aria-checked", item.checked ? "true" : "false");
-          const check = item.checked ? createIconElement("check", "neutral") : null;
-          if (check) {
-            button.appendChild(check);
-          } else {
-            const spacer = document.createElement("span");
-            spacer.className = "size-4.5 shrink-0 sm:size-4";
-            spacer.style.cssText = "display:inline-block;width:1rem;height:1rem;flex-shrink:0;";
-            spacer.setAttribute("aria-hidden", "true");
-            button.appendChild(spacer);
-          }
+          leading = item.checked ? createIconElement("check", "neutral") : null;
         } else if (typeof item.icon === "string") {
-          const icon = createIconElement(item.icon, isLeafDestructive ? "destructive" : "neutral");
-          if (icon) {
-            button.appendChild(icon);
-          }
+          leading = createIconElement(item.icon, isLeafDestructive ? "destructive" : "neutral");
+        }
+        if (leading) {
+          button.appendChild(leading);
+        } else if (reserveIconSlot) {
+          const spacer = document.createElement("span");
+          spacer.className = "size-4.5 shrink-0 sm:size-4";
+          spacer.style.cssText = "display:inline-block;width:1rem;height:1rem;flex-shrink:0;";
+          spacer.setAttribute("aria-hidden", "true");
+          button.appendChild(spacer);
         }
 
         const label = document.createElement("span");

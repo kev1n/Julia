@@ -39,21 +39,15 @@ export function createLocalApi(): LocalApi {
         }
       },
     },
+    // Context menus render in the DOM on every surface, including desktop, so
+    // they match the app's design language instead of the OS menu.
     contextMenu: {
       show: async <T extends string>(
         items: readonly ContextMenuItem<T>[],
         position?: { x: number; y: number },
-      ): Promise<T | null> => {
-        if (window.desktopBridge) {
-          return window.desktopBridge.showContextMenu(items, position) as Promise<T | null>;
-        }
-        return showContextMenuFallback(items, position);
-      },
-      // Unlike native menus, the DOM fallback needs dismissal when underlying state disappears.
+      ): Promise<T | null> => showContextMenuFallback(items, position),
       close: async () => {
-        if (!window.desktopBridge) {
-          dismissContextMenu();
-        }
+        dismissContextMenu();
       },
     },
     persistence: {
