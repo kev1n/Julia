@@ -1,5 +1,6 @@
 import {
   type EnvironmentThreadShell,
+  limitContinuedElsewhere,
   type PendingSubagentRequest,
   presentThreadShell,
 } from "@t3tools/client-runtime/state/models";
@@ -54,7 +55,11 @@ interface WatchedEnvironment {
   previous: Map<ThreadId, NotificationState>;
   reconnecting: boolean;
   readonly gate: ReturnType<typeof createThreadNotificationGate<ThreadId>>;
+  readonly limitAlertTimers: Set<ReturnType<typeof setTimeout>>;
 }
+
+// Longer than one usage-limit recovery sweep (5 s) plus the fork it dispatches.
+const LIMIT_ALERT_GRACE_MS = 12_000;
 
 /**
  * Turns thread status transitions in every connected environment into sounds, in-app toasts,
@@ -264,7 +269,12 @@ export function startThreadNotifications(
       }
       const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
       let status = resolveSidebarThreadStatus(thread);
-      if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
+      if (
+        status === "ready" &&
+        thread.latestRun?.status === "failed" &&
+        !limitContinuedElsewhere(rawThread)
+      )
+        status = "failed";
       const needsAttention =
         status === "input" ||
         status === "request" ||
@@ -313,9 +323,23 @@ export function startThreadNotifications(
       previous: new Map(),
       reconnecting: false,
       unsubscribe: () => {},
+      limitAlertTimers: new Set(),
       gate: createThreadNotificationGate<ThreadId>((threadId, kind) => {
         const state = entry.previous.get(threadId);
-        if (state) present(environmentId, state, kind);
+        if (!state) return;
+        // Fork (Owner): limit failover's sweep may still move this thread to
+        // another account, so alert only if it is still Limited after a grace.
+        if (kind === "input" && state.status === "limited") {
+          const timer = setTimeout(() => {
+            entry.limitAlertTimers.delete(timer);
+            if (entry.previous.get(threadId)?.attention === state.attention) {
+              present(environmentId, state, kind);
+            }
+          }, LIMIT_ALERT_GRACE_MS);
+          entry.limitAlertTimers.add(timer);
+          return;
+        }
+        present(environmentId, state, kind);
       }),
     };
     let threads: ReadonlyArray<OrchestrationV2ThreadShell> | null = null;
@@ -351,6 +375,8 @@ export function startThreadNotifications(
       unsubscribeRequests();
       unsubscribeDelegated();
       entry.gate.clear();
+      for (const timer of entry.limitAlertTimers) clearTimeout(timer);
+      entry.limitAlertTimers.clear();
     };
     return entry;
   };
