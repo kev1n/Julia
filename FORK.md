@@ -374,7 +374,7 @@ build-mac 05:00  com.example.t3code-fork.sync    fork/scripts/sync.sh
                 lint of every file the fork touches, fork tests + tests beside touched files)
              -> fork/scripts/build.sh (server runtime archive + T3 Code (Owner).app)
              -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
-             any of these fails -> fork/scripts/autofix.sh: a Claude chat on build-mac fixes it,
+             any of these fails -> fork/scripts/autofix.sh: an agent chat on build-mac fixes it,
                 then the same checks and builds run again (see "When the sync fails")
              -> push owner, GitHub release owner-<version>-<sha> on owner/t3code
                 (VERSION, SHA256SUMS, install scripts)
@@ -401,8 +401,9 @@ the tailnet from build-mac, not through GitHub: uploading them from build-mac fa
 three on 2026-10-06 (broken pipe and TLS errors on 80-150 MB uploads).
 
 **When the sync fails** (a rebase conflict, or a failed check, desktop build or phone build),
-`fork/scripts/autofix.sh` hands it to a Claude chat in T3 Code on build-mac (Claude owner,
-Opus, full access), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
+`fork/scripts/autofix.sh` hands it to an agent chat in T3 Code on build-mac (full access; Opus
+on the Claude account Auto would pick, or GPT-6.1 on the Codex account Auto would pick when
+every Claude account is limited, `apps/server/src/fork/autofixAccount.ts`), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
 under the project `t3code-fork` on build-mac. The chat works in the git worktree
 `~/t3-fork/autofix/<stamp>/worktree` (branch `autofix/<stamp>`, started at origin/owner): it
 rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
