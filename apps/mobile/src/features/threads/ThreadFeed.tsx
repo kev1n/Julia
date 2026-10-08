@@ -398,7 +398,7 @@ function AssistantForkButton(props: {
   const selectDetail = useSelectWorkspaceDetail();
   const [busy, setBusy] = useState(false);
   const canFork = canForkProjectedAssistantItem({
-    contextMode: "final_messages",
+    contextMode: "without_tool_results",
     projectedItem: props.projectedItem,
     capabilities: support.providerSession?.capabilities,
   });
@@ -423,7 +423,7 @@ function AssistantForkButton(props: {
             runId,
             title: `${props.sourceTitle} fork`,
             creationSource: "mobile",
-            contextMode: "final_messages",
+            contextMode: "without_tool_results",
             destination: "thread",
           },
         })

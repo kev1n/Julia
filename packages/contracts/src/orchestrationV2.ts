@@ -483,7 +483,9 @@ export const OrchestrationV2AppThread = Schema.Struct({
         type: Schema.Literal("run"),
         threadId: ThreadId,
         runId: RunId,
-        contextMode: Schema.optional(Schema.Literals(["full", "final_messages"])),
+        contextMode: Schema.optional(
+          Schema.Literals(["full", "final_messages", "without_tool_results"]),
+        ),
       }),
       Schema.Struct({ type: Schema.Literal("node"), nodeId: NodeId }),
       Schema.Struct({
@@ -3382,7 +3384,9 @@ export const OrchestrationV2Command = Schema.Union([
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
     title: Schema.optional(TrimmedNonEmptyString),
     sideChat: Schema.optional(Schema.Boolean),
-    contextMode: Schema.optional(Schema.Literals(["full", "final_messages"])),
+    contextMode: Schema.optional(
+      Schema.Literals(["full", "final_messages", "without_tool_results"]),
+    ),
     destination: Schema.optional(Schema.Literals(["tab", "thread"])),
     chatGroupId: Schema.optional(Schema.NullOr(ThreadId)),
     createdAt: Schema.optional(Schema.DateTimeUtc),

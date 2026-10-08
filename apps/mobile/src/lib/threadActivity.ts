@@ -1186,12 +1186,23 @@ function deriveThreadFeedRunFolds(
     const visibleCompactionId = group.entries.findLast(
       (entry) => entry.type === "activity-group" && isContextCompactionActivityGroup(entry),
     )?.id;
+    const terminalIndex = group.entries.findIndex((entry) => entry.id === terminalAssistantId);
+    let lastWorkBeforeReply = -1;
+    for (let index = 0; index < terminalIndex; index++) {
+      if (group.entries[index]?.type !== "message") lastWorkBeforeReply = index;
+    }
     const hiddenEntryIds = new Set(
       group.entries
         .filter(
-          (entry) =>
+          (entry, index) =>
             entry.id !== terminalAssistantId &&
             !(entry.type === "message" && retainedAnswerIds.has(entry.message.id)) &&
+            !(
+              entry.type === "message" &&
+              entry.message.visibility === "inherited" &&
+              index > lastWorkBeforeReply &&
+              index < terminalIndex
+            ) &&
             entry.type !== "html-render" &&
             entry.type !== "mcp-app" &&
             entry.id !== visibleCompactionId &&
@@ -1218,7 +1229,6 @@ function deriveThreadFeedRunFolds(
     const hidesNonCompactionWork = group.entries.some(
       (entry) =>
         hiddenEntryIds.has(entry.id) &&
-        entry.type !== "message" &&
         !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)),
     );
     if (!hidesNonCompactionWork) continue;

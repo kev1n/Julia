@@ -109,7 +109,7 @@ function AssistantForkButton({
     sourceItemId: projectedItem.sourceItemId,
   });
   const canFork = canForkProjectedAssistantItem({
-    contextMode: "final_messages",
+    contextMode: "without_tool_results",
     projectedItem,
     capabilities: support.providerSession?.capabilities,
   });

@@ -200,7 +200,7 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
 export function canForkProjectedAssistantItem(input: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly capabilities?: OrchestrationV2ProviderCapabilities | undefined;
-  readonly contextMode?: "full" | "final_messages";
+  readonly contextMode?: "full" | "final_messages" | "without_tool_results";
 }): boolean {
   const item = input.projectedItem.item;
   if (item.type !== "assistant_message" || item.runId === null || item.status !== "completed") {
@@ -213,7 +213,8 @@ export function canForkProjectedAssistantItem(input: {
     return true;
   }
   const capabilities = input.capabilities;
-  if (input.contextMode === "final_messages") return capabilities.context.supportsFullThreadHandoff;
+  if (input.contextMode !== undefined && input.contextMode !== "full")
+    return capabilities.context.supportsFullThreadHandoff;
   const canForkNatively =
     capabilities.threads.canForkThread &&
     capabilities.threads.canForkFromTurn &&

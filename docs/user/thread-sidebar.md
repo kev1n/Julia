@@ -32,12 +32,15 @@ conversation. **New chat in this workspace** keeps that directory and branch.
 Closing a tab does not delete, archive, or stop its thread; reopen it from the tab
 menu or sidebar.
 
-Use **Fork chat with final replies only**, or the fork action on a finished
-response, to continue in a new conversation with your user messages and the last
-finished agent reply from each turn. Reasoning, tool activity, and intermediate
-updates stay in the original thread. The fork shares the workspace but starts a
-fresh provider session. Mobile's response-fork action carries the same compact
-history. Portable context limits still apply; see [Context in portable handoffs](./portable-handoffs.md).
+Use **Fork chat**, or the fork action on a finished response, then choose
+**Fork to new tab** to keep it in the current chat group or **Fork to new thread**
+to give it a separate sidebar entry. Both keep your prompts, complete agent
+replies, progress updates, and tool names and inputs through the fork point.
+Reasoning, tool results, command output, diffs, and tool screenshots stay in the
+original thread. The fork shares the workspace but starts a fresh provider
+session. Mobile's response-fork action creates a separate thread with the same
+filtered history. Portable context limits still apply; see
+[Context in portable handoffs](./portable-handoffs.md).
 
 ### Start without a project
 
