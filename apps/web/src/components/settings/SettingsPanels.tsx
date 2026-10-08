@@ -2587,7 +2587,7 @@ export function AboutSettingsPanel() {
           description={
             telemetryOff === undefined
               ? gt(
-                  "How we handle your data, including the pseudonymous product usage data T3 Code collects.",
+                  "How we handle your data, including the pseudonymous product usage data Julia collects.",
                 )
               : gt("How we handle your data. {telemetryOff}", { telemetryOff })
           }
@@ -2603,7 +2603,7 @@ export function AboutSettingsPanel() {
         />
         <SettingsRow
           {...setting("open-source-licenses")}
-          description={gt("Notices for dependencies, assets, and optional tools used by T3 Code.")}
+          description={gt("Notices for dependencies, assets, and optional tools used by Julia.")}
           control={
             <Button
               render={<Link to="/settings/open-source-licenses" />}
