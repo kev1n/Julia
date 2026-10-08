@@ -10,6 +10,7 @@ import {
   resolveSidebarDropTarget,
   sidebarListItemId,
   sidebarMarkerId,
+  sidebarProjectHeaderId,
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
@@ -21,6 +22,21 @@ const thread = (key: string, section: SidebarSection): SidebarListItem => ({
   section,
 });
 const marker = (marker: SidebarListMarker): SidebarListItem => ({ kind: "marker", marker });
+const project = (
+  projectKey: string,
+  section: SidebarSection,
+  threadCount: number,
+  expanded = true,
+): SidebarListItem => ({
+  kind: "project",
+  key: sidebarProjectHeaderId(section, projectKey),
+  projectKey,
+  section,
+  expanded,
+  threadCount,
+  visible: section === "active" || threadCount > 0,
+});
+
 const pinnedHeader = marker("pinned-header");
 const divider = marker("pinned-divider");
 const settledHeader = marker("settled-header");
@@ -38,9 +54,11 @@ function layout(
     const height =
       item.kind === "thread"
         ? (item.section === "pinned" || item.section === "active" ? cardHeight : 36) * scale
-        : item.marker === "pinned-header" || item.marker === "pinned-divider"
-          ? 0
-          : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
+        : item.kind === "project"
+          ? (item.visible ? 48 : 0) * scale
+          : item.marker === "pinned-header" || item.marker === "pinned-divider"
+            ? 0
+            : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
     const rect = { top, height, bottom: top + height, left: 0, right: 260, width: 260 };
     top += height + 1;
     return rect;
@@ -295,6 +313,103 @@ describe("sidebar drag projection", () => {
     settledHeader,
     thread("s1", "settled"),
   ];
+
+  it("closes the source gap and moves each project header with its rows during a transfer", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      project("A", "active", 2),
+      thread("a1", "active"),
+      thread("a2", "active"),
+      project("B", "active", 1),
+      thread("b1", "active"),
+      settledHeader,
+      project("A", "settled", 1),
+      thread("s1", "settled"),
+      project("B", "settled", 1),
+      thread("s2", "settled"),
+    ];
+    const strategy = createSidebarSortingStrategy({
+      items,
+      // Time ordering interleaves projects, but the preview must keep their rows grouped.
+      settledOrder: ["s2", "a1", "s1"],
+      settledExpanded: true,
+    });
+    const args = layout(items, "a1", sidebarMarkerId("settled-header"), 1, 36);
+    const at = (key: string) =>
+      strategy({ ...args, index: items.findIndex((item) => sidebarListItemId(item) === key) });
+    expect(at("a2")).toEqual({ ...stationary, y: -37 });
+    expect(at(sidebarProjectHeaderId("active", "B"))).toEqual({ ...stationary, y: -37 });
+    expect(at("b1")).toEqual({ ...stationary, y: -37 });
+    expect(at(sidebarProjectHeaderId("settled", "A"))).toEqual({ ...stationary, y: -37 });
+    expect(at("s1")).toEqual(stationary);
+    expect(at(sidebarProjectHeaderId("settled", "B"))).toEqual(stationary);
+    expect(at("s2")).toEqual(stationary);
+  });
+
+  it.each(["active", "pinned"] as const)(
+    "previews %s reorder without shifting another project's header",
+    (section) => {
+      const items = [
+        pinnedHeader,
+        ...(section === "active" ? [divider] : []),
+        project("A", section, 2),
+        thread("a1", section),
+        thread("a2", section),
+        project("B", section, 1),
+        thread("b1", section),
+        ...(section === "pinned" ? [divider] : []),
+        settledHeader,
+      ];
+      const strategy = createSidebarSortingStrategy({
+        items,
+        settledOrder: [],
+        settledExpanded: false,
+      });
+      const args = layout(items, "a1", "a2", 1, 36);
+      const at = (key: string) =>
+        strategy({ ...args, index: items.findIndex((item) => sidebarListItemId(item) === key) });
+      expect(at("a2")).toEqual({ ...stationary, y: -37 });
+      expect(at(sidebarProjectHeaderId(section, "B"))).toEqual(stationary);
+      expect(at("b1")).toEqual(stationary);
+    },
+  );
+
+  it("reveals a new destination project and removes an emptied pinned project", () => {
+    const items = [
+      pinnedHeader,
+      project("A", "pinned", 1),
+      thread("a", "pinned"),
+      divider,
+      project("A", "active", 0),
+      settledHeader,
+      project("A", "settled", 0),
+    ];
+    const result = preview(
+      { items, settledOrder: ["a"], settledExpanded: true },
+      "a",
+      sidebarMarkerId("settled-header"),
+    );
+    expect(result.get(sidebarProjectHeaderId("pinned", "A"))?.scaleY).toBe(0);
+    expect(result.get(sidebarProjectHeaderId("settled", "A"))?.scaleY).toBe(1);
+  });
+
+  it("does not expand a collapsed settled shelf just to preview a drop", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      project("A", "active", 1),
+      thread("a", "active"),
+      settledHeader,
+      project("A", "settled", 0),
+    ];
+    const result = preview(
+      { items, settledOrder: ["a"], settledExpanded: false },
+      "a",
+      sidebarMarkerId("settled-header"),
+    );
+    expect(result.get(sidebarProjectHeaderId("settled", "A"))?.scaleY).toBe(0);
+  });
 
   it("keeps the pinned header above the gap when a lower pin moves to the top", () => {
     const result = preview(
