@@ -1192,7 +1192,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         <Text
           className={cn(
             "flex-1 text-base",
-            isUnread ? "font-t3-bold" : status !== "ready" && "font-t3-medium",
+            // Unread completions stand out; background work recedes to regular weight, matching web.
+            isUnread ? "font-t3-bold" : !recede && "font-t3-medium",
             selected
               ? selectedThreadRowColors.foregroundClassName
               : status === "ready" && !isUnread
