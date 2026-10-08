@@ -1,6 +1,6 @@
 import { useDndContext } from "@dnd-kit/core";
 import type { SortingStrategy } from "@dnd-kit/sortable";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { resolveSidebarDropTarget, sidebarListItemId, type SidebarListItem } from "./Sidebar.logic";
 
 /** The same projection positions both neighbours and the destination outline.
@@ -8,7 +8,7 @@ import { resolveSidebarDropTarget, sidebarListItemId, type SidebarListItem } fro
 export function SidebarDropSlot(props: {
   items: readonly SidebarListItem[];
   strategy: SortingStrategy;
-  label: string;
+  children: ReactNode;
   disabled: boolean;
 }) {
   const { active, over, droppableRects, droppableContainers } = useDndContext();
@@ -61,12 +61,13 @@ export function SidebarDropSlot(props: {
     <li
       ref={nodeRef}
       aria-hidden
+      inert
       data-thread-selection-safe
       data-testid="sidebar-drop-slot"
-      className="sidebar-drop-slot pointer-events-none absolute z-10 flex items-center gap-2 rounded-md border border-dashed border-primary/70 bg-primary/5 px-3 text-xs text-primary"
+      className="sidebar-drop-slot pointer-events-none absolute z-10 rounded-md outline-1 -outline-offset-1 outline-dashed outline-primary/70"
       style={{ top: 0, visibility: "hidden" }}
     >
-      <span className="truncate">{props.label}</span>
+      <ul role="presentation">{props.children}</ul>
     </li>
   );
 }
