@@ -60,7 +60,7 @@ export interface ThreadForkServiceV2Shape {
     readonly targetThreadId: ThreadId;
     readonly title?: string;
     readonly sideChat?: boolean;
-    readonly contextMode?: "full" | "final_messages";
+    readonly contextMode?: "full" | "final_messages" | "without_tool_results";
     readonly destination?: "tab" | "thread";
     readonly chatGroupId?: ThreadId | null;
     readonly createdBy: OrchestrationV2Actor;
