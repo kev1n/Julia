@@ -7,6 +7,7 @@ import {
   ProviderThreadId,
   RunId,
   RuntimeRequestId,
+  ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -173,6 +174,36 @@ describe("V2 client presentation", () => {
       status: "running",
       activeRunId,
     });
+  });
+
+  it("presents a usage limit continued in another tab as finished, not limited", () => {
+    const runId = RunId.make("run-limited");
+    const resetAt = "2026-06-20T05:00:00.000Z";
+    const limited = {
+      ...v2ThreadShell,
+      latestRunId: runId,
+      status: "failed" as const,
+      lastError: "usage limit",
+      lastErrorClass: "usage_limit" as const,
+      usageLimitResetAt: resetAt,
+    };
+    expect(presentThreadShell(environmentId, limited).runtime).toMatchObject({
+      status: "failed",
+      lastErrorClass: "usage_limit",
+    });
+
+    const continuedIn = ThreadId.make("thread-failover");
+    const recovery = { runId, resetAt, autoResume: false, snooze: false, continuedIn };
+    expect(
+      presentThreadShell(environmentId, { ...limited, limitRecovery: recovery }).runtime,
+    ).toMatchObject({ status: "completed", lastError: null, lastErrorClass: null });
+    // A later limited run is not covered by the earlier failover.
+    expect(
+      presentThreadShell(environmentId, {
+        ...limited,
+        limitRecovery: { ...recovery, runId: RunId.make("run-earlier") },
+      }).runtime,
+    ).toMatchObject({ status: "failed", lastErrorClass: "usage_limit" });
   });
 
   it("keeps a post-settlement background roster ahead of activity status", () => {

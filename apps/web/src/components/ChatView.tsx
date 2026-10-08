@@ -2487,10 +2487,12 @@ export default function ChatView(props: ChatViewProps) {
     });
     return item ? [item] : [];
   });
+  // Fork (Owner): a run limit failover continued in another tab needs no recovery choice.
   const limitRecoveryBanner =
     serverRuntime?.status === "failed" &&
     serverRuntime.lastErrorClass === "usage_limit" &&
-    activeThreadShell?.latestRun
+    activeThreadShell?.latestRun &&
+    activeThreadShell.limitRecovery?.continuedIn === undefined
       ? usageLimitRecoveryBannerItem({
           runId: activeThreadShell.latestRun.runId,
           resetAt: serverRuntime.usageLimitResetAt ?? null,

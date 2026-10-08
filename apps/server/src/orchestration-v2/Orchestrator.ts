@@ -3355,6 +3355,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     autoResume:
                       command.limitRecovery.autoResume ?? previousRecovery?.autoResume ?? false,
                     snooze: command.limitRecovery.snooze ?? previousRecovery?.snooze ?? false,
+                    ...((command.limitRecovery.continuedIn ?? previousRecovery?.continuedIn)
+                      ? {
+                          continuedIn:
+                            command.limitRecovery.continuedIn ?? previousRecovery?.continuedIn,
+                        }
+                      : {}),
                     requestId: command.commandId,
                   };
           return {

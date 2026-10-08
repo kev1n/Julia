@@ -217,6 +217,19 @@ function terminalRunStatus(status: OrchestrationV2RunStatus): boolean {
   );
 }
 
+/**
+ * Fork (Owner): limit failover continued this thread's usage-limited run in
+ * another tab, so it reads as finished rather than Limited.
+ */
+export function limitContinuedElsewhere(thread: OrchestrationV2ThreadShell): boolean {
+  return (
+    thread.status === "failed" &&
+    thread.lastErrorClass === "usage_limit" &&
+    thread.limitRecovery?.continuedIn !== undefined &&
+    thread.limitRecovery.runId === thread.latestRunId
+  );
+}
+
 // Only work the agent waits on holds it: commands and monitors it left running
 // unmarked, such as a dev server, present the run's own status. The
 // server suppresses the roster while an interruptible activity run exists, so a
@@ -229,6 +242,18 @@ function shellRuntime(thread: OrchestrationV2ThreadShell): ThreadRuntimeSummary 
     return null;
   }
   const status = parkAtIdle ? "idle" : (thread.activityRunStatus ?? thread.status);
+  if (status === "failed" && limitContinuedElsewhere(thread)) {
+    return {
+      status: "completed",
+      activeRunId: thread.activeRunId,
+      providerInstanceId: thread.providerInstanceId,
+      providerName: null,
+      lastError: null,
+      lastErrorClass: null,
+      usageLimitResetAt: null,
+      updatedAt: iso(thread.updatedAt),
+    };
+  }
   return {
     status,
     activeRunId: thread.activeRunId,

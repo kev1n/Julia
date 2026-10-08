@@ -395,6 +395,8 @@ export const OrchestrationV2LimitRecovery = Schema.Struct({
   resetAt: IsoDateTime,
   autoResume: Schema.Boolean,
   snooze: Schema.optional(Schema.Boolean),
+  // Fork (Owner): the tab limit failover continued this run in.
+  continuedIn: Schema.optional(ThreadId),
 });
 export type OrchestrationV2LimitRecovery = typeof OrchestrationV2LimitRecovery.Type;
 
@@ -403,6 +405,7 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
   resetAt: IsoDateTime,
   autoResume: Schema.optional(Schema.Boolean),
   snooze: Schema.optional(Schema.Boolean),
+  continuedIn: Schema.optional(ThreadId),
 }).check(
   Schema.makeFilter(
     (update) =>
