@@ -1,7 +1,7 @@
 #!/bin/bash
 # Daily on every Mac (LaunchAgent com.example.t3code-fork.deploy): install the
 # newest owner/t3code release if this Mac does not run it yet. Server runtime
-# on every Mac; the desktop app too where "T3 Code (Owner).app" is installed.
+# on every Mac; the desktop app too where Julia or the legacy fork app is installed.
 # Waits for a later run while any thread is working, so a deploy never cuts a
 # turn off. On the MacBook it also raises a notification while a
 # "Fork sync failed" issue is open.
@@ -16,7 +16,7 @@ export GODEBUG=netdns=go # gh misreads DNS failures as a bad token without it
 export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 echo "== deploy check $(date)"
 
-if [ -d "/Applications/T3 Code (Owner).app" ]; then
+if [ -d "/Applications/Julia.app" ] || [ -d "/Applications/T3 Code (Owner).app" ]; then
   failed=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync failed\" in:title" --json url -q '.[0].url' 2>/dev/null)
   [ -n "$failed" ] && /usr/bin/osascript -e "display notification \"Nothing was deployed. Details: $failed\" with title \"T3 Code fork sync failed\""
 fi
@@ -50,7 +50,7 @@ if [ "$active" != "$version" ]; then
   fi
 fi
 
-if [ -d "/Applications/T3 Code (Owner).app" ] && [ "$(cat "$state/desktop-version" 2>/dev/null)" != "$version" ]; then
+if { [ -d "/Applications/Julia.app" ] || [ -d "/Applications/T3 Code (Owner).app" ]; } && [ "$(cat "$state/desktop-version" 2>/dev/null)" != "$version" ]; then
   "$scripts/install-desktop.sh" "$(ls "$dir"/T3-Code-*-arm64.zip)" && echo "$version" > "$state/desktop-version"
 fi
 # Keep the downloads of this release and the one before it.
