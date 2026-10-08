@@ -107,6 +107,33 @@ it.effect("signs in through Claude's own login with this instance's config direc
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.effect("keeps a new token on screen until the client confirms it saved it", () =>
+  Effect.gen(function* () {
+    const h = yield* makeHarness(true);
+    const flow = yield* h.controller.start("owner", Effect.void, "token");
+    yield* h.state((value) => value.interaction?.type === "terminal");
+    assert.deepEqual(h.spawned[0]?.args, ["setup-token"]);
+    assert.strictEqual(h.spawned[0]?.cols, 400);
+    h.data("Your OAuth token: sk-ant-oat01-abc\r\n");
+    h.exit(0);
+    yield* h.state(
+      (value) =>
+        value.phase === "waiting" &&
+        value.interaction?.type === "terminal" &&
+        value.interaction.output.includes("sk-ant-oat01-abc"),
+    );
+    yield* h.controller.respond!("owner", {
+      instanceId,
+      flowId: flow.flowId!,
+      interactionId: "terminal",
+      response: { type: "terminal", data: "" },
+    });
+    yield* h.state((value) => value.phase === "succeeded");
+    assert.deepEqual(h.written, []);
+    assert.deepEqual(h.changed, []);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect("fails when Claude still reports no login after the command exits", () =>
   Effect.gen(function* () {
     const h = yield* makeHarness(false);

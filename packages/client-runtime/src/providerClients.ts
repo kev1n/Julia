@@ -29,6 +29,17 @@ export const providerClients = makeProviderClientRegistry([
     modelFamilies: ["Claude "],
     acpRegistryAgentIds: ["claude-acp"],
     settingsSchema: ClaudeSettings,
+    environmentFields: [
+      {
+        name: "CLAUDE_CODE_OAUTH_TOKEN",
+        label: "Subscription token",
+        description:
+          'Optional. Signs this account in on every machine. Sign in with "all machines" to fill it.',
+        placeholder: "Paste token",
+        sensitive: true,
+        sharedAcrossMachines: true,
+      },
+    ],
   },
   cursorClient,
   grokClient,
