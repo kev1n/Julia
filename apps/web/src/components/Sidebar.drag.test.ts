@@ -1044,9 +1044,71 @@ describe("unified project ordering", () => {
     },
   );
 
+  it.each(["pin", sidebarProjectHeaderId("active", "p")])(
+    "does not let invisible boundaries steal the bottom edge of %s",
+    (target) => {
+      const edgeItems = [pinnedHeader, marker("active-placeholder"), ...localItems];
+      const args = layout(edgeItems, "b", target, 1, 36);
+      const targetRect = args.rects[args.overIndex]!;
+      const detector = createSidebarCollisionDetection(
+        (id) => resolveSidebarDropTarget(edgeItems, "b", id) !== null,
+        { items: edgeItems },
+      );
+      const collisionRect = args.rects[args.activeIndex]!;
+      const collisions = detector({
+        active: {
+          id: "b",
+          data: { current: {} },
+          rect: { current: { initial: collisionRect, translated: collisionRect } },
+        },
+        collisionRect,
+        droppableRects: new Map(
+          edgeItems.map((item, index) => [sidebarListItemId(item), args.rects[index]!]),
+        ),
+        droppableContainers: edgeItems.map((item, index) => ({
+          id: sidebarListItemId(item),
+          key: sidebarListItemId(item),
+          disabled: false,
+          data: { current: {} },
+          node: { current: null },
+          rect: { current: args.rects[index]! },
+        })),
+        pointerCoordinates: { x: 100, y: targetRect.bottom - 2 },
+      });
+      expect(collisions[0]?.id).toBe(target);
+      expect(resolveSidebarDropTarget(edgeItems, "b", String(collisions[0]?.id))?.section).toBe(
+        "pinned",
+      );
+    },
+  );
+
+  it("keeps a scrolled shelf transition anchored to the list, never the fixed pin target", () => {
+    const shelfItems = [
+      pinnedHeader,
+      marker("active-placeholder"),
+      ...localItems,
+      project("p", "settled", 0),
+    ];
+    const args = layout(shelfItems, "b", sidebarMarkerId("settled-header"), 1, 36);
+    const strategy = createSidebarSortingStrategy({
+      items: shelfItems,
+      settledOrder: [],
+      settledExpanded: true,
+      includeActiveSlot: true,
+    });
+    const before = shelfItems.map((_, index) => strategy({ ...args, index }));
+    const scrolled = args.rects.map((rect, index) =>
+      index === 0
+        ? { ...rect, top: 60, bottom: 92, height: 32 }
+        : { ...rect, top: rect.top - 400, bottom: rect.bottom - 400 },
+    );
+    const after = shelfItems.map((_, index) => strategy({ ...args, rects: scrolled, index }));
+    expect(after.slice(1)).toEqual(before.slice(1));
+  });
+
   it("targets the pointer's pin slot regardless of where the original row was picked up", () => {
     const args = layout(localItems, "b", "a", 1, 36);
-    const pinRect = args.rects[1]!;
+    const pinRect = args.rects[0]!;
     const collisionRect = args.rects[args.activeIndex]!;
     const detector = createSidebarCollisionDetection(
       (id) => resolveSidebarDropTarget(localItems, "b", id) !== null,
@@ -1072,6 +1134,6 @@ describe("unified project ordering", () => {
       })),
       pointerCoordinates: { x: 100, y: pinRect.top },
     });
-    expect(collisions[0]?.id).toBe(sidebarMarkerId("pinned-header", "p"));
+    expect(collisions[0]?.id).toBe(sidebarProjectHeaderId("active", "p"));
   });
 });
