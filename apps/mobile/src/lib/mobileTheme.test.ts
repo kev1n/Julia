@@ -202,6 +202,18 @@ describe("mobile themes", () => {
     }
   });
 
+  it("defaults fresh profiles to Codex without replacing saved stock or per-mode choices", () => {
+    expect(resolveMobileThemeIds({})).toEqual({ light: "codex", dark: "codex" });
+    expect(resolveMobileThemeIds({ themeId: "t3-code" })).toEqual({
+      light: "t3-code",
+      dark: "t3-code",
+    });
+    expect(resolveMobileThemeIds({ darkThemeId: "ocean" })).toEqual({
+      light: "codex",
+      dark: "ocean",
+    });
+  });
+
   it("migrates one theme choice to both appearances and preserves independent choices", () => {
     expect(resolveMobileThemeIds({ themeId: "grove" })).toEqual({
       light: "grove",

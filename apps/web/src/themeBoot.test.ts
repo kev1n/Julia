@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, CODEX_THEME } from "@t3tools/shared/themePalettes";
 
 import indexHtml from "../index.html?raw";
 import {
@@ -142,6 +142,14 @@ const CHARCOAL_DARK_ONLY = {
   appearance: "dark",
   colors: { canvas: "#1c1210", text: "#ffe8d9", accent: "#ff7a45" },
 };
+
+it.each([false, true])("boots a fresh profile in Codex with system dark=%s", (prefersDark) => {
+  const result = runBootScript({ prefersDark });
+  const colors = getThemeColorsForMode(CODEX_THEME, prefersDark ? "dark" : "light")!;
+  expect(result.themeId).toBe("codex");
+  expect(result.isDark).toBe(prefersDark);
+  expect(result.backgroundColor).toBe(colors.canvas);
+});
 
 describe("index.html boot script", () => {
   const parityCases: ReadonlyArray<{
