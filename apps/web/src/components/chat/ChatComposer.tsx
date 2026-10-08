@@ -214,6 +214,9 @@ import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDeta
 import { getComposerPromptInjectionState, getComposerReasoningStep } from "./composerProviderState";
 import { readPromptUltrathink } from "./TraitsPicker";
 import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
+import { providerSupportsManualCompaction } from "./compaction.logic";
+import { ContextWindowMeter } from "./ContextWindowMeter";
+import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import {
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
@@ -420,6 +423,10 @@ export interface ChatComposerProps {
 
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
+  /** Fork (Owner): the thread's context usage, shown beside the attachments. */
+  contextWindow: ContextWindowSnapshot | null;
+  contextWindowLoading: boolean;
+  compactDisabledReason: string | null;
 
   resolvedTheme: "light" | "dark";
   settings: UnifiedSettings;
@@ -538,6 +545,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectName,
     compactThreadUnavailable,
     compactDisabled,
+    contextWindow: activeContextWindow,
+    compactDisabledReason,
     resolvedTheme,
     settings,
     keybindings,
@@ -919,6 +928,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (multipleModelSelections === null ? providerSendBlockReason : null)));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
+  const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
+  const resolvedCompactDisabledReason =
+    compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
   const selectedProviderSkills = selectedProviderStatus
     ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
     : NO_PROVIDER_SKILLS;
@@ -3198,6 +3210,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onRemoveFile={removeComposerFileFromDraft}
       />
     ) : null;
+  const contextWindowMeter = (
+    <ContextWindowMeter
+      usage={activeContextWindow}
+      loading={props.contextWindowLoading}
+      {...(compactCommandAvailable ? { onCompact: compactThreadContextStable } : {})}
+      compactDisabled={compactDisabled || noProviderAvailable || isSendBusy}
+      compactDisabledReason={resolvedCompactDisabledReason}
+    />
+  );
   const composerAttachButton = showComposerAttachAction ? (
     <ComposerAttachButton
       addComposerAttachments={addComposerAttachments}
@@ -3327,6 +3348,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
                 </button>
                 {collapsedComposerImagePreviews}
+                {contextWindowMeter}
                 <button
                   type="button"
                   data-chat-composer-transition-actions="true"
@@ -3561,6 +3583,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                {contextWindowMeter}
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
