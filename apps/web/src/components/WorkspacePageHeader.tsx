@@ -36,12 +36,14 @@ export function WorkspacePageHeader({
   );
 }
 
-function WorkspaceBackButton() {
+export function WorkspaceBackButton({ className }: { readonly className?: string }) {
   const navigateToMainApp = useNavigateToMainApp();
+  const gt = useGT();
   return (
     <Button
       variant="ghost"
       size="sm"
+      className={className}
       onClick={() => void navigateToMainApp()}
       aria-label={gt("Back to threads")}
     >
