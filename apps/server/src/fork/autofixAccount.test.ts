@@ -1,4 +1,9 @@
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ModelSelection,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -35,6 +40,13 @@ function account(instanceId: string, driver: string, weeklyUsed: number): Server
   };
 }
 
+const OPUS: ModelSelection = {
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  model: "claude-opus-5-5",
+};
+const GPT: ModelSelection = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" };
+const SETTING = [OPUS, GPT];
+
 describe("autofixModelSelection", () => {
   it("moves off a Claude account whose week is used up to one with usage left", () => {
     const providers = [
@@ -42,7 +54,7 @@ describe("autofixModelSelection", () => {
       account("claude_alice", "claudeAgent", 30),
       account("codex", "codex", 0),
     ];
-    expect(autofixModelSelection(providers, NOW)).toEqual({
+    expect(autofixModelSelection(SETTING, providers, NOW)).toEqual({
       instanceId: "claude_alice",
       model: "claude-opus-5-5",
     });
@@ -55,17 +67,26 @@ describe("autofixModelSelection", () => {
       account("codex", "codex", 80),
       account("codex_alice", "codex", 10),
     ];
-    expect(autofixModelSelection(providers, NOW)).toEqual({
+    expect(autofixModelSelection(SETTING, providers, NOW)).toEqual({
       instanceId: "codex_alice",
       model: "gpt-6.1-sol",
     });
   });
 
-  it("keeps Claude owner when no account has usage left", () => {
+  it("keeps the first model when no account has usage left", () => {
     const providers = [account("claudeAgent", "claudeAgent", 100), account("codex", "codex", 100)];
-    expect(autofixModelSelection(providers, NOW)).toEqual({
+    expect(autofixModelSelection(SETTING, providers, NOW)).toEqual({
       instanceId: "claudeAgent",
       model: "claude-opus-5-5",
     });
+  });
+
+  it("skips a model whose account is gone from this machine", () => {
+    const providers = [account("codex", "codex", 0)];
+    expect(autofixModelSelection(SETTING, providers, NOW)).toEqual(GPT);
+  });
+
+  it("has nothing to run when the setting is empty", () => {
+    expect(autofixModelSelection([], [account("codex", "codex", 0)], NOW)).toBeNull();
   });
 });
