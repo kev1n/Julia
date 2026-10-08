@@ -25,7 +25,8 @@ export function normalizeSemverVersion(version: string): string {
 }
 
 export function parseSemver(value: string): ParsedSemver | null {
-  const normalized = normalizeSemverVersion(value).replace(/^v/, "");
+  // Build metadata identifies an artifact, but never contributes to precedence.
+  const normalized = normalizeSemverVersion(value.split("+", 1)[0] ?? "").replace(/^v/, "");
   const [main = "", prerelease] = normalized.split("-", 2);
   const segments = main.split(".");
   if (segments.length !== 3) {

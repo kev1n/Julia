@@ -35,6 +35,23 @@ describe("semver helpers", () => {
     expect(compareSemverVersions("2.1.111-beta.1", "2.1.111")).toBeLessThan(0);
   });
 
+  it("ignores build metadata when parsing and comparing versions", () => {
+    expect(parseSemver("1.2.3+build.4")).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      prerelease: [],
+    });
+    const nightly = "0.0.46-nightly.20261007.2787";
+    expect(parseSemver(`${nightly}+owner.dd65a77`)?.prerelease).toEqual([
+      "nightly",
+      "20261007",
+      "2787",
+    ]);
+    expect(compareSemverVersions(`${nightly}+owner.dd65a77`, `${nightly}+owner.9f0409f`)).toBe(0);
+    expect(compareSemverVersions("1.2.3+build.4", "1.2.3+build.5")).toBe(0);
+  });
+
   it("supports comparison comparators", () => {
     expect(satisfiesSemverRange("24.9.0", ">=24.0 <24.10")).toBe(true);
     expect(satisfiesSemverRange("24.10.0", ">=24.0 <24.10")).toBe(false);

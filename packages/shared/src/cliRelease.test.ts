@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cliArchiveTarCommand, newestCliReleaseVersion, parseChecksums } from "./cliRelease.ts";
+import {
+  cliArchiveTarCommand,
+  cliReleaseDownloadBaseUrl,
+  newestCliReleaseVersion,
+  parseChecksums,
+} from "./cliRelease.ts";
 
 describe("cliRelease", () => {
+  it.each([
+    "0.0.46-nightly.20261007.2787+owner.dd65a77",
+    "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77",
+  ])("downloads fork version %s from the tailnet artifacts, not upstream", (version) => {
+    const expected = `https://build-mac-host.example.ts.net:8444/${version}`;
+    expect(cliReleaseDownloadBaseUrl(version)).toBe(expected);
+    expect(cliReleaseDownloadBaseUrl(version, " ")).toBe(expected);
+    expect(cliReleaseDownloadBaseUrl(version, "https://mirror.example/t3/")).toBe(
+      `https://mirror.example/t3/v${version}`,
+    );
+  });
+
   it("parses sha256sum output including binary-mode markers", () => {
     const checksums = parseChecksums(
       [
