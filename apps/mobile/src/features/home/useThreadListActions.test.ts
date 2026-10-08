@@ -92,6 +92,7 @@ vi.mock("../../state/atom-registry", () => ({
                           threadSnooze: true,
                           threadPinning: true,
                           threadPinReorder: true,
+                          threadActiveReorder: true,
                           threadTitleRegeneration: true,
                         },
                       },
@@ -365,6 +366,66 @@ describe("thread reorder connection availability", () => {
       ]);
     },
   );
+});
+
+it("arranges only the selected project even with keyless read-only threads elsewhere", async () => {
+  const moved = makeThread({ pinnedAt: "2026-09-02T00:00:00.000Z" });
+  const neighbour = makeThread({
+    id: ThreadId.make("neighbour"),
+    pinnedAt: moved.pinnedAt,
+    createdAt: "2026-09-02T00:00:00.000Z",
+  });
+  const other = makeThread({
+    id: ThreadId.make("foreign"),
+    environmentId: otherEnvironmentId,
+    projectId: ProjectId.make("another-project"),
+    pinnedAt: moved.pinnedAt,
+  });
+  state.shells = [moved, other, neighbour];
+  expect(
+    await useThreadListActions().moveThread(moved, "up", [
+      { environmentId: primaryEnvironmentId, projectId: moved.projectId },
+    ]),
+  ).toBe(true);
+  expect(state.requests.map((request) => request.input.threadId).sort()).toEqual([
+    "neighbour",
+    "thread",
+  ]);
+  state.requests = [];
+  expect(
+    await useThreadListActions().moveThread(moved, "up", [
+      { environmentId: otherEnvironmentId, projectId: other.projectId },
+    ]),
+  ).toBe(false);
+  expect(state.requests).toEqual([]);
+});
+
+it("moves active threads against project neighbours, not interleaved global neighbours", async () => {
+  const moved = makeThread({ id: ThreadId.make("moved"), createdAt: "2026-09-01T00:00:00.000Z" });
+  const neighbour = makeThread({
+    id: ThreadId.make("neighbour"),
+    createdAt: "2026-09-03T00:00:00.000Z",
+  });
+  const foreign = makeThread({
+    id: ThreadId.make("foreign"),
+    projectId: ProjectId.make("another-project"),
+    environmentId: otherEnvironmentId,
+    createdAt: "2026-09-02T00:00:00.000Z",
+  });
+  state.shells = [moved, neighbour, foreign];
+  expect(
+    await useThreadListActions().moveThread(moved, "up", [
+      { environmentId: primaryEnvironmentId, projectId: moved.projectId },
+    ]),
+  ).toBe(true);
+  expect(
+    state.requests
+      .map((request) => ({ action: request.action, id: request.input.threadId }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  ).toEqual([
+    { action: "reorderActive", id: "moved" },
+    { action: "reorderActive", id: "neighbour" },
+  ]);
 });
 
 describe("thread action undo", () => {
