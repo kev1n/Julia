@@ -841,3 +841,81 @@ describe("lifted card clearance", () => {
     expect(511 + apply(511, 36, -500, 136, 114).y).toBe(250);
   });
 });
+
+describe("unified project ordering", () => {
+  const row = (key: string, section: SidebarSection, projectKey = "p"): SidebarListItem => ({
+    kind: "thread",
+    key,
+    section,
+    projectKey,
+  });
+  const header = (projectKey: string): SidebarListItem =>
+    ({ ...project(projectKey, "active", 3), unified: true }) as SidebarListItem;
+  const items = [
+    pinnedHeader,
+    divider,
+    header("p"),
+    row("pin", "pinned"),
+    row("a", "active"),
+    row("b", "active"),
+    header("q"),
+    row("other", "active", "q"),
+    settledHeader,
+  ];
+
+  it("reorders active rows without changing pins or crossing projects", () => {
+    expect(resolveSidebarDropTarget(items, "b", "a")).toEqual({
+      section: "active",
+      pinnedOrder: ["pin"],
+      activeOrder: ["b", "a", "other"],
+    });
+    expect(resolveSidebarDropTarget(items, "b", "other")).toBeNull();
+    expect(resolveSidebarDropTarget(items, "pin", "other")).toBeNull();
+  });
+
+  it("allows pinning and unpinning under one project header", () => {
+    expect(resolveSidebarDropTarget(items, "b", "pin")).toEqual({
+      section: "pinned",
+      pinnedOrder: ["b", "pin"],
+      activeOrder: ["a", "other"],
+    });
+    expect(resolveSidebarDropTarget(items, "pin", "b")).toEqual({
+      section: "active",
+      pinnedOrder: [],
+      activeOrder: ["a", "b", "pin", "other"],
+    });
+  });
+
+  it("slides neighbours to the committed slot without moving other project headers", () => {
+    const transforms = preview({ items, settledOrder: [], settledExpanded: false }, "b", "a");
+    expect(transforms.get("a")?.y).toBe(83);
+    expect(transforms.get("pin")?.y).toBe(0);
+    expect(transforms.get(sidebarProjectHeaderId("active", "p"))?.y).toBe(0);
+    expect(transforms.get(sidebarProjectHeaderId("active", "q"))?.y).toBe(0);
+  });
+
+  it("keeps empty shelf project headers hidden throughout a reorder", () => {
+    const shelfItems = [...items, project("p", "settled", 0), project("q", "settled", 0)];
+    const transforms = preview(
+      { items: shelfItems, settledOrder: [], settledExpanded: false },
+      "b",
+      "a",
+    );
+    expect(transforms.get(sidebarProjectHeaderId("settled", "p"))?.scaleY).toBe(0);
+    expect(transforms.get(sidebarProjectHeaderId("settled", "q"))?.scaleY).toBe(0);
+  });
+
+  it("uses row sections rather than a global pin boundary", () => {
+    const multiProject = [
+      ...items.slice(0, -1),
+      row("q-pin", "pinned", "q"),
+      row("q-active", "active", "q"),
+      settledHeader,
+    ];
+    expect(resolveSidebarDropTarget(multiProject, "other", "q-pin")?.section).toBe("pinned");
+    expect(
+      resolveSidebarDropTarget(multiProject, "b", sidebarProjectHeaderId("active", "p"))
+        ?.activeOrder,
+    ).toEqual(["b", "a", "other", "q-active"]);
+  });
+});

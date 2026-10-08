@@ -54,6 +54,8 @@ export function useThreadListV2(input: {
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly selectedThreadKey: string | null;
+  /** Groups threads that reorder together; the sidebar moves threads only within a project group. */
+  readonly projectGroupKey?: (thread: LayoutInput["threads"][number]) => string;
 }) {
   const { threads, workingShelfEnabled } = input;
   // A thread can stop working when the threads change, or when its exit grace expires.
@@ -69,23 +71,29 @@ export function useThreadListV2(input: {
   // Up/down menu availability for every card, computed once per section per
   // rebuild (see computeThreadMoveAvailability): per-thread planner calls made
   // list construction quadratic, and this list rebuilds on every minute tick.
-  const sectionAvailability = (section: "pinned" | "active") =>
-    computeThreadMoveAvailability({
-      allThreads: threads,
+  const groupKey = input.projectGroupKey ?? (() => "");
+  const allByGroup = groupRows(threads, groupKey);
+  const sectionAvailability = (section: "pinned" | "active") => {
+    const ordered = getThreadListV2OrderedSection({
+      threads,
       section,
       pendingOrder: input.pendingOrder,
-      reorderableEnvironmentIds:
-        section === "pinned" ? input.pinReorderEnvironmentIds : input.activeReorderEnvironmentIds,
-      ordered: getThreadListV2OrderedSection({
-        threads,
+      now: input.now,
+      settlementEnvironmentIds: input.settlementEnvironmentIds,
+      snoozeEnvironmentIds: input.snoozeEnvironmentIds,
+      queuedThreadKeys: input.queuedThreadKeys,
+    });
+    return [...groupRows(ordered, groupKey)].flatMap(([key, rows]) => [
+      ...computeThreadMoveAvailability({
+        allThreads: allByGroup.get(key) ?? [],
         section,
         pendingOrder: input.pendingOrder,
-        now: input.now,
-        settlementEnvironmentIds: input.settlementEnvironmentIds,
-        snoozeEnvironmentIds: input.snoozeEnvironmentIds,
-        queuedThreadKeys: input.queuedThreadKeys,
+        reorderableEnvironmentIds:
+          section === "pinned" ? input.pinReorderEnvironmentIds : input.activeReorderEnvironmentIds,
+        ordered: rows,
       }),
-    });
+    ]);
+  };
   const moveAvailability = new Map([
     ...sectionAvailability("pinned"),
     ...(workingShelfEnabled ? [] : sectionAvailability("active")),
@@ -165,6 +173,17 @@ export function useThreadListV2(input: {
     shelfPreferencesLoading: !input.shelfPreferencesLoaded,
   });
   return { layout, items, contentOnlyThreadKeys, olderSettledShelf };
+}
+
+function groupRows<Row>(rows: ReadonlyArray<Row>, keyOf: (row: Row) => string) {
+  const groups = new Map<string, Row[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  return groups;
 }
 
 /** The list's scope per environment: its projects there, or every project. */

@@ -1477,3 +1477,25 @@ describe("resolveSidebarFolderDot", () => {
     expect(resolveSidebarFolderDot([unread, limited])).toBe("attention");
   });
 });
+
+it("keeps project-local reorder writes away from other keyless projects", () => {
+  const keys = new Map([
+    ["a", null],
+    ["b", null],
+    ["foreign", null],
+  ]);
+  const plan = planSidebarThreadDrop({
+    activeKey: "b",
+    activeSection: "active",
+    target: { section: "active", pinnedOrder: [], activeOrder: ["b", "a", "foreign"] },
+    pinnedOrder: [],
+    pinnedKeysById: new Map(),
+    activeOrder: ["a", "b", "foreign"],
+    activeKeysById: keys,
+    activeReorderableKeys: new Set(["a", "b"]),
+    projectThreadKeys: new Set(["a", "b"]),
+  });
+  expect(plan.kind).toBe("move-active");
+  if (plan.kind === "move-active")
+    expect(plan.assignments.map(({ id }) => id).sort()).toEqual(["a", "b"]);
+});

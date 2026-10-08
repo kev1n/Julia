@@ -48,7 +48,13 @@ export function createSidebarCollisionDetection(
       .find((container) => container.id === sidebarMarkerId("pinned-divider"))
       ?.node.current?.querySelector(".sidebar-drag-boundary-label")
       ?.getBoundingClientRect();
-    if (items && boundary && source?.kind === "thread" && pointer) {
+    if (
+      items &&
+      !items.some((item) => item.kind === "project" && item.unified) &&
+      boundary &&
+      source?.kind === "thread" &&
+      pointer
+    ) {
       boundarySection ??= source.section === "pinned" ? "pinned" : "active";
       // Only pointer movement changes sections; opening the destination moves rows under stationary gestures.
       const previousY = previousPointerY ?? pointer.y;
@@ -114,6 +120,99 @@ export function createSidebarSortingStrategy(input: {
     if (active?.kind !== "thread" || !over || !rects[0]) return [];
     const target = resolveSidebarDropTarget(items, active.key, sidebarListItemId(over));
     if (!target) return [];
+    if (items.some((item) => item.kind === "project" && item.unified)) {
+      // Keep one measured header per project. Only the destination project
+      // receives the lifted row; pins and active rows retain independent ranks.
+      const pinnedRanks = new Map(target.pinnedOrder.map((key, index) => [key, index]));
+      const activeRanks = new Map(
+        (input.activeOrder ?? target.activeOrder).map((key, index) => [key, index]),
+      );
+      const settledRanks = new Map(input.settledOrder.map((key, index) => [key, index]));
+      const projected: SidebarListItem[] = [];
+      let index = 0;
+      while (index < items.length) {
+        const item = items[index++]!;
+        if (item.kind === "thread") {
+          if (item.key !== active.key) projected.push(item);
+          continue;
+        }
+        if (item.kind !== "project") {
+          projected.push(item);
+          continue;
+        }
+        const rows: ThreadItem[] = [];
+        let containsActive = false;
+        while (items[index]?.kind === "thread") {
+          const row = items[index++] as ThreadItem;
+          if (row.key !== active.key) rows.push(row);
+          else containsActive = true;
+        }
+        const destination =
+          item.projectKey === active.projectKey &&
+          (item.unified
+            ? target.section === "pinned" || target.section === "active"
+            : item.section === target.section);
+        if (
+          destination &&
+          (item.expanded || input.routeThreadKey === active.key) &&
+          (target.section !== "settled" ||
+            input.settledExpanded ||
+            input.routeThreadKey === active.key)
+        ) {
+          rows.push({ ...active, section: target.section });
+        }
+        rows.sort((a, b) => {
+          if (item.unified && a.section !== b.section) return a.section === "pinned" ? -1 : 1;
+          const ranks =
+            a.section === "pinned"
+              ? pinnedRanks
+              : a.section === "settled"
+                ? settledRanks
+                : activeRanks;
+          return (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity);
+        });
+        const count = item.threadCount - Number(containsActive) + Number(destination);
+        if (item.unified || count > 0) {
+          projected.push(item, ...rows);
+        }
+      }
+      const result = items.map(() => hidden);
+      const scale = (rects[activeIndex]?.height ?? 36) / 36;
+      const heightOf = (item: SidebarListItem) => {
+        const rect = rects[indices.get(sidebarListItemId(item))!];
+        if (item.kind === "project") return rect?.height || 48 * scale;
+        if (
+          item.kind === "marker" &&
+          (item.marker === "pinned-header" || item.marker === "pinned-divider")
+        )
+          return (input.boundaryLabelHeight ?? 0) * scale;
+        return rect?.height ?? 0;
+      };
+      let top = rects[0].top;
+      const firstShelf = items.findIndex(isShelfHeader);
+      const shelfGap =
+        firstShelf > 0 && rects[firstShelf]!.top > rects[firstShelf - 1]!.bottom + 1
+          ? Math.max(
+              0,
+              Math.max(...rects.map((rect) => rect?.bottom ?? 0)) -
+                top -
+                projected.reduce((sum, item) => sum + heightOf(item) + 1, -1),
+            )
+          : 0;
+      let gapApplied = false;
+      for (const item of projected) {
+        const index = indices.get(sidebarListItemId(item));
+        const rect = index === undefined ? undefined : rects[index];
+        if (!gapApplied && isShelfHeader(item)) {
+          top += shelfGap;
+          gapApplied = true;
+        }
+        if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
+        top += heightOf(item) + 1;
+      }
+      result[activeIndex] = stationary;
+      return result;
+    }
     if (items.some((item) => item.kind === "project")) {
       type ProjectItem = Extract<SidebarListItem, { kind: "project" }>;
       const groups: { header: ProjectItem | null; section: SidebarSection; rows: ThreadItem[] }[] =
