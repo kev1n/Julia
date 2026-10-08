@@ -8,6 +8,7 @@ const ThemedPath = withUniwind(Path);
 export function JuliaMark(props: {
   readonly height: number;
   readonly color?: ColorValue;
+  /** Uniwind accent-* utility for the SVG color prop, not a text-* utility. */
   readonly colorClassName?: string;
   readonly wordmark?: boolean;
 }) {
