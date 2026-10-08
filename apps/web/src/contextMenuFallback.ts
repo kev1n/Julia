@@ -416,10 +416,10 @@ export function showContextMenuFallback<T extends string>(
       menu.tabIndex = -1;
 
       const inner = document.createElement("div");
-      inner.className =
-        "max-h-[calc(100vh-0.5rem)] min-w-0 max-w-sm overflow-y-auto overflow-x-hidden p-1";
-      inner.style.cssText =
-        "max-height:calc(100vh - 0.5rem);min-width:0;max-width:24rem;overflow-x:hidden;overflow-y:auto;padding:0.25rem;";
+      // No height cap: menus always show every item, and clampMenuPosition
+      // shifts them up to stay inside the window instead of scrolling.
+      inner.className = "min-w-0 max-w-sm overflow-hidden p-1";
+      inner.style.cssText = "min-width:0;max-width:24rem;overflow:hidden;padding:0.25rem;";
 
       const reserveIconSlot = entries.some(
         (entry) =>
