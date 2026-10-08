@@ -1,9 +1,4 @@
-import type {
-  ConfirmDialogOptions,
-  ContextMenuItem,
-  ContextMenuSource,
-  LocalApi,
-} from "@t3tools/contracts";
+import type { ConfirmDialogOptions, ContextMenuItem, LocalApi } from "@t3tools/contracts";
 import { msg } from "gt-react";
 
 import { isWebUrl } from "./browser/webUrl";
@@ -48,22 +43,16 @@ export function createLocalApi(): LocalApi {
         }
       },
     },
+    // Context menus render in the DOM on every surface, including desktop, so
+    // they match the app's design language instead of the OS menu.
     contextMenu: {
       show: async <T extends string>(
         items: readonly ContextMenuItem<T>[],
         position?: { x: number; y: number },
         source?: ContextMenuSource,
-      ): Promise<T | null> => {
-        if (window.desktopBridge) {
-          return window.desktopBridge.showContextMenu(items, position, source) as Promise<T | null>;
-        }
-        return showContextMenuFallback(items, position, source);
-      },
-      // Unlike native menus, the DOM fallback needs dismissal when underlying state disappears.
+      ): Promise<T | null> => showContextMenuFallback(items, position, source),
       close: async () => {
-        if (!window.desktopBridge) {
-          dismissContextMenu();
-        }
+        dismissContextMenu();
       },
     },
     persistence: {
