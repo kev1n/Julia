@@ -19,7 +19,7 @@ import {
   type VcsStatusResult,
 } from "@t3tools/contracts";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
-import { TerminalIcon } from "lucide-react";
+import { GitBranchIcon, TerminalIcon } from "lucide-react";
 import { m, type MessageResolver } from "../i18n/messages";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
@@ -61,6 +61,8 @@ import {
 
 import type { SidebarThreadSummary } from "../types";
 import { SharedTooltipTrigger } from "./ui/shared-tooltip";
+import { formatWorktreePathForDisplay } from "../worktreeCleanup";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
@@ -855,6 +857,49 @@ export function ThreadTerminalStatusButton({
         onAnimationStart={synchronizeTerminalPulse}
       />
     </SharedTooltipTrigger>
+  );
+}
+
+export function ThreadWorktreeIndicator({
+  thread,
+  active = false,
+}: {
+  thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
+  active?: boolean;
+}) {
+  const gt = useGT();
+  const worktreePath = thread.worktreePath?.trim();
+  if (!worktreePath) {
+    return null;
+  }
+
+  const displayPath = formatWorktreePathForDisplay(worktreePath);
+  const tooltip = thread.branch
+    ? gt("Worktree: {path} ({branch})", { path: displayPath, branch: thread.branch })
+    : gt("Worktree: {path}", { path: displayPath });
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label={tooltip}
+            data-testid={`thread-worktree-${thread.id}`}
+            className="inline-flex items-center justify-center"
+          />
+        }
+      >
+        <GitBranchIcon
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0",
+            active ? "text-sidebar-branch-active" : "text-sidebar-muted-foreground",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{tooltip}</TooltipPopup>
+    </Tooltip>
   );
 }
 

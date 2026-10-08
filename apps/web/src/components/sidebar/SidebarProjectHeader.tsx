@@ -17,7 +17,7 @@ export function SidebarProjectHeader(props: {
       <button
         type="button"
         aria-expanded={props.expanded}
-        aria-label={`${props.project.displayName}, ${props.count} threads`}
+        aria-label={`${props.project.displayName}, ${props.count} sessions`}
         onClick={props.onToggle}
         onContextMenu={(event) => {
           event.preventDefault();
