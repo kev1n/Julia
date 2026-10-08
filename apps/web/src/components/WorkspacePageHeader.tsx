@@ -1,3 +1,7 @@
+import { T, useGT } from "gt-react";
+import { ArrowLeftIcon } from "lucide-react";
+import { Button } from "./ui/button";
+import { useNavigateToMainApp } from "./sidebar/mainAppLocation";
 import type { ComponentPropsWithoutRef } from "react";
 
 import { cn } from "../lib/utils";
@@ -7,8 +11,11 @@ export function WorkspacePageHeader({
   electron = false,
   reserveNativeControls = electron,
   className,
+  backToThreads = false,
+  children,
   ...props
 }: ComponentPropsWithoutRef<"header"> & {
+  readonly backToThreads?: boolean;
   readonly electron?: boolean;
   readonly reserveNativeControls?: boolean;
 }) {
@@ -22,6 +29,24 @@ export function WorkspacePageHeader({
         className,
       )}
       {...props}
-    />
+    >
+      {backToThreads ? <WorkspaceBackButton /> : null}
+      {children}
+    </header>
+  );
+}
+
+function WorkspaceBackButton() {
+  const navigateToMainApp = useNavigateToMainApp();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => void navigateToMainApp()}
+      aria-label={gt("Back to threads")}
+    >
+      <ArrowLeftIcon />
+      <T>Back</T>
+    </Button>
   );
 }
