@@ -151,6 +151,7 @@ describe("continueLimitedThreadElsewhere", () => {
         resetAt,
         autoResume: false,
         snooze: false,
+        continuedIn: fork.targetThreadId,
       });
     }),
   );
