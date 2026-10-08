@@ -500,6 +500,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("usage quota rate limit reset wake recover continue")],
   },
   {
+    id: "keep-usage-windows-open",
+    title: msg("Keep session windows running"),
+    to: "/settings/threads",
+    searchTerms: [msg("usage quota rate limit 5-hour session window reset keep alive ping")],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: msg("Resume after usage limits"),
     to: "/settings/threads",
