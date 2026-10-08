@@ -296,7 +296,10 @@ the snooze. Enable **Snooze until limits reset** in thread behavior settings to
 snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
-On web and desktop, use **Agents** to follow work delegated to subagents. Click
+Subagent threads appear beneath their parent in the thread list. Open a child
+to follow its work, or collapse the list to keep it compact. Finished children
+leave the list after two minutes; their history remains available from the parent.
+On web and desktop, use **Agents** to revisit that delegated work. Click
 a subagent there or on its conversation card to open it in the right panel,
 beside the thread you are in. See
 [Open a thread beside the one you are in](#open-a-thread-beside-the-one-you-are-in).

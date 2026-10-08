@@ -77,6 +77,7 @@ import {
   OrchestrationV2SubagentJson as OrchestrationV2SubagentJsonSchema,
   OrchestrationV2TurnItemJson as OrchestrationV2TurnItemJsonSchema,
   orchestrationV2RunWorkStartedAt,
+  isProviderNativeSubagentThread,
   RunId,
   MessageId,
   RuntimeRequestId,
@@ -1277,6 +1278,7 @@ type ShellThreadRow = {
   readonly active_run_status: string | null;
   readonly activity_run_status: string | null;
   readonly activity_run_started_at: string | null;
+  readonly native_subagent_node_payload_json: string | null;
   readonly last_error: string | null;
   readonly terminal_failure_payload_json: string | null;
   readonly blocking_run_id: string | null;
@@ -1908,6 +1910,17 @@ const linkCardStillAsks = (
   latestUserAuthoredMessageAt === null ||
   !DateTime.isGreaterThan(latestUserAuthoredMessageAt, item.startedAt ?? item.updatedAt);
 
+function nativeSubagentActivityFromNode(
+  node: OrchestrationV2ExecutionNode | null | undefined,
+): OrchestrationV2ThreadShell["nativeSubagentActivity"] {
+  return node == null
+    ? undefined
+    : {
+        status: node.status,
+        completedAt: node.completedAt === null ? null : DateTime.formatIso(node.completedAt),
+      };
+}
+
 export function threadShellFromProjection(
   projection: OrchestrationV2ThreadProjection,
 ): OrchestrationV2ThreadShell {
@@ -1983,6 +1996,19 @@ export function threadShellFromProjection(
     runs,
     pullRequests: projection.thread.pullRequests,
   });
+  const nativeSubagentActivity =
+    isProviderNativeSubagentThread(projection.thread) && latestRun === null
+      ? nativeSubagentActivityFromNode(
+          projection.nodes
+            .filter((node) => node.runId === null && node.kind === "root_turn")
+            .toSorted(
+              (a, b) =>
+                (b.startedAt === null ? -Infinity : DateTime.toEpochMillis(b.startedAt)) -
+                  (a.startedAt === null ? -Infinity : DateTime.toEpochMillis(a.startedAt)) ||
+                b.id.localeCompare(a.id),
+            )[0],
+        )
+      : undefined;
   return {
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
@@ -2007,6 +2033,7 @@ export function threadShellFromProjection(
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
     lineage: projection.thread.lineage,
+    ...(nativeSubagentActivity === undefined ? {} : { nativeSubagentActivity }),
     forkedFrom: projection.thread.forkedFrom,
     activeProviderThreadId: projection.thread.activeProviderThreadId,
     ...(projection.thread.historyOrigin === undefined
@@ -2170,6 +2197,7 @@ type ShellThreadState = {
   readonly activeRunId: RunId | null;
   readonly blockedOnThreadWait: boolean;
   readonly activityRunStatus: ShellActivityRunStatus | null;
+  readonly nativeSubagentActivity: OrchestrationV2ThreadShell["nativeSubagentActivity"];
   readonly activityRunStartedAt: DateTime.Utc | null;
   readonly lastError: string | null;
   readonly lastErrorClass: OrchestrationV2ThreadShell["lastErrorClass"];
@@ -2347,6 +2375,9 @@ function shellFromState(input: {
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),
     lineage: input.state.thread.lineage,
+    ...(input.state.nativeSubagentActivity === undefined
+      ? {}
+      : { nativeSubagentActivity: input.state.nativeSubagentActivity }),
     forkedFrom: input.state.thread.forkedFrom,
     activeProviderThreadId: input.state.thread.activeProviderThreadId,
     ...(input.state.thread.historyOrigin === undefined
@@ -8546,6 +8577,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ELSE NULL
               END AS forked_from_run_source_thread_id,
               json_extract(t.payload_json, '$.worktreePath') AS worktree_path,
+              CASE WHEN presented.run_id IS NULL
+                AND json_extract(t.payload_json, '$.creationSource') = 'provider'
+                AND json_extract(t.payload_json, '$.lineage.relationshipToParent') = 'subagent'
+              THEN (
+                SELECT node.payload_json
+                FROM orchestration_v2_projection_nodes node
+                  INDEXED BY orchestration_v2_projection_nodes_thread_run_idx
+                WHERE node.thread_id = t.thread_id AND node.run_id IS NULL
+                  AND node.kind = 'root_turn'
+                ORDER BY node.started_at DESC, node.node_id DESC
+                LIMIT 1
+              ) ELSE NULL END AS native_subagent_node_payload_json,
               presented.run_id AS latest_run_id,
               presented.status AS latest_run_status,
               presented.requested_at AS latest_run_requested_at,
@@ -9289,6 +9332,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             (item) =>
               item.type !== "link_request" || linkCardStillAsks(item, latestUserAuthoredMessageAt),
           );
+        const nativeSubagentActivity =
+          row.native_subagent_node_payload_json === null
+            ? undefined
+            : nativeSubagentActivityFromNode(
+                yield* decodeNodePayload(row.native_subagent_node_payload_json),
+              );
         let pendingRuntimeRequest =
           row.pending_request_payload_json !== null
             ? pendingRuntimeRequestSummary(
@@ -9382,6 +9431,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         ];
         return {
           thread,
+          nativeSubagentActivity,
           latestRunId,
           latestRunStatus,
           latestRunRequestedAt,
