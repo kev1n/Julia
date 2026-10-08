@@ -53,6 +53,17 @@ composer model chip's tooltip. An account with no limit left says when it comes 
 (`Max 20x · no limit left · back 3:40 PM`) and its icon in the rail is dimmed. On the phone the model sheet puts that line on each provider's
 header and names the machine under its title (`Runs on build-mac`).
 
+**Keep session windows running** (`apps/server/src/fork/usageWindowKeepAlive.ts`). A 5-hour
+window starts with an account's first request, so an account idle past its reset loses those
+hours. With Settings > General > Keep session windows running on, the server checks every
+Claude and Codex account's session window from Usage > Limits and, when one has ended or none is
+open, sends that account one tiny prompt (the one-shot branch-name generation on the provider's
+default text model: Haiku, `gpt-6-luna`) and re-reads its limits. One prompt per login email, at
+most every 10 minutes; accounts with no session window (Codex Pro Lite) or out of quota are
+skipped. New logins are covered as soon as T3 sees them. Machine-local and off by default: turn it
+on in one environment, since each one with it on pings. It replaces the standalone build-mac
+`window-keepalive` script.
+
 **Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
 `apps/server/src/fork/freeDisk.ts`). Usage > **Machines**, beside Limits, shows one card per paired
 environment (respecting the page's environment filter) with its picture, name and three bars: CPU
@@ -280,6 +291,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/server/src/environment/ServerEnvironment.ts`: the `environment-label` file wins over the computer name.
 - `packages/contracts/src/settings.ts`: Auto (`loadBalancingEnabled`) on by default.
 - `packages/contracts/src/settings.test.ts`: the test of that default.
+- `packages/contracts/src/settings.ts` (again): `keepUsageWindowsOpen`, off by default.
+- `apps/server/src/orchestration-v2/runtimeLayer.ts`: registers the session window keep-alive.
+- `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts`: its toggle.
 - `apps/web/src/components/ChatView.tsx`: Auto's candidates, rule and hook (replacing upstream's
   weighted balance), the Auto account, the Auto chip text and tooltip; the moved-thread banner.
 - `apps/web/src/components/BranchToolbar.tsx`, `apps/web/src/components/BranchToolbarEnvironmentSelector.tsx`:
