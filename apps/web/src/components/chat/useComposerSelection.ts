@@ -134,7 +134,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: { focusComposer?: boolean },
+    options?: { focusComposer?: boolean; automatic?: boolean },
   ) => {
     if (!activeThread) return;
     cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
@@ -232,10 +232,10 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       return;
     }
     setComposerDraftModelSelection(composerDraftTarget, nextModelSelection, {
-      explicit: true,
+      explicit: options?.automatic !== true,
       replaceOptions: true,
     });
-    setStickyComposerModelSelection(nextModelSelection);
+    if (!options?.automatic) setStickyComposerModelSelection(nextModelSelection);
     if (!isLocalDraftThread) applyThreadModelPick(composerDraftTarget);
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };

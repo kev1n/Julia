@@ -1,5 +1,9 @@
-import type { ProviderInstanceId, ServerProviderUsageLimits } from "@t3tools/contracts";
-import { chooseAutoAccount } from "./accountChoice";
+import type {
+  ModelSelection,
+  ProviderInstanceId,
+  ServerProviderUsageLimits,
+} from "@t3tools/contracts";
+import { chooseAutoAccount } from "./accountChoice.ts";
 
 export interface ModelSubscription<T> {
   readonly instanceId: ProviderInstanceId;
@@ -53,4 +57,50 @@ export function defaultModelPriority(catalog: string, model: string): number {
   if (catalog === "codex" && model === "gpt-6.1-sol") return 1;
   if (catalog === "codex" && model === "gpt-6-astra") return 2;
   return 3;
+}
+
+/**
+ * Keep the starting model on a compatible account with capacity. When every
+ * account for it is exhausted, try the preferred models and user pins instead.
+ * Callers keep explicit draft selections out of this automatic choice.
+ */
+export function chooseNewChatModelSubscription<T>(
+  selection: ModelSelection,
+  subscriptions: ReadonlyArray<ModelSubscription<T>>,
+  favorites: ReadonlyArray<{ readonly provider: ProviderInstanceId; readonly model: string }>,
+  now: number,
+): ModelSubscription<T> | null {
+  const groups = groupModelSubscriptions(subscriptions, now);
+  const current = groups.find((group) =>
+    group.subscriptions.some(
+      (subscription) =>
+        subscription.instanceId === selection.instanceId && subscription.model === selection.model,
+    ),
+  );
+  if (!current) return null;
+  if (current.recommended) return current.recommended;
+
+  return (
+    groups
+      .map((group, index) => {
+        const first = group.subscriptions[0]!;
+        const priority = defaultModelPriority(first.catalog, first.model);
+        const favoriteIndex = favorites.findIndex((favorite) =>
+          group.subscriptions.some(
+            (subscription) =>
+              subscription.instanceId === favorite.provider &&
+              subscription.model === favorite.model,
+          ),
+        );
+        return { group, index, priority, favoriteIndex };
+      })
+      .filter((item) => item.group.recommended && (item.priority < 3 || item.favoriteIndex >= 0))
+      .sort(
+        (a, b) =>
+          a.priority - b.priority ||
+          (a.favoriteIndex < 0 ? Infinity : a.favoriteIndex) -
+            (b.favoriteIndex < 0 ? Infinity : b.favoriteIndex) ||
+          a.index - b.index,
+      )[0]?.group.recommended ?? null
+  );
 }
