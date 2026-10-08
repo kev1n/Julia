@@ -1,8 +1,12 @@
 # Updating T3 Code
 
 The app you use and the server running your agents can be on different machines.
-When a server is behind your web or desktop app, the update button at the bottom
-of the sidebar and **Settings → Environments** offer to update it.
+When a server is behind your web or desktop app, choose **Review** in the update
+notice to see the affected machines and update them. You can also update machines
+from the update button at the bottom of the sidebar or **Settings → Environments**.
+
+**Update all** starts updates together for connected machines that support remote
+updates. Machines that need a manual update keep their individual instructions.
 
 ## Update everything at once
 
@@ -77,7 +81,7 @@ The offered action depends on how the server runs:
 
 | Action                     | What to do                                                                                                                                                                                      |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Keep the client open while it installs and reconnects. Supported background services update remotely. For a desktop-hosted server, this also closes and relaunches the desktop app on the host. |
+| **Update**                 | Keep the client open while it installs and reconnects. Supported background services update remotely. For a desktop-hosted server, this also closes and relaunches the desktop app on the host. |
 | **Update the desktop app** | Update the desktop app on the machine running the server, then reopen it if needed.                                                                                                             |
 | **Copy update command**    | Run the command on the named host to update the detected global npm install, then restart the server with your usual options.                                                                   |
 | **Copy relaunch command**  | Stop the command-line server on its host and relaunch with the copied command, keeping your usual subcommand and options. This does not update an installed `t3` command.                       |
