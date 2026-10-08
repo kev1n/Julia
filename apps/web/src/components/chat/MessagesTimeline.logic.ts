@@ -1170,8 +1170,10 @@ function deriveTurnFolds(input: {
     if (hiddenEntryIds.size === 0) {
       continue;
     }
+    // Message-only history (including a fork's final response chunks) is not
+    // work. A lone compaction row also needs other work before it folds.
     const hidesNonCompactionWork = (entries: ReadonlyArray<TimelineEntry>) =>
-      entries.some((entry) => hiddenEntryIds.has(entry.id) && !timelineEntryIsCompaction(entry));
+      entries.some((entry) => entry.kind !== "message" && !timelineEntryIsCompaction(entry));
     if (!hidesNonCompactionWork(group.entries)) {
       continue;
     }

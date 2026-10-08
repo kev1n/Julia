@@ -2128,6 +2128,9 @@ export const layerWsRpc = (
                             ? {}
                             : { reuseExistingThread: input.reuseExistingThread }),
                           projectId: input.projectId,
+                          ...(input.chatGroupId === undefined
+                            ? {}
+                            : { chatGroupId: input.chatGroupId }),
                           title: input.title,
                           ...(input.generateTitle === undefined
                             ? {}

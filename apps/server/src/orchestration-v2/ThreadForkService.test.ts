@@ -7,7 +7,6 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
-  type OrchestrationV2ThreadProjection,
   ProjectId,
   ProviderInstanceId,
   ProviderThreadId,
@@ -112,12 +111,26 @@ function makeSourceProjection(sourceRun: OrchestrationV2Run): OrchestrationV2Thr
 const planFork = (
   sourceRun: OrchestrationV2Run,
   sourceProjection = makeSourceProjection(sourceRun),
-  options: { readonly sideChat?: boolean } = {},
+  options: {
+    readonly sideChat?: boolean;
+    readonly destination?: "tab" | "thread";
+    readonly chatGroupId?: ThreadId | null;
+    readonly sourceChatGroupId?: ThreadId;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const service = yield* ThreadForkService.ThreadForkServiceV2;
     return yield* service.plan({
-      sourceProjection,
+      sourceProjection:
+        options.sourceChatGroupId === undefined
+          ? sourceProjection
+          : {
+              ...sourceProjection,
+              thread: { ...sourceProjection.thread, chatGroupId: options.sourceChatGroupId },
+            },
+      ...(options.destination === undefined ? {} : { destination: options.destination }),
+      ...(options.chatGroupId === undefined ? {} : { chatGroupId: options.chatGroupId }),
+      ...(options.sideChat === undefined ? {} : { sideChat: options.sideChat }),
       sourceRun,
       sourceProviderThread: undefined,
       canonicalSourcePoint: {
@@ -127,7 +140,6 @@ const planFork = (
       transferId: ContextTransferId.make("context-transfer:fork-snoozed-source"),
       targetThreadId,
       title: "Awake fork",
-      ...options,
       createdBy: "user",
       creationSource: "mobile",
       createdAt: forkCreatedAt,
@@ -368,4 +380,31 @@ it.effect("marks only requested forks as side chats and inherits parent permissi
     ).pipe(Effect.flip);
     assert.equal(fromDelegated.cause, "A subagent cannot start a side chat.");
   }),
+);
+
+it.effect.each([
+  { destination: "thread" as const, sourceChatGroupId: sourceThreadId, expected: targetThreadId },
+  { destination: "tab" as const, sourceChatGroupId: sourceThreadId, expected: sourceThreadId },
+  {
+    destination: "tab" as const,
+    sourceChatGroupId: sourceThreadId,
+    chatGroupId: ThreadId.make("viewed-fork"),
+    expected: ThreadId.make("viewed-fork"),
+  },
+  {
+    destination: "tab" as const,
+    sourceChatGroupId: sourceThreadId,
+    chatGroupId: null,
+    expected: undefined,
+  },
+])(
+  "places a $destination fork in its selected conversation group without changing the checkout",
+  (options) =>
+    Effect.gen(function* () {
+      const { targetThread } = yield* planFork(makeSourceRun("completed"), undefined, options);
+      assert.equal(targetThread.chatGroupId, options.expected);
+      assert.equal(targetThread.worktreePath, makeSourceThread().worktreePath);
+      assert.equal(targetThread.branch, makeSourceThread().branch);
+      assert.equal(targetThread.forkedFrom?.type, "run");
+    }),
 );
