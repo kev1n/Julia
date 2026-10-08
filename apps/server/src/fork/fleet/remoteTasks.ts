@@ -709,11 +709,12 @@ export const runDelivery = Effect.gen(function* () {
       }
       const records = yield* threads.getThreadRecords(
         ThreadId.make(threadId),
-        ["messages", "turnItems"],
+        ["messages", "turnItems", "providerTurns"],
         {
           messageRoles: ["assistant"],
           messageRunIds: [run.id],
           turnItemRunIds: [run.id],
+          providerTurnAttemptIds: run.activeAttemptId == null ? [] : [run.activeAttemptId],
           turnItemTypes: ["assistant_message", "error"],
         },
       );
