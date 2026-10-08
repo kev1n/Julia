@@ -1,9 +1,7 @@
 /**
- * Fork (Owner): Sign in and Sign out for a Claude instance from Settings, so
- * a new Claude account never needs `claude auth login` typed into a terminal
- * on each machine. Runs Claude's own login in the in-app sign-in terminal with
- * this instance's CLAUDE_CONFIG_DIR: the user opens the printed link, signs in,
- * and pastes the code back. Credentials stay where Claude keeps them.
+ * Fork (Owner): Claude sign in and out from Settings, running Claude's own login in the sign-in
+ * terminal with this instance's CLAUDE_CONFIG_DIR. The "token" method runs `claude setup-token`,
+ * which stores nothing: the client saves the printed token as CLAUDE_CODE_OAUTH_TOKEN everywhere.
  */
 import { ProviderSetupError, type ProviderInstanceId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -31,21 +29,30 @@ export const makeClaudeAuth = Effect.fn("fork.makeClaudeAuth")(function* (option
   const failure = (operation: string, detail: string, cause?: unknown) =>
     new ProviderSetupError({ instanceId: options.instanceId, operation, detail, cause });
 
-  /** Run one `claude auth …` command, mirroring its terminal into the flow when given one. */
+  /**
+   * Run one `claude …` command, mirroring its terminal into the flow when given
+   * one. With `holdAfterExit`, a successful run keeps its final output on screen
+   * until the client sends an empty response, so the client is sure to see the
+   * whole transcript.
+   */
   const runClaude = Effect.fnUntraced(function* (
     args: ReadonlyArray<string>,
     context?: ProviderAuthFlow.ProviderAuthFlowContext,
+    terminal: { readonly fixedCols?: number; readonly holdAfterExit?: boolean } = {},
   ) {
     if (Option.isNone(pty))
       return yield* failure("start", "Interactive sign-in is unavailable on this environment.");
     const exited = yield* Deferred.make<number>();
+    // A promise, like Codex's callback, so the response returns before the flow ends.
+    const confirmed = Promise.withResolvers<void>();
     const output = yield* Queue.sliding<string>(64);
     const process = yield* pty.value
       .spawn({
         shell: options.binaryPath,
         args: [...args],
         cwd: options.cwd,
-        cols: 80,
+        // A wide fixed terminal keeps a printed token on one line.
+        cols: terminal.fixedCols ?? 80,
         rows: 24,
         env: options.environment,
       })
@@ -67,35 +74,44 @@ export const makeClaudeAuth = Effect.fn("fork.makeClaudeAuth")(function* (option
         }
       }),
     );
-    if (context) {
-      let transcript = "";
-      let outputOffset = 0;
-      const update = () =>
-        context.setInteraction(
-          { type: "terminal", id: "terminal", output: transcript, outputOffset },
-          (response) =>
-            response.type === "terminal"
-              ? Effect.try({
-                  try: () => {
-                    if (response.size) process.resize(response.size.cols, response.size.rows);
-                    if (response.data) process.write(response.data);
-                  },
-                  catch: () => failure("respond", "The Claude sign-in has already ended."),
-                })
-              : Effect.void,
-        );
-      yield* update();
-      yield* Queue.take(output).pipe(
-        Effect.flatMap((data) => {
-          outputOffset += data.length;
-          transcript = (transcript + data).slice(-TRANSCRIPT_LIMIT);
-          return update();
-        }),
-        Effect.forever,
-        Effect.forkScoped,
+    if (!context) return yield* Deferred.await(exited);
+
+    let transcript = "";
+    let outputOffset = 0;
+    const append = (data: string) => {
+      outputOffset += data.length;
+      transcript = (transcript + data).slice(-TRANSCRIPT_LIMIT);
+    };
+    const update = () =>
+      context.setInteraction(
+        { type: "terminal", id: "terminal", output: transcript, outputOffset },
+        (response) => {
+          if (response.type !== "terminal") return Effect.void;
+          if (!response.data && !response.size) return Effect.sync(() => confirmed.resolve());
+          return Effect.try({
+            try: () => {
+              if (response.size && terminal.fixedCols === undefined)
+                process.resize(response.size.cols, response.size.rows);
+              if (response.data) process.write(response.data);
+            },
+            catch: () => failure("respond", "The Claude sign-in has already ended."),
+          });
+        },
       );
-    }
-    return yield* Deferred.await(exited);
+    yield* update();
+    yield* Queue.take(output).pipe(
+      Effect.flatMap((data) => {
+        append(data);
+        return update();
+      }),
+      Effect.forever,
+      Effect.forkScoped,
+    );
+    const exitCode = yield* Deferred.await(exited);
+    if (!terminal.holdAfterExit || exitCode !== 0) return exitCode;
+    // The forwarder keeps publishing any output still queued meanwhile.
+    yield* Effect.promise(() => confirmed.promise);
+    return exitCode;
   });
 
   return yield* ProviderAuthFlow.make({
@@ -108,10 +124,24 @@ export const makeClaudeAuth = Effect.fn("fork.makeClaudeAuth")(function* (option
         description: "Sign in with your Claude Pro or Max account.",
         type: "terminal" as const,
       },
+      {
+        id: "token",
+        name: "Claude subscription, all machines",
+        description: "Sign in once and save a one-year token on every machine.",
+        type: "terminal" as const,
+      },
     ]),
     defaultMethodId: "claudeai",
-    authenticate: (_methodId, context) =>
+    authenticate: (methodId, context) =>
       Effect.gen(function* () {
+        if (methodId === "token") {
+          const exitCode = yield* runClaude(["setup-token"], context, {
+            fixedCols: 400,
+            holdAfterExit: true,
+          }).pipe(Effect.scoped);
+          if (exitCode !== 0) return yield* failure("start", "Claude did not create a token.");
+          return;
+        }
         const exitCode = yield* runClaude(["auth", "login", "--claudeai"], context).pipe(
           Effect.scoped,
         );
