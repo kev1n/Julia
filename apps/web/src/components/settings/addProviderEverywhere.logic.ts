@@ -53,10 +53,14 @@ export function describeFanOut(
   added: ReadonlyArray<string>,
   failed: ReadonlyArray<string>,
   skipped: FanOutPlan["skipped"],
+  wording: { readonly done: string; readonly failed: string } = {
+    done: "Also added to",
+    failed: "Could not add to",
+  },
 ): string {
   const parts: Array<string> = [];
-  if (added.length > 0) parts.push(`Also added to ${joinLabels(added)}.`);
-  if (failed.length > 0) parts.push(`Could not add to ${joinLabels(failed)}.`);
+  if (added.length > 0) parts.push(`${wording.done} ${joinLabels(added)}.`);
+  if (failed.length > 0) parts.push(`${wording.failed} ${joinLabels(failed)}.`);
   if (skipped.length > 0) {
     parts.push(
       `Skipped ${joinLabels(skipped.map((entry) => `${entry.label} (${SKIP_TEXT[entry.reason]})`))}.`,
@@ -68,4 +72,30 @@ export function describeFanOut(
 function joinLabels(labels: ReadonlyArray<string>): string {
   if (labels.length <= 1) return labels.join("");
   return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
+/**
+ * Sets (or, with an empty value, removes) one sensitive variable in a provider
+ * environment. Shared sign-ins, such as Claude's subscription token or a Cursor
+ * API key, are saved this way on every machine.
+ */
+export function withProviderSecret<V extends { readonly name: string }>(
+  environment: ReadonlyArray<V> | undefined,
+  name: string,
+  value: string,
+): ReadonlyArray<V | { name: string; value: string; sensitive: true }> {
+  const rest = (environment ?? []).filter((variable) => variable.name !== name);
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? [...rest, { name, value: trimmed, sensitive: true }] : rest;
+}
+
+const ANSI_ESCAPE = new RegExp(
+  String.raw`\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*\u0007|[@-_])`,
+  "g",
+);
+
+/** The token `claude setup-token` printed, if the terminal output holds one. */
+export function readClaudeSetupToken(output: string): string | null {
+  const tokens = output.replace(ANSI_ESCAPE, "").match(/sk-ant-oat01-[A-Za-z0-9_-]{20,}/g);
+  return tokens?.at(-1) ?? null;
 }

@@ -1,7 +1,9 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId, ProviderSetupError, type ProviderAuthState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
@@ -104,7 +106,34 @@ it.effect("signs in through Claude's own login with this instance's config direc
     h.exit(0);
     yield* h.state((value) => value.phase === "succeeded");
     assert.deepEqual(h.changed, [true]);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("keeps a new token on screen until the client confirms it saved it", () =>
+  Effect.gen(function* () {
+    const h = yield* makeHarness(true);
+    const flow = yield* h.controller.start("owner", Effect.void, "token");
+    yield* h.state((value) => value.interaction?.type === "terminal");
+    assert.deepEqual(h.spawned[0]?.args, ["setup-token"]);
+    assert.strictEqual(h.spawned[0]?.cols, 400);
+    h.data("Your OAuth token: sk-ant-oat01-abc\r\n");
+    h.exit(0);
+    yield* h.state(
+      (value) =>
+        value.phase === "waiting" &&
+        value.interaction?.type === "terminal" &&
+        value.interaction.output.includes("sk-ant-oat01-abc"),
+    );
+    yield* h.controller.respond!("owner", {
+      instanceId,
+      flowId: flow.flowId!,
+      interactionId: "terminal",
+      response: { type: "terminal", data: "" },
+    });
+    yield* h.state((value) => value.phase === "succeeded");
+    assert.deepEqual(h.written, []);
+    assert.deepEqual(h.changed, []);
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("fails when Claude still reports no login after the command exits", () =>
@@ -115,7 +144,7 @@ it.effect("fails when Claude still reports no login after the command exits", ()
     h.exit(0);
     const failed = yield* h.state((value) => value.phase === "failed");
     assert.strictEqual(failed.message, "Not logged in");
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("signs out with Claude's own logout", () =>
@@ -124,5 +153,5 @@ it.effect("signs out with Claude's own logout", () =>
     yield* h.controller.logout(Effect.void);
     assert.deepEqual(h.spawned[0]?.args, ["auth", "logout"]);
     assert.deepEqual(h.changed, [false]);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );

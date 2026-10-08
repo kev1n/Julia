@@ -115,11 +115,15 @@ pair, so a client paired before the file existed keeps the old name until it is 
 provider in Settings > Providers (any built-in driver, or a ChatGPT account for Codex) also adds it
 to every other paired machine under the same instance ID; **Add to all machines** is on by default
 and the toast names machines skipped as offline, without permission, or already having that ID.
-ACP registry agents are prepared per machine and do not fan out. Only the entry is copied: each
-machine signs in itself, from that machine's tab on the Providers page, because a login copied
-between machines breaks (Codex refresh tokens are single use). Claude now has **Sign in** there
-too: it runs `claude auth login` in the in-app sign-in terminal with the instance's
-`CLAUDE_CONFIG_DIR`, so a new Claude account never needs a shell. A client paired by link or QR
+ACP registry agents are prepared per machine and do not fan out. Only the entry is copied, so a
+normal login is still per machine. Claude and Cursor can instead share one sign-in: Claude's
+**Sign in** offers "Claude subscription, all machines", which runs `claude setup-token` in the
+in-app terminal (the server holds the flow open until the client confirms, so the printed token
+always reaches it) and the client saves the token as `CLAUDE_CODE_OAUTH_TOKEN` on every machine.
+The Claude token and Cursor API key fields on a provider save and clear on every machine. Codex
+cannot share: its refresh tokens are single use, so each machine signs in itself. Claude's
+per-machine option runs `claude auth login --claudeai` with the instance's `CLAUDE_CONFIG_DIR`,
+so no Claude account needs a shell either way. A client paired by link or QR
 with run access (`orchestration:operate`) also gets every standard permission at read time, so
 clients paired before `providers:manage` existed see the add and sign-in controls without pairing
 again; read-only pairings, agent MCP tokens and CLI-issued sessions keep exactly their grant.
