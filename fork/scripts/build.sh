@@ -4,7 +4,7 @@
 # <version> is the upstream nightly plus an ordered fork revision and hash, e.g.
 # 0.0.46-nightly.20261007.2787.owner.1791429000+owner.1a2b3c4. Writes
 #   <output-dir>/t3-<version>-darwin-arm64.tar.gz   (server runtime)
-#   <output-dir>/T3-Code-*-arm64.zip                (T3 Code (Owner).app)
+#   <output-dir>/T3-Code-*-arm64.zip                (Julia.app)
 set -euo pipefail
 version=${1:?version}
 out=${2:?output dir}
@@ -38,7 +38,7 @@ PATH="$HOME/.local/share/vite-plus/fallback-bin:$PATH" VP_NODE_VERSION="$sea_nod
 node scripts/build-cli-archive.ts --platform mac --arch arm64 --version "$version" \
   --resource-monitor-dir "$work/resource-monitor" --output-dir "$out"
 
-T3CODE_DESKTOP_PRODUCT_NAME="T3 Code (Owner)" T3CODE_DESKTOP_APP_ID=com.example.julia T3CODE_DESKTOP_PACKAGE_NAME=julia-fork \
+T3CODE_DESKTOP_PRODUCT_NAME="Julia" T3CODE_DESKTOP_APP_ID=com.example.julia T3CODE_DESKTOP_PACKAGE_NAME=julia-fork \
   vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 \
   --build-version "$version" --skip-build --output-dir "$out"
 rm -f "$out"/*.blockmap "$out"/builder-debug.yml "$out"/*.dmg

@@ -1,11 +1,13 @@
 /**
- * Fork (Owner): "T3 Code (Owner).app" keeps its own Chromium profile and its
- * own desktop state, beside the official app's. Sharing them would mean
- * reading (and re-encrypting) the official app's saved pairings with another
- * app's keychain key. Keyed on the bundle the process runs from, so dev runs
- * and tests keep upstream's paths.
+ * The fork keeps its own Chromium profile and desktop state beside the official app's: sharing
+ * them would re-encrypt the official app's saved pairings with another app's keychain key.
+ * Keyed on the bundle the process runs from, so dev runs and tests keep upstream's paths.
  */
-export const IS_FORK_APP = /\/T3 Code \(Owner\)\.app\//.test(process.execPath);
+export function isForkDesktopExecutable(execPath: string): boolean {
+  return /\/(?:Julia|T3 Code \(Owner\))\.app\/Contents\/MacOS\//.test(execPath);
+}
+
+export const IS_FORK_APP = isForkDesktopExecutable(process.execPath);
 
 /** Desktop state lives in ~/.t3-owner-app instead of ~/.t3 (the server's home on this Mac). */
 export function forkDesktopHomeDirname(upstream: string): string {
