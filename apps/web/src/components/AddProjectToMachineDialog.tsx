@@ -96,7 +96,10 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
   const handleNewThread = useNewThreadHandler();
   const { draftId: routeDraftId } = useParams({ strict: false });
   const { environments } = useEnvironments();
-  const targets = useAddProjectTargets(project, useLogicalProjectEnvironments(project, false));
+  const targets = useAddProjectTargets(
+    project,
+    useLogicalProjectEnvironments(project, false, false),
+  );
   const [targetId, setTargetId] = useState(request.targetEnvironmentId);
   const target = targets.find((t) => t.environmentId === targetId) ?? targets[0] ?? null;
   const source = environments.find((env) => env.environmentId === request.projectRef.environmentId);

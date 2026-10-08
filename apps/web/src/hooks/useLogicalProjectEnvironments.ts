@@ -8,22 +8,24 @@ import {
 } from "@t3tools/contracts";
 
 import type { EnvironmentOption } from "../components/BranchToolbar.logic";
-import {
-  deriveLogicalProjectKeyFromSettings,
-  selectProjectGroupingSettings,
-} from "@t3tools/client-runtime/state/project-grouping";
+import { freshThreadProject } from "../lib/freshThreadProject";
 import { useProjects } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import { useClientSettings } from "./useSettings";
 
+/**
+ * The environments a project (or a scratch draft) can move between. Fork (Owner): a draft lists
+ * every paired machine, including ones that still need the project set up. It reads only the
+ * environment, project and grouping inputs, so the list keeps its identity while the thread
+ * streams and the chat chrome it feeds can skip those renders.
+ */
 export function useLogicalProjectEnvironments(
   activeProject: EnvironmentProject | null,
   scratchDraft: boolean,
+  draft: boolean,
 ): readonly EnvironmentOption[] {
   const { environments } = useEnvironments();
   const allProjects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
 
   if (!activeProject) return [];
   const environmentById = new Map(
@@ -38,6 +40,19 @@ export function useLogicalProjectEnvironments(
       label: environment?.label ?? environmentId,
       isPrimary: environmentId === primaryEnvironmentId,
       machine: resolveEnvironmentMachineKind(environment?.serverConfig ?? null),
+      ...(draft && !scratchDraft
+        ? {
+            detail:
+              environment?.connection.phase === "connected"
+                ? projectId === null
+                  ? "Project setup required"
+                  : "Project ready"
+                : "Not connected",
+            disabled:
+              environment?.connection.phase !== "connected" &&
+              environmentId !== activeProject.environmentId,
+          }
+        : {}),
     });
   };
   if (scratchDraft) {
@@ -58,13 +73,13 @@ export function useLogicalProjectEnvironments(
       pushEnvironment(environment.environmentId, scratchProject?.id ?? null);
     }
   } else {
-    const logicalKey = deriveLogicalProjectKeyFromSettings(activeProject, projectGroupingSettings);
-    const seen = new Set<string>();
-    for (const p of allProjects) {
-      if (seen.has(p.environmentId)) continue;
-      if (deriveLogicalProjectKeyFromSettings(p, projectGroupingSettings) !== logicalKey) continue;
-      seen.add(p.environmentId);
-      pushEnvironment(p.environmentId, p.id);
+    // Keep the source even if its catalog entry is gone. Every paired machine
+    // remains visible; missing registrations lead to destination-only setup.
+    pushEnvironment(activeProject.environmentId, activeProject.id);
+    for (const environment of environments) {
+      if (environment.environmentId === activeProject.environmentId) continue;
+      const project = freshThreadProject(activeProject, allProjects, environment.environmentId);
+      if (draft || project) pushEnvironment(environment.environmentId, project?.id ?? null);
     }
   }
   envs.sort((a, b) => {
