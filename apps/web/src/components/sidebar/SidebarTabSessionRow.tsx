@@ -1,9 +1,18 @@
-import { CheckIcon, GitBranchIcon, PinIcon } from "lucide-react";
+import { CheckIcon, PinIcon } from "lucide-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { resolveSidebarThreadStatus } from "../Sidebar.logic";
+import {
+  resolveSidebarThreadStatus,
+  hasUnseenCompletion,
+  resolveThreadLastVisitedAt,
+  useSidebarRowSubscriptionLease,
+} from "../Sidebar.logic";
+import { ThreadBranchIndicator, useLinkedThreadPullRequest } from "../ThreadStatusIndicators";
+import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
+import { Spinner } from "../ui/spinner";
+import { useUiStateStore } from "../../uiStateStore";
 import type { WorkspaceChatSession } from "../chat/workspaceChatTabs.logic";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
@@ -19,6 +28,31 @@ export function SidebarTabSessionRow(props: {
 }) {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
+  const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
+  const pr = useLinkedThreadPullRequest(
+    session.thread.environmentId,
+    session.thread.linkedPullRequest,
+    leaseLiveStatus,
+    session.thread.pullRequests,
+    session.thread.branchPullRequest,
+  )?.pr;
+  const branchTone =
+    pr && (pr.state === "open" || pr.state === "merged")
+      ? resolvePullRequestState({ state: pr.state, isDraft: false }).toneClassName
+      : undefined;
+  const isUnread = useUiStateStore((state) =>
+    session.chats.some((chat) =>
+      hasUnseenCompletion({
+        ...chat,
+        lastVisitedAt: resolveThreadLastVisitedAt(
+          chat.lastVisitedAt,
+          state.threadLastVisitedAtById[
+            scopedThreadKey(scopeThreadRef(chat.environmentId, chat.id))
+          ],
+        ),
+      }),
+    ),
+  );
   const statuses = new Set(session.chats.map(resolveSidebarThreadStatus));
   const status = statuses.has("approval")
     ? "Approval"
@@ -37,6 +71,7 @@ export function SidebarTabSessionRow(props: {
   const time = relativeTime === "just now" ? "now" : relativeTime.replace(/ ago$/, "");
   return (
     <li
+      ref={rowRef}
       data-thread-item={scopedThreadKey(threadRef)}
       data-tab-session={session.key}
       className="list-none"
@@ -59,18 +94,22 @@ export function SidebarTabSessionRow(props: {
                   event.preventDefault();
                   props.onContextMenu(threadRef, { x: event.clientX, y: event.clientY });
                 }}
-                className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md pl-2.5 text-left text-sm text-sidebar-muted-foreground hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md pl-7 text-left text-sm text-sidebar-muted-foreground hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               />
             }
           >
-            <GitBranchIcon
-              aria-hidden
+            {statuses.has("working") ? (
+              <Spinner aria-hidden size="xs" tone="accent" className="shrink-0" />
+            ) : (
+              <ThreadBranchIndicator thread={session.thread} toneClassName={branchTone} />
+            )}
+            <span
               className={cn(
-                "size-4 shrink-0",
-                props.isActive ? "text-sidebar-branch-active" : "text-sidebar-muted-foreground",
+                "min-w-0 flex-1 truncate text-sidebar-foreground",
+                isUnread && !statuses.has("working") ? "font-semibold" : "font-normal",
+                statuses.has("working") && "text-sidebar-foreground/85",
               )}
-            />
-            <span className="min-w-0 flex-1 truncate font-normal text-sidebar-muted-foreground">
+            >
               {session.title}
             </span>
             {session.section === "pinned" ? (
@@ -79,13 +118,12 @@ export function SidebarTabSessionRow(props: {
             <span
               className={cn(
                 "shrink-0 text-xs",
-                status === "Working" && "text-info",
                 (status === "Approval" || status === "Input" || status === "Limited") &&
                   "text-warning",
                 status === "Failed" && "text-error",
               )}
             >
-              {props.jumpLabel ?? status ?? time}
+              {props.jumpLabel ?? (status === "Working" ? time : (status ?? time))}
             </span>
           </TooltipTrigger>
           <TooltipPopup>
