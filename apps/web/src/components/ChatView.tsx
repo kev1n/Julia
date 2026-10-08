@@ -1299,6 +1299,7 @@ export default function ChatView(props: ChatViewProps) {
     activeEnvironmentUnavailableState,
     activeThreadEnvironmentId: activeThread?.environmentId ?? null,
     movedThreadRef: isServerThread ? activeThreadRef : null,
+    fleetOverlapRef: isServerThread ? activeThreadRef : null,
   });
   const providerInstanceEntries = providerInstanceEntriesFor(
     providerStatuses,

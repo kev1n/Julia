@@ -1386,6 +1386,13 @@ export function createServerEnvironmentAtoms<R, E>(
       execute: (input: EnvironmentRpcInput<typeof WS_METHODS.serverGetHostResources>) =>
         request(WS_METHODS.serverGetHostResources, input).pipe(Effect.timeout("5 seconds")),
     }),
+    // Fork (Owner): intent-based coordination suggestions; never delivered into a chat.
+    fleetOverlaps: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:fork:fleet-overlaps",
+      tag: WS_METHODS.forkFleetOverlaps,
+      staleTimeMs: 10_000,
+      refreshIntervalMs: 30_000,
+    }),
     processResourceHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:process-resource-history",
       tag: WS_METHODS.serverGetProcessResourceHistory,
