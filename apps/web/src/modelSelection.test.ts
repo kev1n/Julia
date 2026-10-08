@@ -28,6 +28,7 @@ import {
   resolveAppModelSelectionForInstance,
   resolveAppModelSelectionState,
   resolveEffectiveDefaultModelSelection,
+  resolveNewChatModelSelection,
 } from "./modelSelection";
 
 function provider(input: {
@@ -213,6 +214,74 @@ describe("scoped default model selections", () => {
         },
       ]),
     ).toBe(true);
+  });
+});
+
+describe("resolveNewChatModelSelection", () => {
+  const now = Date.parse("2026-10-07T12:00:00Z");
+  const selection = {
+    instanceId: ProviderInstanceId.make("claude_a"),
+    model: "claude-opus-5-5",
+    options: [{ id: "effort", value: "max" }],
+  };
+  const claude = (id: string, usedPercent: number) => ({
+    ...provider({ instanceId: id, models: ["claude-opus-5-5"] }),
+    usageLimits: {
+      checkedAt: new Date(now).toISOString(),
+      windows: [{ id: "five_hour", kind: "session" as const, label: "Session", usedPercent }],
+    },
+  });
+  const codex = provider({ instanceId: "codex", models: ["gpt-6.1-sol", "gpt-6-astra"] });
+
+  it("falls back from two exhausted Opus accounts to Sol without Claude options", () => {
+    expect(
+      resolveNewChatModelSelection(
+        selection,
+        DEFAULT_UNIFIED_SETTINGS,
+        [claude("claude_a", 100), claude("claude_b", 100), codex],
+        now,
+      ),
+    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6.1-sol" });
+  });
+
+  it("preserves model options when another compatible account has capacity", () => {
+    expect(
+      resolveNewChatModelSelection(
+        selection,
+        DEFAULT_UNIFIED_SETTINGS,
+        [claude("claude_a", 100), claude("claude_b", 30), codex],
+        now,
+      ),
+    ).toEqual({ ...selection, instanceId: ProviderInstanceId.make("claude_b") });
+  });
+
+  it("does not resurrect a hidden preferred model", () => {
+    const settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerModelPreferences: {
+        [codex.instanceId]: { hiddenModels: ["gpt-6.1-sol"], modelOrder: [] },
+      },
+    };
+    expect(
+      resolveNewChatModelSelection(selection, settings, [claude("claude_a", 100), codex], now),
+    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6-astra" });
+  });
+
+  it("keeps the selection when no enabled, signed-in preferred model can run", () => {
+    for (const blocked of [
+      { ...codex, enabled: false },
+      { ...codex, availability: "unavailable" as const },
+      { ...codex, auth: { status: "unauthenticated" as const } },
+    ]) {
+      expect(
+        resolveNewChatModelSelection(
+          selection,
+          DEFAULT_UNIFIED_SETTINGS,
+          [claude("claude_a", 100), blocked],
+          now,
+        ),
+      ).toBe(selection);
+    }
   });
 });
 

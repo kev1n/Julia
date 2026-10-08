@@ -121,7 +121,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: { focusComposer?: boolean },
+    options?: { focusComposer?: boolean; automatic?: boolean },
   ) => {
     if (!activeThread) return;
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
@@ -186,10 +186,10 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     }
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     setComposerDraftModelSelection(threadRef, nextModelSelection, {
-      explicit: true,
+      explicit: options?.automatic !== true,
       replaceOptions: true,
     });
-    setStickyComposerModelSelection(nextModelSelection);
+    if (!options?.automatic) setStickyComposerModelSelection(nextModelSelection);
     if (!isLocalDraftThread) applyThreadModelPick(threadRef);
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };

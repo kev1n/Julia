@@ -2881,7 +2881,11 @@ export default function ChatView(props: ChatViewProps) {
     const current =
       (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
       activeThread?.modelSelection;
-    if (current) onProviderModelSelectStable(instanceId, current.model, { focusComposer: false });
+    if (current)
+      onProviderModelSelectStable(instanceId, current.model, {
+        focusComposer: false,
+        automatic: true,
+      });
   };
   const onAutoAccountSelectStable = useStableCallback(onAutoAccountSelect);
   const autoAccount = useAutoAccount({
@@ -2891,14 +2895,27 @@ export default function ChatView(props: ChatViewProps) {
       (autoEnvironmentId && providersByEnvironment.get(autoEnvironmentId)) || EMPTY_PROVIDERS,
     driver: selectedProvider,
     currentInstanceId: activeProviderInstanceId,
+    model: composerSelectedModelSelection?.model ?? activeThread?.modelSelection.model,
+    explicit: composerModelSelectionExplicit,
+    draftId,
     select: onAutoAccountSelectStable,
   });
+  const onLimitedModelSelect = (selection: ModelSelection) =>
+    onProviderModelSelectStable(selection.instanceId, selection.model, {
+      focusComposer: false,
+      automatic: true,
+    });
+  const onLimitedModelSelectStable = useStableCallback(onLimitedModelSelect);
   useLimitedAccountSwitch({
-    draftId: automaticEnvironment || envLocked ? null : draftId,
+    draftId:
+      envLocked || !clientSettingsHydrated || (automaticEnvironment && !autoEnvironmentId)
+        ? null
+        : draftId,
     providers: providerStatuses,
-    driver: selectedProvider,
-    currentInstanceId: activeProviderInstanceId,
-    select: onAutoAccountSelect,
+    settings,
+    currentSelection: composerSelectedModelSelection ?? activeThread?.modelSelection ?? null,
+    explicit: composerModelSelectionExplicit,
+    select: onLimitedModelSelectStable,
   });
   const autoPlacement = automaticEnvironment
     ? autoPlacementLabel({
