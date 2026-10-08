@@ -3,13 +3,14 @@ import { MessageId, type RunId, type TurnItemId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 import { agentWorkingDirectories } from "@t3tools/client-runtime/workspace-basename-lookup";
 import { T, useGT, useMessages } from "gt-react";
-import { memo, use, useState } from "react";
+import { memo, use } from "react";
 import { type ChatMessage, type TurnDiffSummary } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
-import { GitForkIcon, ReplyIcon } from "lucide-react";
+import { ReplyIcon } from "lucide-react";
 import { captureAssistantMessageOpening } from "~/lib/assistantTextSelection";
 import { responseContextRecord } from "~/lib/composerContextRecords";
 import { Button } from "../ui/button";
+import { ForkChatMenu } from "./ForkChatMenu";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { McpAppFrame } from "./McpAppFrame";
@@ -157,7 +158,6 @@ function AssistantForkButton({
 }) {
   const ctx = use(TimelineRowCtx);
   const gt = useGT();
-  const [busy, setBusy] = useState(false);
   const support = useV2ItemSupport({
     environmentId: ctx.activeThreadEnvironmentId,
     sourceThreadId: projectedItem.sourceThreadId,
@@ -174,30 +174,16 @@ function AssistantForkButton({
   const runId = projectedItem.item.runId;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void onForkFromRun({ sourceThreadId: projectedItem.sourceThreadId, runId }).finally(
-                () => setBusy(false),
-              );
-            }}
-            aria-label={gt("Fork from this response")}
-          />
-        }
-      >
-        <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        <T>Fork from this response · user messages and final replies only</T>
-      </TooltipPopup>
-    </Tooltip>
+    <ForkChatMenu
+      label={gt("Fork from this response")}
+      onFork={(destination) =>
+        onForkFromRun({
+          sourceThreadId: projectedItem.sourceThreadId,
+          runId,
+          destination,
+        })
+      }
+    />
   );
 }
 
