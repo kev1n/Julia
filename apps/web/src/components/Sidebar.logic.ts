@@ -198,6 +198,7 @@ const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =
   | "pinned-header"
+  | "pinned-placeholder"
   | "active-placeholder"
   | "settled-placeholder"
   | "pinned-divider"
@@ -231,6 +232,8 @@ export type SidebarListItem =
       readonly kind: "marker";
       readonly marker: SidebarListMarker;
       readonly projectKey?: string | undefined;
+      /** A single cross-project pin shelf, with no repeated project headers. */
+      readonly sharedPins?: boolean;
     };
 
 export function sidebarProjectHeaderId(section: SidebarSection, projectKey: string): string {
@@ -268,6 +271,41 @@ export function resolveSidebarDropTarget(
   const activeIndex = items.findIndex((item) => sidebarListItemId(item) === activeKey);
   const overIndex = items.findIndex((item) => sidebarListItemId(item) === overId);
   if (activeIndex === -1 || overIndex === -1 || items[activeIndex]?.kind !== "thread") return null;
+  if (items.some((item) => item.kind === "marker" && item.sharedPins)) {
+    const active = items[activeIndex]!;
+    const over = items[overIndex]!;
+    if (active.kind !== "thread") return null;
+    const section =
+      over.kind === "thread" || over.kind === "project"
+        ? over.section
+        : over.marker === "pinned-header" || over.marker === "pinned-placeholder"
+          ? "pinned"
+          : over.marker === "pinned-divider" ||
+              over.marker === "active-placeholder" ||
+              over.marker === "draft-block"
+            ? "active"
+            : over.marker === "settled-header" || over.marker === "settled-placeholder"
+              ? "settled"
+              : null;
+    if (section === null || section === "working" || section === "snoozed") return null;
+    if (
+      section !== "pinned" &&
+      over.projectKey !== undefined &&
+      over.projectKey !== active.projectKey
+    )
+      return null;
+    const moved = items.filter((_, index) => index !== activeIndex);
+    moved.splice(overIndex, 0, { ...active, section });
+    return {
+      section,
+      pinnedOrder: moved.flatMap((item) =>
+        item.kind === "thread" && item.section === "pinned" ? [item.key] : [],
+      ),
+      activeOrder: moved.flatMap((item) =>
+        item.kind === "thread" && item.section === "active" ? [item.key] : [],
+      ),
+    };
+  }
   // Main project groups own both pins and active rows. Their row metadata,
   // not a global divider, defines the destination. Shelves still own lifecycle.
   if (items.some((item) => item.kind === "project" && item.unified)) {
@@ -453,7 +491,8 @@ export function planSidebarThreadDrop(input: {
     keysById: ReadonlyMap<string, string | null | undefined>,
     writable: ReadonlySet<string> | undefined,
   ) => {
-    if (input.projectThreadKeys) order = order.filter((key) => input.projectThreadKeys!.has(key));
+    if (target.section === "active" && input.projectThreadKeys)
+      order = order.filter((key) => input.projectThreadKeys!.has(key));
     if (!writable) return planPinnedReorder({ orderedIds: order, keysById, movedId: activeKey });
     if (!writable.has(activeKey)) return null;
     const assignments = planPinnedReorder({

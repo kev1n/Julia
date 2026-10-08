@@ -3,6 +3,7 @@ import {
   SidebarSubagentRows,
   useSidebarSubagents,
 } from "./SidebarSubagentRows";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { useCallback, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -31,6 +32,8 @@ import { useEnvironmentScope } from "../../state/session";
  * never silently settle, rename or delete the other tabs in its workspace. */
 export function SidebarTabSessionRow(props: {
   session: WorkspaceChatSession;
+  dimmed?: boolean;
+  projectIcon?: ProjectFaviconProject | null;
   isActive: boolean;
   activeThreadKey: string | null;
   jumpLabel: string | null;
@@ -120,7 +123,10 @@ export function SidebarTabSessionRow(props: {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-thread-item={scopedThreadKey(threadRef)}
       data-tab-session={session.key}
-      className="list-none"
+      className={cn(
+        "list-none transition-opacity duration-150 motion-reduce:transition-none",
+        props.dimmed && "opacity-30",
+      )}
     >
       <div
         className={cn(
@@ -144,6 +150,9 @@ export function SidebarTabSessionRow(props: {
               />
             }
           >
+            {props.projectIcon ? (
+              <ProjectFavicon project={props.projectIcon} className="size-3.5 shrink-0" />
+            ) : null}
             {statuses.has("working") ? (
               <Spinner aria-hidden size="xs" tone="accent" className="shrink-0" />
             ) : (
