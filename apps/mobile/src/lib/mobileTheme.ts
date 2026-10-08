@@ -49,7 +49,9 @@ export function resolveMobileThemeIds(preferences: {
   readonly lightThemeId?: unknown;
   readonly darkThemeId?: unknown;
 }): MobileThemeIds {
-  const legacyThemeId = normalizeMobileThemeId(preferences.themeId);
+  // Keep the stock palette selectable; only an unset preference defaults to Codex.
+  const legacyThemeId =
+    preferences.themeId === undefined ? "codex" : normalizeMobileThemeId(preferences.themeId);
   return {
     light:
       preferences.lightThemeId === undefined
