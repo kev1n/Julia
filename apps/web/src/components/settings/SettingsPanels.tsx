@@ -115,6 +115,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "./settingsLayout";
+import { SyncAutofixModelsRow, syncAutofixModelsAreDefault } from "./SyncAutofixModelsSettings";
 import { useSearchableSetting } from "./settingsSearch";
 import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
 import { SUPPORTED_LOCALES } from "../../i18n/locales";
@@ -554,6 +555,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.keepUsageWindowsOpen !== DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen
       ? [gt("Keep session windows running")]
       : []),
+    ...(!syncAutofixModelsAreDefault(settings.syncAutofixModelSelections)
+      ? [gt("Fork sync auto-fix models")]
+      : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? [gt("Word wrap")] : []),
     ...(settings.persistComposerContextStrip !==
     DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
@@ -733,6 +737,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
       keepUsageWindowsOpen: DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen,
+      syncAutofixModelSelections: DEFAULT_UNIFIED_SETTINGS.syncAutofixModelSelections,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -2106,6 +2111,7 @@ export function ThreadsSettingsPanel() {
             />
           }
         />
+        <SyncAutofixModelsRow />
       </SettingsSection>
 
       {hasServerTargets ? (
