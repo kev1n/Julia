@@ -126,6 +126,7 @@ export function handoffBudget(input: {
 
 export function historicalMessage(
   item: OrchestrationV2TurnItem,
+  includeWorkDetails = false,
 ): OrchestrationV2HistoricalMessage | null {
   let text: string;
   switch (item.type) {
@@ -139,6 +140,29 @@ export function historicalMessage(
         `Exit code: ${item.exitCode ?? "unknown"}`,
         item.output ?? "",
       ].join("\n");
+      break;
+    case "dynamic_tool":
+      if (!includeWorkDetails) return null;
+      text = `Tool: ${item.toolName ?? item.title ?? "tool"}\nInput: ${JSON.stringify(item.input)}`;
+      break;
+    case "file_search":
+      if (!includeWorkDetails) return null;
+      text = `File search: ${item.pattern ?? ""}`;
+      break;
+    case "web_search":
+      if (!includeWorkDetails) return null;
+      text = `Web search: ${(item.patterns ?? []).join("\n")}`;
+      break;
+    case "todo_list":
+      if (!includeWorkDetails) return null;
+      text = [
+        item.explanation ?? "",
+        ...item.steps.map((step) => `${step.status}: ${step.text}`),
+      ].join("\n");
+      break;
+    case "subagent":
+      if (!includeWorkDetails) return null;
+      text = [`Subagent task: ${item.prompt}`, item.progress ?? ""].join("\n");
       break;
     case "error":
       text = item.failure.message;

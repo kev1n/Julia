@@ -186,7 +186,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
         targetThreadId,
         runId: input.runId,
         title: `${activeThread.title} fork`,
-        contextMode: "final_messages",
+        contextMode: "without_tool_results",
         destination: input.destination,
         chatGroupId: activeThread.chatGroupId ?? null,
       },

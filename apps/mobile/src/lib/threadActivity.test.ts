@@ -370,6 +370,53 @@ function assistantMessage(updatedAt = "2026-06-20T00:00:03.000Z") {
 }
 
 describe("buildThreadFeed", () => {
+  it.each([false, true])("keeps inherited final chunks visible with work: %s", (withWork) => {
+    const feed = buildThreadFeed(
+      [
+        projected(userMessage(), 0),
+        ...(withWork
+          ? [
+              projected(
+                {
+                  ...base("tool", "2026-06-20T00:00:01.000Z", 1),
+                  type: "command_execution" as const,
+                  input: "Tool input",
+                },
+                1,
+              ),
+            ]
+          : []),
+        projected(
+          {
+            ...assistantMessage("2026-06-20T00:00:02.000Z"),
+            id: TurnItemId.make("item-opening"),
+            messageId: MessageId.make("message-opening"),
+            text: "## The complete result",
+          },
+          1,
+        ),
+        projected(
+          {
+            ...assistantMessage("2026-06-20T00:00:02.500Z"),
+            id: TurnItemId.make("item-table"),
+            messageId: MessageId.make("message-table"),
+            text: "| Result | Status |\n| --- | --- |\n| Complete | Preserved |",
+          },
+          2,
+        ),
+        projected(assistantMessage(), 3),
+      ].map((row) => ({ ...row, visibility: "inherited" as const })),
+    );
+
+    const presented = deriveThreadFeedPresentation(feed, null, new Set());
+    expect(presented.filter((entry) => entry.type === "message").map((entry) => entry.id)).toEqual([
+      "message-user",
+      "message-opening",
+      "message-table",
+      "message-assistant",
+    ]);
+  });
+
   it("keeps async answers in question history instead of user bubbles", () => {
     const requestId = RuntimeRequestId.make("question");
     const question: OrchestrationV2TurnItem = {

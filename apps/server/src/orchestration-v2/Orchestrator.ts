@@ -7471,7 +7471,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       sourceProjection === null ||
       sourceRun === null ||
       (projection.thread.forkedFrom?.type === "run" &&
-        projection.thread.forkedFrom.contextMode === "final_messages")
+        projection.thread.forkedFrom.contextMode !== undefined &&
+        projection.thread.forkedFrom.contextMode !== "full")
         ? []
         : yield* readForkHistoryItems(projectionStore, sourceProjection, sourceRun).pipe(
             Effect.mapError(
@@ -7484,13 +7485,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       sourceProjection !== null &&
       sourceRun !== null &&
       projection.thread.forkedFrom?.type === "run" &&
-      projection.thread.forkedFrom.contextMode === "final_messages"
+      projection.thread.forkedFrom.contextMode !== undefined &&
+      projection.thread.forkedFrom.contextMode !== "full"
     ) {
-      // The indexed messages view includes fork ancestry but never hydrates tool output.
+      const omitToolResults = projection.thread.forkedFrom.contextMode === "without_tool_results";
+      // Both filtered modes avoid hydrating tool results and include fork ancestry.
       const history = yield* projectionStore
         .getTimelinePage(sourceProjection.thread.id, {
-          view: "messages",
-          finalMessagesOnly: true,
+          view: omitToolResults ? "activity" : "messages",
+          finalMessagesOnly: !omitToolResults,
+          omitToolResults,
           throughRunId: sourceRun.id,
           limit: Number.MAX_SAFE_INTEGER,
         })
@@ -7503,7 +7507,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               }),
           ),
         );
-      portableForkItems = history.items.map((row) => row.item);
+      // Rolled-back runs left the conversation, in the source and in each fork ancestor.
+      const rolledBackRunIds = new Set<string>();
+      for (const threadId of new Set(history.items.map((row) => row.item.threadId))) {
+        const { runs } = yield* projectionStore
+          .getThreadRecords(threadId, ["runs"])
+          .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
+        for (const run of runs) if (run.status === "rolled_back") rolledBackRunIds.add(run.id);
+      }
+      portableForkItems = history.items
+        .map((row) => row.item)
+        .filter((item) => item.runId === null || !rolledBackRunIds.has(item.runId));
     }
     const portableForkHandoff =
       !requiresPortableFork ||
@@ -7524,6 +7538,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               coveredRunOrdinals: visibleDeltaRunOrdinals(sourceProjection, portableForkItems),
               strategy: "full_thread_summary",
               items: portableForkItems,
+              includeWorkDetails:
+                projection.thread.forkedFrom?.type === "run" &&
+                projection.thread.forkedFrom.contextMode === "without_tool_results",
               runs: sourceProjection.runs,
               createdAt: now,
             })
