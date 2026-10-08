@@ -16,6 +16,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -24,6 +25,7 @@ import { isTriagePrompt, replaceTriagePlaybookLink } from "@t3tools/shared/triag
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { openCommandPalette } from "../../commandPaletteBus";
 import {
   deriveLogicalProjectKeyFromSettings,
   selectProjectGroupingSettings,
@@ -57,6 +59,7 @@ interface DraftEnvironmentRoutingInput {
   readonly composerHasAttachments: boolean;
   readonly activeProjectKey: string | null;
   readonly activeProjectIsScratch: boolean;
+  readonly activeProject: EnvironmentProject | null;
   readonly projectGroupingSettings: ReturnType<typeof selectProjectGroupingSettings>;
   readonly sendInFlightRef: { readonly current: boolean };
 }
@@ -97,6 +100,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     composerHasAttachments,
     activeProjectKey,
     activeProjectIsScratch,
+    activeProject,
     projectGroupingSettings,
     sendInFlightRef,
   } = input;
@@ -117,6 +121,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
         .filter((candidate) => {
           const environment = environmentById.get(candidate.environmentId);
           return (
+            candidate.projectId !== null &&
             isAutoCandidate({
               environmentId: candidate.environmentId,
               connected: environment?.connection.phase === "connected",
@@ -285,7 +290,18 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     const target = logicalProjectEnvironments.find(
       (env) => env.environmentId === nextEnvironmentId,
     );
-    if (!target) return;
+    if (!target || target.disabled) return;
+    if (target.projectId === null && !activeProjectIsScratch && activeProject) {
+      openCommandPalette({
+        open: "add-project",
+        projectSetup: {
+          environmentId: target.environmentId,
+          draftId,
+          sourceProject: activeProject,
+        },
+      });
+      return;
+    }
     const request = { environmentId: target.environmentId, scope: environmentChangeScope };
     environmentChangeRef.current = request;
     setBusyEnvironmentChange(null);

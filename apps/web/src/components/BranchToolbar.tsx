@@ -211,16 +211,17 @@ const RunContextSelector = memo(function RunContextSelector({
   const m = useMessages();
   const moveThread = useMoveThread(envLocked ? threadRef : null);
   const canMove = envLocked && moveThread.choices.length > 0;
-  const machineOptions = canMove
-    ? [
-        ...(availableEnvironments?.filter((env) => env.environmentId === environmentId) ?? []),
-        ...moveThread.choices.map((choice) => ({
-          environmentId: choice.environmentId,
-          label: choice.label,
-          machine: choice.machine,
-        })),
-      ]
-    : availableEnvironments;
+  const machineOptions: readonly Omit<EnvironmentOption, "projectId" | "isPrimary">[] | undefined =
+    canMove
+      ? [
+          ...(availableEnvironments?.filter((env) => env.environmentId === environmentId) ?? []),
+          ...moveThread.choices.map((choice) => ({
+            environmentId: choice.environmentId,
+            label: choice.label,
+            machine: choice.machine,
+          })),
+        ]
+      : availableEnvironments;
   const composerFloatingLayerProps = useComposerMenuProps();
   const activeEnvironment =
     availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
@@ -409,11 +410,13 @@ const RunContextSelector = memo(function RunContextSelector({
                   <MenuRadioItem
                     key={env.environmentId}
                     disabled={
-                      canMove
+                      env.disabled === true ||
+                      (canMove
                         ? moveThread.disabledReason !== null ||
                           moveThread.isMoving ||
                           env.environmentId === environmentId
-                        : envLocked || (!onEnvironmentChange && env.environmentId !== environmentId)
+                        : envLocked ||
+                          (!onEnvironmentChange && env.environmentId !== environmentId))
                     }
                     value={env.environmentId}
                     closeOnClick
@@ -423,6 +426,9 @@ const RunContextSelector = memo(function RunContextSelector({
                         <EnvironmentMachineIcon kind={env.machine} className="size-3" />
                         <span className="min-w-0 truncate">{env.label}</span>
                       </span>
+                      {env.detail ? (
+                        <span className="text-xs text-muted-foreground">{env.detail}</span>
+                      ) : null}
                       {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
                       <MachineUsageLine environmentId={env.environmentId} />
                     </span>
