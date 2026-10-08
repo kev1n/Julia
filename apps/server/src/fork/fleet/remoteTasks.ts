@@ -512,11 +512,7 @@ export const makePeerHandlers = Effect.gen(function* () {
         pendingApproval: null,
         waitTimedOut,
         machine: descriptor.label,
-        link: formatThreadLink({
-          environmentId: descriptor.environmentId,
-          threadId,
-          title: shell.title,
-        }),
+        link: formatThreadLink(threadId, shell.title),
       } satisfies Result;
     });
 
@@ -719,11 +715,7 @@ export const runDelivery = Effect.gen(function* () {
           parentThreadId: entry.source.threadId,
           taskId: remoteTaskId(descriptor.environmentId, threadId),
           title: shell.title,
-          link: formatThreadLink({
-            environmentId: descriptor.environmentId,
-            threadId,
-            title: shell.title,
-          }),
+          link: formatThreadLink(threadId, shell.title),
           status: OrchestratorMcpService.taskStatusForRun(run),
           summary: subagentResultForRun(records, run).text,
           key: `fleet-task-result:${descriptor.environmentId}:${threadId}:${run.id}`,

@@ -379,6 +379,7 @@ export function UsagePage() {
             selectedEnvironmentIds={selectedEnvironmentIds}
             onSelectionChange={setSelectedEnvironmentIds}
             showUsageStatus={!periodless}
+            refreshing={refreshingUsage}
             isPartial={isPartial}
             duplicateSources={merged.duplicateSources}
             contractMismatches={merged.contractMismatches}
