@@ -218,7 +218,7 @@ export interface ForkThreadFromRunInput extends CommandMetadata {
   readonly targetThreadId: ThreadId;
   readonly runId: RunId;
   readonly title?: string;
-  readonly contextMode?: "full" | "final_messages";
+  readonly contextMode?: "full" | "final_messages" | "without_tool_results";
   readonly destination?: "tab" | "thread";
   readonly chatGroupId?: ThreadId | null;
 }

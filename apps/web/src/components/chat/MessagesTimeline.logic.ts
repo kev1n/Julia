@@ -1113,8 +1113,21 @@ function deriveTurnFolds(input: {
     const terminalEntryIndex = group.terminalEntry
       ? group.entries.findIndex((entry) => entry.id === group.terminalEntry?.id)
       : group.entries.length;
+    let lastWorkBeforeReply = -1;
+    for (let index = 0; index < terminalEntryIndex; index++) {
+      if (group.entries[index]?.kind !== "message") lastWorkBeforeReply = index;
+    }
     for (const [index, entry] of group.entries.entries()) {
       if (entry.id === group.terminalEntry?.id) {
+        continue;
+      }
+      // A portable fork may contain several final-answer chunks after its work.
+      if (
+        entry.kind === "message" &&
+        entry.projectedItem?.visibility === "inherited" &&
+        index > lastWorkBeforeReply &&
+        index < terminalEntryIndex
+      ) {
         continue;
       }
       const isCompaction = timelineEntryIsCompaction(entry);
@@ -1140,10 +1153,8 @@ function deriveTurnFolds(input: {
     if (hiddenEntryIds.size === 0) {
       continue;
     }
-    // Message-only history (including a fork's final response chunks) is not
-    // work. A lone compaction row also needs other work before it folds.
     const hidesNonCompactionWork = (entries: ReadonlyArray<TimelineEntry>) =>
-      entries.some((entry) => entry.kind !== "message" && !timelineEntryIsCompaction(entry));
+      entries.some((entry) => hiddenEntryIds.has(entry.id) && !timelineEntryIsCompaction(entry));
     if (!hidesNonCompactionWork(group.entries)) {
       continue;
     }

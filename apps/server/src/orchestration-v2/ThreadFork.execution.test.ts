@@ -55,8 +55,8 @@ const forkCases = (
   // Each failed status keeps both context modes; a completed run only forks its final messages.
   return ([status, "completed"] as const).flatMap((caseStatus) =>
     (caseStatus === "completed"
-      ? (["final_messages"] as const)
-      : (["full", "final_messages"] as const)
+      ? (["final_messages", "without_tool_results"] as const)
+      : (["full", "final_messages", "without_tool_results"] as const)
     ).map((contextMode) => ({
       driver,
       status: caseStatus,
@@ -414,6 +414,48 @@ it.effect.each(forkCases)(
               },
             ],
           });
+          for (const tool of [
+            {
+              id: "command-call",
+              ordinal: 12,
+              type: "command_execution",
+              input: "INCLUDED_COMMAND_INPUT",
+              output: "EXCLUDED_COMMAND_OUTPUT",
+              outputOmitted: true,
+              exitCode: 0,
+            },
+            {
+              id: "dynamic-call",
+              ordinal: 13,
+              type: "dynamic_tool",
+              toolName: "INCLUDED_TOOL_NAME",
+              input: { query: "INCLUDED_TOOL_INPUT" },
+              output: { text: "EXCLUDED_TOOL_OUTPUT", image: "EXCLUDED_SCREENSHOT" },
+              viewedImagePath: "/tmp/EXCLUDED_SCREENSHOT.png",
+            },
+            {
+              id: "file-edit",
+              ordinal: 14,
+              type: "file_change",
+              fileName: "INCLUDED_FILE_NAME",
+              diffStr: "EXCLUDED_DIFF",
+              oldStr: "EXCLUDED_OLD",
+              newStr: "EXCLUDED_NEW",
+            },
+          ] as const) {
+            yield* eventSink.write({
+              events: [
+                {
+                  id: EventId.make(tool.id),
+                  type: "turn-item.updated",
+                  threadId: sourceThreadId,
+                  runId: sourceRunId,
+                  occurredAt: now,
+                  payload: { ...baseItem, ...tool, id: TurnItemId.make(tool.id) },
+                },
+              ],
+            });
+          }
         }
         yield* eventSink.write({
           events: [
@@ -426,7 +468,7 @@ it.effect.each(forkCases)(
               payload: {
                 ...baseItem,
                 id: TurnItemId.make(`reply-${index}`),
-                ordinal: 10 + index * 2,
+                ordinal: 10 + index * 10,
                 type: "assistant_message",
                 messageId: MessageId.make(`reply-${index}`),
                 text,
@@ -482,12 +524,40 @@ it.effect.each(forkCases)(
         inherited.map((row) => row.item.id),
         [
           TurnItemId.make("item-1"),
-          ...(contextMode === "full" ? [TurnItemId.make("reply-0")] : []),
+          ...(contextMode !== "final_messages" ? [TurnItemId.make("reply-0")] : []),
           ...(contextMode === "full" ? [TurnItemId.make("reasoning")] : []),
+          ...(contextMode !== "final_messages"
+            ? [
+                TurnItemId.make("command-call"),
+                TurnItemId.make("dynamic-call"),
+                TurnItemId.make("file-edit"),
+              ]
+            : []),
           TurnItemId.make("reply-1"),
           TurnItemId.make("reply-2"),
         ],
       );
+      if (contextMode === "without_tool_results") {
+        const context = `${handoff.summaryText}\n${history}`;
+        assert.include(context, "EXCLUDED_COMMENTARY");
+        assert.include(context, "INCLUDED_COMMAND_INPUT");
+        assert.include(context, "INCLUDED_TOOL_NAME");
+        assert.include(context, "INCLUDED_TOOL_INPUT");
+        assert.notInclude(context, "EXCLUDED_REASONING");
+        for (const excluded of [
+          "EXCLUDED_COMMAND_OUTPUT",
+          "EXCLUDED_TOOL_OUTPUT",
+          "EXCLUDED_SCREENSHOT",
+          "EXCLUDED_DIFF",
+          "EXCLUDED_OLD",
+          "EXCLUDED_NEW",
+        ]) {
+          assert.notInclude(context, excluded);
+          assert.notInclude(JSON.stringify(inherited), excluded);
+        }
+        const source = yield* orchestrator.getThreadProjection(sourceThreadId);
+        assert.include(JSON.stringify(source.turnItems), "EXCLUDED_TOOL_OUTPUT");
+      }
       const shell = yield* orchestrator.getThreadShell(targetThreadId);
       assert.equal(shell?.chatGroupId, targetThreadId);
       assert.equal(shell?.visibleItemCount, target.visibleTurnItems.length);
@@ -499,7 +569,13 @@ it.effect.each(forkCases)(
         page.items.filter((row) => row.visibility === "inherited").map((row) => row.item.id),
         inherited.map((row) => row.item.id),
       );
-      if (contextMode === "final_messages" && status === "completed") {
+      if (contextMode === "without_tool_results") {
+        assert.notInclude(JSON.stringify(page.items), "EXCLUDED_TOOL_OUTPUT");
+        assert.notInclude(JSON.stringify(page.items), "EXCLUDED_COMMAND_OUTPUT");
+        assert.notInclude(JSON.stringify(page.items), "EXCLUDED_DIFF");
+        assert.notInclude(JSON.stringify(page.items), "EXCLUDED_REASONING");
+      }
+      if (contextMode !== "full" && status === "completed") {
         const localRun = target.runs[0]!;
         yield* eventSink.write({
           events: [
@@ -550,7 +626,7 @@ it.effect.each(forkCases)(
                   threadId: targetThreadId,
                   runId: localRun.id,
                   id: TurnItemId.make(`target-reply-${index}`),
-                  ordinal: 10 + index * 2,
+                  ordinal: 10 + index * 10,
                   type: "assistant_message",
                   messageId: MessageId.make(`target-reply-${index}`),
                   text,
@@ -592,8 +668,17 @@ it.effect.each(forkCases)(
         assert.include(descendantHistory, "INCLUDED_HEADING_AND_TABLE");
         assert.include(descendantHistory, "INCLUDED_FINAL_REPLY");
         assert.include(descendantHistory, "INCLUDED_FORK_FINAL");
-        assert.notInclude(descendantHistory, "EXCLUDED_COMMENTARY");
-        assert.notInclude(descendantHistory, "EXCLUDED_FORK_COMMENTARY");
+        if (contextMode === "final_messages") {
+          assert.notInclude(descendantHistory, "EXCLUDED_COMMENTARY");
+          assert.notInclude(descendantHistory, "EXCLUDED_FORK_COMMENTARY");
+        } else {
+          assert.include(descendantHistory, "EXCLUDED_COMMENTARY");
+          assert.include(descendantHistory, "EXCLUDED_FORK_COMMENTARY");
+          assert.include(descendantHistory, "INCLUDED_TOOL_INPUT");
+          assert.notInclude(descendantHistory, "EXCLUDED_REASONING");
+          assert.notInclude(descendantHistory, "EXCLUDED_FORK_REASONING");
+          assert.notInclude(descendantHistory, "EXCLUDED_TOOL_OUTPUT");
+        }
         assert.notInclude(descendantHistory, "EXCLUDED_LATER_MARKER");
         const descendantPage = yield* orchestrator.getTimelinePage(descendantThreadId, {
           view: "activity",
