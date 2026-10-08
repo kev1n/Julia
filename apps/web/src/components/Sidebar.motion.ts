@@ -134,7 +134,12 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       }
       const next = new Map(
         Array.from(parent.children)
-          .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
+          .filter(
+            (node): node is HTMLElement =>
+              node instanceof HTMLElement &&
+              !exiting.has(node) &&
+              !node.hasAttribute("data-sidebar-motion-skip"),
+          )
           .map((node) => [
             node,
             {
@@ -254,7 +259,12 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       const origin = parent.getBoundingClientRect().top;
       released = new Map(
         Array.from(parent.children)
-          .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
+          .filter(
+            (node): node is HTMLElement =>
+              node instanceof HTMLElement &&
+              !exiting.has(node) &&
+              !node.hasAttribute("data-sidebar-motion-skip"),
+          )
           .map((node) => [
             node,
             (node === destination?.node ? destination.top : node.getBoundingClientRect().top) -
