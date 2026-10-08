@@ -511,6 +511,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(!Equal.equals(settings.snoozePresets, DEFAULT_UNIFIED_SETTINGS.snoozePresets)
       ? ["Snooze options"]
       : []),
+    ...(settings.keepUsageWindowsOpen !== DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen
+      ? ["Keep session windows running"]
+      : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
     ...(settings.persistComposerContextStrip !==
     DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
@@ -671,6 +674,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
+      keepUsageWindowsOpen: DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -1744,6 +1748,22 @@ export function ThreadsSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label="Snooze until limits reset"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("keep-usage-windows-open")}
+          description="When a Claude or Codex account's 5-hour session window ends, send it one tiny prompt so the next window starts right away. Turn it on in one environment only."
+          settingKeys={["keepUsageWindowsOpen"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["keepUsageWindowsOpen"]}
+              checked={settings.keepUsageWindowsOpen}
+              onCheckedChange={(checked) =>
+                updateSettings({ keepUsageWindowsOpen: Boolean(checked) })
+              }
+              aria-label="Keep session windows running"
             />
           }
         />
