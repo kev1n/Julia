@@ -13,7 +13,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 
 import * as ProviderInstanceRegistry from "../../provider/ProviderInstanceRegistry.ts";
-import type { FleetRelationsOutput } from "../../textGeneration/FleetRelationsPrompt.ts";
+import type { FleetRelationsOutput } from "@t3tools/provider-core/server/fleetRelationsPrompt";
 import { fleetRequest } from "./config.ts";
 import { isActive } from "./fleetIndex.ts";
 import type { FleetThread } from "./model.ts";
@@ -133,40 +133,42 @@ const make = Effect.gen(function* () {
     const key = hash(context);
     const now = yield* Clock.currentTimeMillis;
     const previous = cache.get(me.repoKey);
-    const answer = (cached: Cached, status = cached.status) =>
-      Effect.gen(function* () {
-        if (options?.wait && cached.key === key && cached.status === "checking") {
-          yield* Deferred.await(cached.completed);
-          status = cached.status;
-        }
-        const overlaps = cached.suggestions.flatMap((suggestion): ForkFleetOverlap[] => {
-          const ids = [suggestion.aId, suggestion.bId];
-          if (
-            !ids.includes(idOf(me)) ||
-            ids.some((id) => cached.evidence.get(id) !== fingerprints.get(id))
-          )
-            return [];
-          const other = candidates.find(
-            ({ thread }) =>
-              idOf(thread) === (suggestion.aId === idOf(me) ? suggestion.bId : suggestion.aId),
-          );
-          if (!other) return [];
-          return [
-            {
-              environmentId: other.thread.environmentId,
-              threadId: other.thread.threadId,
-              title: other.thread.title,
-              machine: other.snapshot.label,
-              lifecycle: other.thread.lifecycle === "running" ? "running" : "idle",
-              branch: other.thread.branch,
-              kind: suggestion.kind,
-              reason: suggestion.reason,
-              url: `${other.snapshot.baseUrl}/${other.thread.environmentId}/${other.thread.threadId}`,
-            },
-          ];
-        });
-        return { overlaps, status, ...coverage };
+    const answer = Effect.fn("threadOverlaps.answer")(function* (
+      cached: Cached,
+      status = cached.status,
+    ) {
+      if (options?.wait && cached.key === key && cached.status === "checking") {
+        yield* Deferred.await(cached.completed);
+        status = cached.status;
+      }
+      const overlaps = cached.suggestions.flatMap((suggestion): ForkFleetOverlap[] => {
+        const ids = [suggestion.aId, suggestion.bId];
+        if (
+          !ids.includes(idOf(me)) ||
+          ids.some((id) => cached.evidence.get(id) !== fingerprints.get(id))
+        )
+          return [];
+        const other = candidates.find(
+          ({ thread }) =>
+            idOf(thread) === (suggestion.aId === idOf(me) ? suggestion.bId : suggestion.aId),
+        );
+        if (!other) return [];
+        return [
+          {
+            environmentId: other.thread.environmentId,
+            threadId: other.thread.threadId,
+            title: other.thread.title,
+            machine: other.snapshot.label,
+            lifecycle: other.thread.lifecycle === "running" ? "running" : "idle",
+            branch: other.thread.branch,
+            kind: suggestion.kind,
+            reason: suggestion.reason,
+            url: `${other.snapshot.baseUrl}/${other.thread.environmentId}/${other.thread.threadId}`,
+          },
+        ];
       });
+      return { overlaps, status, ...coverage };
+    });
     if (
       previous?.key === key &&
       (previous.status !== "unavailable" || now - previous.attemptedAt < 300_000)
