@@ -1,10 +1,11 @@
 import { ProviderInstanceId, type ServerProviderUsageLimits } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  chooseNewChatModelSubscription,
   defaultModelPriority,
   groupModelSubscriptions,
   type ModelSubscription,
-} from "./modelSubscriptions";
+} from "./modelSubscriptions.ts";
 
 const now = Date.parse("2026-10-07T12:00:00Z");
 function subscription(
@@ -130,5 +131,98 @@ describe("defaultModelPriority", () => {
   it("does not pin a same-named model from a different catalog", () => {
     expect(defaultModelPriority("acpRegistry:custom", "claude-opus-5-5")).toBe(3);
     expect(defaultModelPriority("cursor", "gpt-6.1-sol")).toBe(3);
+  });
+});
+
+describe("chooseNewChatModelSubscription", () => {
+  const opus = (id: string, used: number) => ({
+    ...subscription(id, used),
+    catalog: "claudeAgent",
+    model: "claude-opus-5-5",
+  });
+  const sol = (id: string, used: number) => ({
+    ...subscription(id, used),
+    model: "gpt-6.1-sol",
+  });
+  const selection = { instanceId: ProviderInstanceId.make("claudeA"), model: "claude-opus-5-5" };
+
+  it("falls through two exhausted Opus accounts to Sol, independent of catalog order", () => {
+    const choice = chooseNewChatModelSubscription(
+      selection,
+      [
+        opus("claudeA", 100),
+        opus("claudeB", 100),
+        { ...sol("astra", 0), model: "gpt-6-astra" },
+        sol("sol-busy", 80),
+        sol("sol-room", 20),
+      ],
+      [],
+      now,
+    );
+    expect(choice?.model).toBe("gpt-6.1-sol");
+    expect(choice?.value).toBe("sol-room");
+  });
+
+  it("keeps Opus when a compatible account still has capacity", () => {
+    expect(
+      chooseNewChatModelSubscription(
+        selection,
+        [opus("claudeA", 100), opus("claudeB", 80), sol("sol", 0)],
+        [],
+        now,
+      )?.value,
+    ).toBe("claudeB");
+  });
+
+  it("skips exhausted and unavailable preferred models, then tries user pins in order", () => {
+    const subscriptions = [
+      opus("claudeA", 100),
+      sol("sol", 100),
+      { ...sol("astra", 0), model: "gpt-6-astra", available: false },
+      { ...subscription("unpinned", 0), model: "other" },
+      { ...subscription("pin-second", 0), model: "custom-b" },
+      { ...subscription("pin-first", 30), model: "custom-a" },
+    ];
+    expect(
+      chooseNewChatModelSubscription(
+        selection,
+        subscriptions,
+        [
+          { provider: ProviderInstanceId.make("pin-first"), model: "custom-a" },
+          { provider: ProviderInstanceId.make("pin-second"), model: "custom-b" },
+        ],
+        now,
+      )?.value,
+    ).toBe("pin-first");
+  });
+
+  it("uses compatible accounts for a user pin, not just the account that was starred", () => {
+    expect(
+      chooseNewChatModelSubscription(
+        selection,
+        [
+          opus("claudeA", 100),
+          { ...subscription("pinned-exhausted", 100), model: "custom" },
+          { ...subscription("pinned-room", 40), model: "custom" },
+        ],
+        [{ provider: ProviderInstanceId.make("pinned-exhausted"), model: "custom" }],
+        now,
+      )?.value,
+    ).toBe("pinned-room");
+  });
+
+  it("does not choose an arbitrary unpinned model when all preferred models are exhausted", () => {
+    expect(
+      chooseNewChatModelSubscription(
+        selection,
+        [opus("claudeA", 100), sol("sol", 100), subscription("unpinned", 0)],
+        [],
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not reinterpret a selection before its catalog has loaded", () => {
+    expect(chooseNewChatModelSubscription(selection, [sol("sol", 0)], [], now)).toBeNull();
   });
 });
