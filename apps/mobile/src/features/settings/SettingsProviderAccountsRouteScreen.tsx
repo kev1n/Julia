@@ -160,6 +160,11 @@ function ProviderAccount({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState({ id: "", values: {} as Record<string, string> });
   const state = auth.data;
+  // Token fan-out is a web/desktop flow; mobile has no token-saving step.
+  const methods =
+    state?.methods?.filter(
+      (method) => provider.driver !== "claudeAgent" || method.id !== "token",
+    ) ?? [];
   const interaction = state?.interaction;
   const draftId = `${state?.flowId ?? ""}:${interaction?.id ?? ""}`;
   const values = draft.id === draftId ? draft.values : {};
@@ -227,7 +232,6 @@ function ProviderAccount({
   }
   const name = provider.displayName ?? provider.driver;
   const email = signedIn && !active && provider.enabled ? provider.auth.email?.trim() : undefined;
-  const methods = state?.methods ?? [];
   // The status line says why a provider that is missing or turned off can't sign in.
   const canSignIn =
     !active &&
@@ -408,6 +412,12 @@ function ProviderAccount({
         <ProviderAccountSummary key={email} name={name} status={status} email={email} />
         {trailing}
       </View>
+      {provider.driver === "claudeAgent" && !active ? (
+        <Text className="px-4 pb-3 text-sm text-foreground-muted">
+          Sign-in applies to {environment.label} only. Use web or desktop to share a login token
+          with other connected machines; copying an account slot does not copy its login.
+        </Text>
+      ) : null}
       {interaction?.type === "deviceCode" ||
       interaction?.type === "terminal" ||
       interaction?.type === "credentials" ||

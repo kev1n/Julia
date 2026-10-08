@@ -11,7 +11,7 @@ import type {
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { CopyIcon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
@@ -103,6 +103,11 @@ export function ProviderAuthenticationSection({
             : `Sign in on ${environmentLabel}.`;
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
+  const defaultMethod =
+    provider.driver === "claudeAgent"
+      ? auth?.methods?.find((method) => method.id === "claudeai")
+      : undefined;
+  const selectedMethod = auth?.methods?.find((method) => method.id === methodId) ?? defaultMethod;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
   const values = draft.id === draftId ? draft.values : {};
   const url =
@@ -211,19 +216,26 @@ export function ProviderAuthenticationSection({
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
-              <SelectTrigger size="sm" aria-label="Sign-in method" className="w-44">
+              <SelectTrigger
+                size="sm"
+                aria-label="Sign-in method"
+                className={provider.driver === "claudeAgent" ? "w-72 max-w-full" : "w-44"}
+              >
                 <SelectValue>
                   {auth?.methods?.find((method) => method.id === methodId)?.name ??
+                    defaultMethod?.name ??
                     "Provider default"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="">Provider default</SelectItem>
-                {auth?.methods?.map((method) => (
-                  <SelectItem key={method.id} value={method.id}>
-                    {method.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="">{defaultMethod?.name ?? "Provider default"}</SelectItem>
+                {auth?.methods?.map((method) =>
+                  method.id !== defaultMethod?.id ? (
+                    <SelectItem key={method.id} value={method.id}>
+                      {method.name}
+                    </SelectItem>
+                  ) : null,
+                )}
               </SelectPopup>
             </Select>
           ) : null}
@@ -341,6 +353,9 @@ export function ProviderAuthenticationSection({
         </div>
       }
     >
+      {!active && provider.driver === "claudeAgent" && selectedMethod?.description ? (
+        <p className="py-2 text-xs text-muted-foreground">{selectedMethod.description}</p>
+      ) : null}
       {interaction?.type === "terminal" ||
       interaction?.type === "credentials" ||
       interaction?.type === "deviceCode" ||
@@ -506,8 +521,7 @@ export function ProviderAuthenticationSection({
 
 /**
  * Saves the token Claude's "all machines" sign-in printed on every machine.
- * It first confirms the flow, which the server holds open until then so the
- * token is sure to reach this client.
+ * The server holds the flow open until the user chooses to save the login.
  */
 function ShareClaudeToken(props: {
   readonly environmentId: EnvironmentId;
@@ -520,32 +534,63 @@ function ShareClaudeToken(props: {
     reportDefect: false,
   });
   const shareProviderSecret = useShareProviderSecret(props.environmentId);
-  const started = useRef(false);
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   const { environmentId, instanceId, flowId, token } = props;
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    void respond({
-      environmentId,
-      input: {
-        instanceId,
-        flowId,
-        interactionId: "terminal",
-        response: { type: "terminal", data: "" },
-      },
-    })
-      .then(() =>
-        shareProviderSecret({
+  async function save() {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const confirmed = await respond({
+        environmentId,
+        input: {
           instanceId,
-          name: "CLAUDE_CODE_OAUTH_TOKEN",
-          value: token,
-          includeSource: true,
-        }),
-      )
-      .then((description) => {
-        if (description)
-          toastManager.add({ type: "success", title: "Claude subscription token", description });
+          flowId,
+          interactionId: "terminal",
+          response: { type: "terminal", data: "" },
+        },
       });
-  }, [environmentId, flowId, instanceId, respond, shareProviderSecret, token]);
-  return null;
+      if (confirmed._tag !== "Success")
+        throw new Error("Could not finish token sign-in. Try again.");
+      const result = await shareProviderSecret({
+        instanceId,
+        name: "CLAUDE_CODE_OAUTH_TOKEN",
+        value: token,
+        includeSource: true,
+      });
+      if (result?.description)
+        toastManager.add({
+          type: result.failed.length > 0 ? "error" : "success",
+          title: "Claude login sharing",
+          description: result.description,
+        });
+    } catch {
+      const message =
+        "Could not save the Claude login. Retry sign-in or save the token in provider settings.";
+      setError(message);
+      toastManager.add({ type: "error", title: "Claude login sharing", description: message });
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }
+  return (
+    <div className="grid gap-2 py-2">
+      <p className="text-xs text-muted-foreground">
+        Your login token is ready. Save it on this machine and other connected machines. Offline
+        machines are skipped; this does not set up automatic sync.
+      </p>
+      <Button size="sm" variant="outline" disabled={pending} onClick={() => void save()}>
+        {pending ? "Saving login…" : "Save login to connected machines"}
+      </Button>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }

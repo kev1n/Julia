@@ -6,8 +6,21 @@ const IDENTITY_STEP = 1;
 const ACP_REGISTRY_IDENTITY_STEP = 1;
 
 export const ADD_PROVIDER_WIZARD_STEPS = ["Provider", "Identity", "Config"] as const;
+export const CLAUDE_WIZARD_STEPS = ["Provider", "Account", "Setup", "Sign in"] as const;
 export const ACP_REGISTRY_WIZARD_STEPS = ["Provider", "Identity", "Sign in"] as const;
 export const LOCAL_ACP_WIZARD_STEPS = ["Provider", "Identity"] as const;
+
+/** A new slot must not inherit the machine's existing Claude login. */
+export function resolveClaudeAccountConfig(
+  config: Readonly<Record<string, unknown>>,
+  mode: "new" | "existing",
+  instanceId: string,
+  slotId: string,
+): Record<string, unknown> {
+  if (mode === "existing") return { ...config };
+  const homePath = typeof config.homePath === "string" ? config.homePath.trim() : "";
+  return { ...config, homePath: homePath || `~/.claude-t3/${instanceId}-${slotId}` };
+}
 
 export interface ProviderIdentityDraft {
   readonly label: string;

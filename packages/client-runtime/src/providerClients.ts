@@ -46,7 +46,7 @@ export const providerClients = makeProviderClientRegistry([
         name: "CLAUDE_CODE_OAUTH_TOKEN",
         label: "Subscription token",
         description:
-          'Optional. Signs this account in on every machine. Sign in with "all machines" to fill it.',
+          'Optional. Choose "Share login with connected machines" during sign-in to fill it. Saving or clearing this token also applies to connected machines; offline machines are skipped. This is not continuous sync.',
         placeholder: "Paste token",
         sensitive: true,
         sharedAcrossMachines: true,

@@ -25,7 +25,7 @@ import {
   usePersistEnvironmentProviderInstanceMutation,
 } from "../../hooks/useSettings";
 
-import { cn } from "../../lib/utils";
+import { cn, randomUUID } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { managedInstanceLocks, useManagedPolicy } from "../../state/managedPolicy";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
@@ -45,10 +45,12 @@ import { ProviderSettingsForm, deriveProviderSettingsFields } from "./ProviderSe
 import { WizardPanel, WizardPopup, WizardHeader, WizardFooter } from "../ui/wizard";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
+  CLAUDE_WIZARD_STEPS,
   ACP_REGISTRY_WIZARD_STEPS,
   LOCAL_ACP_WIZARD_STEPS,
   resolveAcpRegistryWizardNavigation,
   resolveWizardNavigation,
+  resolveClaudeAccountConfig,
   updateProviderIdentityDraft,
   type ProviderIdentityDraft,
   type WizardNavigation,
@@ -189,6 +191,8 @@ export function AddProviderInstanceDialog({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [createdInstanceId, setCreatedInstanceId] = useState<ProviderInstanceId | null>(null);
+  const [claudeAccountMode, setClaudeAccountMode] = useState<"new" | "existing">("new");
+  const [claudeSlotId] = useState(randomUUID);
 
   // Reserve Codex/Claude default ids because they run before configuration; other unconfigured slots are
   // available.
@@ -208,6 +212,7 @@ export function AddProviderInstanceDialog({
   // Searches while Show more is closed, so the fold opens on results.
   const registry = useAcpRegistrySearch(environmentId, showRegistrySearch);
   const isPreparingRegistryAgent = registry.preparingId !== null;
+  const isClaude = driver === "claudeAgent";
   const defaultIdentity: ProviderIdentityDraft = {
     label: driverOption.label,
     accentColor: "",
@@ -232,7 +237,10 @@ export function AddProviderInstanceDialog({
   const identityStep = 1;
   const previewLabel = label.trim() || `${driverOption.label} Workspace`;
 
-  const configDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
+  const rawConfigDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
+  const configDraft = isClaude
+    ? resolveClaudeAccountConfig(rawConfigDraft, claudeAccountMode, instanceId, claudeSlotId)
+    : rawConfigDraft;
   const isLocalAcp = isAcpRegistry && isManualAcpConfiguration && configDraft.source === "local";
   const localCommandPath =
     typeof configDraft.commandPath === "string" ? configDraft.commandPath.trim() : "";
@@ -283,6 +291,10 @@ export function AddProviderInstanceDialog({
       void handleSave();
       return;
     }
+    if (isClaude && navigation.kind === "navigate" && navigation.step === 3) {
+      void handleSave();
+      return;
+    }
     setWizardStep(navigation.step);
   };
 
@@ -298,9 +310,14 @@ export function AddProviderInstanceDialog({
               instanceIdError,
               selectionError: acpSelectionError,
             })
-        : resolveWizardNavigation(wizardStep, requestedStep, ADD_PROVIDER_WIZARD_STEPS.length, {
-            instanceIdError,
-          }),
+        : resolveWizardNavigation(
+            wizardStep,
+            requestedStep,
+            isClaude ? CLAUDE_WIZARD_STEPS.length : ADD_PROVIDER_WIZARD_STEPS.length,
+            {
+              instanceIdError,
+            },
+          ),
     );
   };
 
@@ -379,9 +396,7 @@ export function AddProviderInstanceDialog({
     if (instanceIdError !== null || (isAcpRegistry && acpSelectionError !== null)) return;
 
     const config =
-      driver === "codex"
-        ? { ...configByDriver[driver], setupMode: "existing" }
-        : (configByDriver[driver] ?? {});
+      driver === "codex" ? { ...configByDriver[driver], setupMode: "existing" } : configDraft;
     const hasConfig = Object.keys(config).length > 0;
     const normalizedAccentColor = normalizeProviderAccentColor(accentColor);
 
@@ -419,10 +434,10 @@ export function AddProviderInstanceDialog({
         }
       });
     }
-    if (isAcpRegistry && !isLocalAcp) {
+    if ((isAcpRegistry && !isLocalAcp) || isClaude) {
       setCreatedInstanceId(brandedId);
       setIsSaving(false);
-      setWizardStep(2);
+      setWizardStep(isClaude ? 3 : 2);
       return;
     }
     toastManager.add({
@@ -466,7 +481,8 @@ export function AddProviderInstanceDialog({
               currentStep={wizardStep}
               summaries={wizardStepSummaries}
               instanceIdError={instanceIdError}
-              disabled={isSaving || isPreparingRegistryAgent}
+              steps={isClaude ? CLAUDE_WIZARD_STEPS : ADD_PROVIDER_WIZARD_STEPS}
+              disabled={isSaving || isPreparingRegistryAgent || createdInstanceId !== null}
               onNavigation={applyWizardNavigation}
             />
           )}
@@ -477,6 +493,13 @@ export function AddProviderInstanceDialog({
             environmentId={environmentId}
             environmentLabel={environmentLabel}
             instanceId={createdInstanceId}
+            description={
+              isClaude
+                ? claudeAccountMode === "new"
+                  ? "Your new slot has its own login. Sign in with the Claude account you want to use; your other accounts are unchanged."
+                  : "This slot uses the configured login directory. Changing its account also changes other slots using that directory."
+                : undefined
+            }
             onFinish={() => onOpenChange(false)}
           />
         ) : (
@@ -705,7 +728,63 @@ export function AddProviderInstanceDialog({
                 />
               </SettingsGroup>
 
-              {!isAcpRegistry && driverSettingsFields.length > 0 ? (
+              {isClaude && wizardStep === 2 ? (
+                <div className="grid gap-4">
+                  <RadioGroup
+                    aria-label="Claude account setup"
+                    value={claudeAccountMode}
+                    onValueChange={(value) => {
+                      if (value !== "new" && value !== "existing") return;
+                      setClaudeAccountMode(value);
+                      const { homePath: _homePath, ...rest } = rawConfigDraft;
+                      setConfigDraft(rest);
+                    }}
+                    className="grid"
+                  >
+                    <RadioPrimitive.Root
+                      value="new"
+                      className="cursor-pointer rounded-lg border border-border p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-checked:border-primary data-checked:bg-primary/8"
+                    >
+                      <span className="block text-sm font-medium">
+                        Sign in to a different account
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Creates a separate login slot. Your existing Claude login stays unchanged.
+                      </span>
+                    </RadioPrimitive.Root>
+                    <RadioPrimitive.Root
+                      value="existing"
+                      className="cursor-pointer rounded-lg border border-border p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-checked:border-primary data-checked:bg-primary/8"
+                    >
+                      <span className="block text-sm font-medium">
+                        Use this machine's existing login
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Another slot for the same account, not a new login. Changing the shared
+                        login affects both slots.
+                      </span>
+                    </RadioPrimitive.Root>
+                  </RadioGroup>
+                  <p className="text-xs text-muted-foreground">
+                    Next, choose whether to sign in only on {environmentLabel} or share a login
+                    token with connected machines. Copying a slot does not copy credentials.
+                  </p>
+                  <details>
+                    <summary className="cursor-pointer text-sm text-muted-foreground">
+                      Advanced configuration
+                    </summary>
+                    <SettingsGroup variant="plain">
+                      <ProviderSettingsForm
+                        definition={driverOption}
+                        value={configDraft}
+                        idPrefix={`add-provider-${driver}`}
+                        variant="settings"
+                        onChange={setConfigDraft}
+                      />
+                    </SettingsGroup>
+                  </details>
+                </div>
+              ) : !isClaude && !isAcpRegistry && driverSettingsFields.length > 0 ? (
                 <SettingsGroup variant="plain" className={cn(wizardStep !== 2 && "hidden")}>
                   <ProviderSettingsForm
                     definition={driverOption}
@@ -719,7 +798,7 @@ export function AddProviderInstanceDialog({
                     environmentId={environmentId}
                   />
                 </SettingsGroup>
-              ) : !isAcpRegistry && wizardStep === 2 ? (
+              ) : !isClaude && !isAcpRegistry && wizardStep === 2 ? (
                 <div className="grid gap-2">
                   <p className="text-sm text-muted-foreground">
                     This driver has no required configuration. You can add the instance now.
@@ -771,7 +850,7 @@ export function AddProviderInstanceDialog({
                 >
                   {isSaving
                     ? "Adding..."
-                    : isAcpRegistry && !isLocalAcp
+                    : (isAcpRegistry && !isLocalAcp) || isClaude
                       ? "Continue to sign-in"
                       : "Add instance"}
                 </Button>
