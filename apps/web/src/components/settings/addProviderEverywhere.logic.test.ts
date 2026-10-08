@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   describeFanOut,
   planProviderFanOut,
+  readClaudeLoginUrl,
   readClaudeSetupToken,
   withProviderSecret,
   type FanOutCandidate,
@@ -74,5 +75,18 @@ describe("readClaudeSetupToken", () => {
       ),
     ).toBe(token);
     expect(readClaudeSetupToken("Paste code here if prompted > ")).toBeNull();
+  });
+});
+
+describe("readClaudeLoginUrl", () => {
+  it("reads the sign-in page out of the terminal hyperlink", () => {
+    const url =
+      "https://claude.com/cai/oauth/authorize?code=true&client_id=abc&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=xyz";
+    expect(
+      readClaudeLoginUrl(
+        `Opening browser to sign in…\r\nIf the browser didn't open, visit: \u001b]8;;${url}\u0007${url}\u001b]8;;\u0007\r\nPaste code here if prompted > `,
+      ),
+    ).toBe(url);
+    expect(readClaudeLoginUrl("Opening browser to sign in…")).toBeNull();
   });
 });

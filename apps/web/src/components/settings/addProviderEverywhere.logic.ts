@@ -99,3 +99,9 @@ export function readClaudeSetupToken(output: string): string | null {
   const tokens = output.replace(ANSI_ESCAPE, "").match(/sk-ant-oat01-[A-Za-z0-9_-]{20,}/g);
   return tokens?.at(-1) ?? null;
 }
+
+/** The sign-in page `claude auth login` printed, if the terminal output holds one. */
+export function readClaudeLoginUrl(output: string): string | null {
+  const urls = output.replace(ANSI_ESCAPE, "").match(/https:\/\/\S+\/oauth\/authorize\?\S+/g);
+  return urls?.at(-1) ?? null;
+}
