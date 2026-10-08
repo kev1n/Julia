@@ -76,7 +76,7 @@ function rowStatusLabel(status: OrchestrationV2Subagent["status"]): string {
     case "running":
       return "Working";
     case "waiting":
-      return "Waiting";
+      return "Working";
     case "idle":
       return "Idle";
     case "completed":

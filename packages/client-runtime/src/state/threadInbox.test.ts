@@ -241,3 +241,28 @@ describe("sortWorkingThreadsBySend", () => {
     ).toEqual(["sent-last", "sent-first", "launched"]);
   });
 });
+
+describe("subagent waits in the Working shelf", () => {
+  it("keeps delegated work out of the attention inbox until completion", () => {
+    const running = thread("parent", true);
+    const waiting = {
+      ...running,
+      runtime: { ...running.runtime!, status: "idle" as const },
+      pendingBackgroundTasks: [
+        { taskId: "child", kind: "subagent" as const },
+        { taskId: "watch", kind: "monitor" as const },
+      ],
+    };
+    expect(isThreadWorking(waiting)).toBe(true);
+    expect(isThreadWorking({ ...waiting, hasPendingApprovals: true })).toBe(false);
+    expect(isThreadWorking({ ...waiting, hasPendingUserInput: true })).toBe(false);
+    const watching = {
+      ...waiting,
+      pendingBackgroundTasks: [{ taskId: "watch", kind: "monitor" as const }],
+    };
+    expect(isThreadWorking(watching)).toBe(true);
+    const runningWithoutWork = { ...running, pendingBackgroundTasks: [] };
+    expect(isThreadWorking(runningWithoutWork)).toBe(true);
+    expect(isThreadWorking(thread("parent", false))).toBe(false);
+  });
+});
