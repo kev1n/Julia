@@ -1226,6 +1226,19 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Fork: start each Claude/Codex account's next 5-hour session window as soon as one ends. */
   keepUsageWindowsOpen: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: the models the daily sync's auto-fix chat tries, in order. It runs
+   * the first one whose provider has an account with usage left, on the
+   * account Auto would pick; with none left, the first one.
+   */
+  syncAutofixModelSelections: Schema.Array(ModelSelection).pipe(
+    Schema.withDecodingDefault(
+      Effect.succeed([
+        { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus-5-5" },
+        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" },
+      ]),
+    ),
+  ),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   backgroundActivity: BackgroundActivitySettings,
 
@@ -1574,6 +1587,7 @@ export const ServerSettingsPatch = Schema.Struct({
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
   keepUsageWindowsOpen: Schema.optionalKey(Schema.Boolean),
+  syncAutofixModelSelections: Schema.optionalKey(Schema.Array(ModelSelection)),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

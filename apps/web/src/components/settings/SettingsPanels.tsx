@@ -90,6 +90,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "./settingsLayout";
+import { SyncAutofixModelsRow, syncAutofixModelsAreDefault } from "./SyncAutofixModelsSettings";
 import { searchableSetting } from "./settingsSearch";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -455,6 +456,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.keepUsageWindowsOpen !== DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen
       ? ["Keep session windows running"]
       : []),
+    ...(!syncAutofixModelsAreDefault(settings.syncAutofixModelSelections)
+      ? ["Fork sync auto-fix models"]
+      : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
     ...(settings.persistComposerContextStrip !==
     DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
@@ -605,6 +609,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
       keepUsageWindowsOpen: DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen,
+      syncAutofixModelSelections: DEFAULT_UNIFIED_SETTINGS.syncAutofixModelSelections,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -1580,6 +1585,7 @@ export function ThreadsSettingsPanel() {
             />
           }
         />
+        <SyncAutofixModelsRow />
       </SettingsSection>
 
       {hasServerTargets ? (
