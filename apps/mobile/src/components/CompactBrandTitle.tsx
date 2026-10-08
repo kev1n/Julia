@@ -52,7 +52,7 @@ export function CompactBrandTitle(
     >
       <View className="flex-row items-center">
         <JuliaMark
-          colorClassName="text-foreground-muted"
+          colorClassName="accent-foreground-muted"
           height={Math.round(24 * scale)}
           wordmark
         />
