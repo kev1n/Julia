@@ -70,8 +70,11 @@ unchanged) and sends it "continue where you left off" on the first model in Sett
 Continue limited threads on another account whose provider has an account other than the limited
 one with usage left, on the account Auto would pick. The default list is Claude Opus 5.5, then
 GPT-6.1 Sol; on by default. The source thread's limit recovery is set off for that run, which marks
-it handled and keeps auto-resume from also resuming it; with no account left anywhere, auto-resume
-and snooze apply as before. Subagent threads are left alone (their result belongs to the parent's
+it handled and keeps auto-resume from also resuming it, and names the new tab (`continuedIn`), so
+every client shows the source as finished instead of Limited and drops its recovery banner. Only a
+thread no fallback could take reads Limited; with no account left anywhere, auto-resume and snooze
+apply as before. The web "Usage limit reached" alert waits 12 seconds (past one sweep) and is
+dropped if the thread moved meanwhile. Subagent threads are left alone (their result belongs to the parent's
 run). It runs inside upstream's usage-limit sweep, so it works with no client connected and
 survives restarts; its command ids derive from the failed run, so a sweep cut short repeats the
 same commands. The phone has the switch (Settings > Threads); the model list is on desktop and web.
@@ -318,6 +321,11 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts` (again): its row
   (`LimitFailoverRow` in `ModelOrderSettings.tsx`) and restore entry.
 - `apps/mobile/src/features/settings/SettingsThreadsRouteScreen.tsx`: its switch.
+- `packages/contracts/src/orchestrationV2.ts`: `continuedIn` on the limit recovery record and update;
+  `apps/server/src/orchestration-v2/Orchestrator.ts` keeps it across later recovery updates.
+- `packages/client-runtime/src/state/models.ts`: `limitContinuedElsewhere` presents such a run as
+  completed; `apps/web/src/components/ChatView.tsx` hides its recovery banner;
+  `apps/web/src/components/ThreadNotificationCoordinator.tsx` delays the limit alert.
 - `apps/web/src/components/ChatView.tsx`: Auto's candidates, rule and hook (replacing upstream's
   weighted balance), the Auto account, the Auto chip text and tooltip; the moved-thread banner.
 - `apps/web/src/components/BranchToolbar.tsx`, `apps/web/src/components/BranchToolbarEnvironmentSelector.tsx`:
