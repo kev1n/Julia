@@ -31,6 +31,35 @@ if [ -d "$legacy" ]; then
   mv "$legacy" "$backup/"
 fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$destination"
+# Preserve the existing Dock pin's position, but discard its bookmark to the old bundle.
+dock_snapshot="$stage/dock.plist"
+if defaults export com.apple.dock "$dock_snapshot" >/dev/null 2>&1; then
+  if /usr/bin/python3 - "$dock_snapshot" <<'PY'
+import plistlib, sys
+path = sys.argv[1]
+with open(path, "rb") as f:
+    dock = plistlib.load(f)
+changed = False
+for entry in dock.get("persistent-apps", []):
+    tile = entry.get("tile-data", {})
+    if tile.get("bundle-identifier") != "com.example.julia":
+        continue
+    if tile.get("file-label") == "Julia" and tile.get("file-data", {}).get("_CFURLString") == "file:///Applications/Julia.app/":
+        continue
+    tile["file-label"] = "Julia"
+    tile["file-data"] = {"_CFURLString": "file:///Applications/Julia.app/", "_CFURLStringType": 15}
+    tile.pop("book", None)
+    changed = True
+if not changed:
+    sys.exit(1)
+with open(path, "wb") as f:
+    plistlib.dump(dock, f)
+PY
+  then
+    defaults import com.apple.dock "$dock_snapshot" >/dev/null
+    launchctl kickstart -k "gui/$(id -u)/com.apple.Dock.agent" || true
+  fi
+fi
 # The app keeps its own state in ~/.t3-owner-app (apps/desktop/src/fork/profile.ts).
 # This Mac's server is the LaunchAgent service, so the app must never start its
 # own local backend: seed that preference before the first launch.
