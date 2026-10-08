@@ -1,6 +1,12 @@
 import { useSidebarWorkspaceTabs } from "../layout/workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
+import {
+  deriveThreadContextWindowSnapshot,
+  formatContextWindowReadout,
+  formatContextWindowTokens,
+} from "@t3tools/client-runtime/context-window";
+import { useThreadProjection } from "../../state/use-thread-detail";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useDeviceType } from "../../native/native-layout-metrics";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
@@ -417,6 +423,24 @@ export const THREAD_COMPOSER_BOTTOM_GUTTER = 6;
 
 export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps) {
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
+  const threadDetail = useThreadProjection({
+    environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
+  });
+  const contextWindow = deriveThreadContextWindowSnapshot(threadDetail?.projection);
+  const contextReadout = (
+    <Text
+      accessibilityLabel={formatContextWindowReadout(contextWindow)}
+      className="shrink-0 px-1 text-xs text-muted-foreground"
+      style={{ fontVariant: ["tabular-nums"] }}
+    >
+      {contextWindow?.usedPercentage != null
+        ? `${contextWindow.usedPercentage.toFixed(1).replace(/\.0$/, "")}%`
+        : contextWindow
+          ? formatContextWindowTokens(contextWindow.usedTokens)
+          : "–"}
+    </Text>
+  );
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
   const navigation = useNavigation();
@@ -909,13 +933,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               compact
               hidden={showsCompactDictation}
             >
-              <ComposerAttachmentButton
-                size={usesLargeControls ? "large" : "regular"}
-                disabled={isSubmissionLocked}
-                supportsFiles={props.serverConfig !== null}
-                onPickMedia={props.onPickDraftMedia}
-                onPickFiles={props.onPickDraftFiles}
-              />
+              <View className="flex-row items-center">
+                {contextReadout}
+                <ComposerAttachmentButton
+                  size={usesLargeControls ? "large" : "regular"}
+                  disabled={isSubmissionLocked}
+                  supportsFiles={props.serverConfig !== null}
+                  onPickMedia={props.onPickDraftMedia}
+                  onPickFiles={props.onPickDraftFiles}
+                />
+              </View>
               <Animated.View
                 className="min-w-0 flex-1"
                 onLayout={compactEditor.onEditorLayout}

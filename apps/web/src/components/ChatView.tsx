@@ -333,11 +333,13 @@ import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import { hasAvailableCompactionProvider } from "./chat/compaction.logic";
 import {
-  deriveLatestContextWindowSnapshot,
   hasDismissedResumeCompaction,
-  latestProviderTurnTokenUsage,
   shouldOfferResumeCompaction,
 } from "@t3tools/client-runtime/state/context-window";
+import {
+  deriveThreadContextWindowSnapshot,
+  deriveThreadLiveTokenUsage,
+} from "../lib/contextWindow";
 import {
   MOBILE_COMPOSER_VIEW_TRANSITION_NAME,
   MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME,
@@ -533,14 +535,6 @@ export default function ChatView(props: ChatViewProps) {
   const threadDetailLoading = threadSyncPhase === "loading";
   // Held back briefly, so a quick sync does not flash a status line at the end of the timeline.
   const delayedThreadSyncPhase = useDelayedStatus(routeThreadKey, threadSyncPhase);
-  const activeProviderThread = serverProjection?.providerThreads.find(
-    (thread) => thread.id === serverProjection.thread.activeProviderThreadId,
-  );
-  const activeThreadLiveTokenUsage = latestProviderTurnTokenUsage(
-    serverProjection?.providerTurns ?? [],
-    serverProjection,
-    activeProviderThread,
-  );
   const serverVisibleTurnItems = useQuietThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = (() => {
@@ -1465,11 +1459,10 @@ export default function ChatView(props: ChatViewProps) {
   });
   const isWorking =
     phase === "running" || isSendBusy || isCompacting || runlessWorkStartedAt !== null;
-  const activeContextWindow = deriveLatestContextWindowSnapshot(
-    serverVisibleTurnItems ?? [],
-    activeThreadLiveTokenUsage,
-    activeProviderThread,
-  );
+  // Latest provider-reported context usage from the active session;
+  // its prompt cache TTL decides when the Compact chip appears.
+  const activeThreadLiveTokenUsage = deriveThreadLiveTokenUsage(serverProjection);
+  const activeContextWindow = deriveThreadContextWindowSnapshot(serverProjection);
   const pendingBackgroundTasks = deriveThreadPendingBackgroundTasks(serverProjection);
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
@@ -2478,6 +2471,15 @@ export default function ChatView(props: ChatViewProps) {
     pendingApprovals.length > 0 ||
     pendingUserInputs.length > 0;
   const compactDisabled = compactThreadUnavailable;
+  const compactDisabledReason = compactDisabled
+    ? !canOperateThread
+      ? "This connection cannot change threads."
+      : !activeProject
+        ? "Choose a project before compacting"
+        : !manualCompactionProviderAvailable
+          ? "Compaction is unavailable for this provider"
+          : "Compacting is unavailable right now"
+    : null;
   // The context window is the current conversation's, so a handoff destination never inherits it.
   const resumeCompactionTokens =
     activeContextWindow &&
@@ -3751,6 +3753,11 @@ export default function ChatView(props: ChatViewProps) {
                                 projectName={activeProject?.title}
                                 compactThreadUnavailable={compactThreadUnavailable}
                                 compactDisabled={compactDisabled}
+                                contextWindow={activeContextWindow}
+                                contextWindowLoading={
+                                  !activeEnvironmentUnavailable && threadSyncPhase === "loading"
+                                }
+                                compactDisabledReason={compactDisabledReason}
                                 resolvedTheme={resolvedTheme}
                                 settings={settings}
                                 keybindings={keybindings}
