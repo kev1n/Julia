@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
 
-import { isForkDesktopExecutable } from "./profile";
+import { isForkDesktopExecutable } from "./profile.ts";
 
 describe("fork desktop identity", () => {
   it.each([
