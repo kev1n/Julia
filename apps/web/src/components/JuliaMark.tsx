@@ -11,7 +11,7 @@ export function JuliaMark(props: SVGProps<SVGSVGElement>) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="24" cy="4" r="2" fill="currentColor" />
+      <circle cx="24" cy="4" r="2" fill="var(--color-julia-dot)" />
     </svg>
   );
 }
