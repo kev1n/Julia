@@ -550,7 +550,7 @@ export const validateModelOptions = (
     : Effect.succeed(normalized);
 };
 
-function taskStatusForRun(
+export function taskStatusForRun(
   run: Pick<OrchestrationV2Run, "status" | "restartCancelledBackgroundWork"> | undefined,
 ): OrchestratorMcpDelegateTaskResult["status"] {
   switch (run === undefined ? undefined : runOutcome(run)) {
