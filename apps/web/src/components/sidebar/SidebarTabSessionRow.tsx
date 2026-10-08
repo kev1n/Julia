@@ -3,7 +3,7 @@ import {
   SidebarSubagentRows,
   useSidebarSubagents,
 } from "./SidebarSubagentRows";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AlarmClockOffIcon, CheckIcon, PinIcon, Undo2Icon } from "lucide-react";
@@ -48,6 +48,18 @@ export function SidebarTabSessionRow(props: {
     (child) =>
       scopedThreadKey(scopeThreadRef(child.environmentId, child.id)) === props.activeThreadKey,
   );
+  const canOperateThread = useEnvironmentScope(
+    session.thread.environmentId,
+    AuthOrchestrationOperateScope,
+  );
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const primaryAction = canOperateThread ? props.primaryAction : null;
+  const actionLabel =
+    primaryAction?.kind === "unsnooze"
+      ? "Wake thread now"
+      : primaryAction?.kind === "unsettle"
+        ? "Un-settle thread"
+        : "Settle thread";
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   // Sessions are not draggable as a unit, but must participate in the layout
   // preview so single-chat drags move their rows and headers together.
@@ -172,27 +184,19 @@ export function SidebarTabSessionRow(props: {
           expanded={subagents.expanded}
           onToggle={() => subagents.setExpanded((expanded) => !expanded)}
         />
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Chat tabs in ${session.title}`}
-                className="mr-1 flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            }
-          >
-            {session.chats.length}
-          </MenuTrigger>
-          <MenuPopup side="right" align="start">
-            {session.chats.map((chat) => (
-              <MenuItem
-                key={chat.id}
-                onClick={() => props.onNavigate(scopeThreadRef(chat.environmentId, chat.id))}
-              >
-                <CheckIcon
-                  aria-hidden
-                  className={cn("size-3.5", chat.id !== session.thread.id && "invisible")}
+        <span className="relative mr-1 flex h-7 min-w-7 shrink-0 items-center justify-end">
+          <Menu open={tabMenuOpen} onOpenChange={setTabMenuOpen}>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Chat tabs in ${session.title}`}
+                  className={cn(
+                    "peer flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1 text-xs tabular-nums text-sidebar-muted-foreground transition-opacity hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    primaryAction !== null &&
+                      !tabMenuOpen &&
+                      "not-focus-visible:group-any-hover/session:pointer-events-none not-focus-visible:group-any-hover/session:opacity-0",
+                  )}
                 />
               }
             >
