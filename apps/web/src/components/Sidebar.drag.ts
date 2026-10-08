@@ -114,6 +114,133 @@ export function createSidebarSortingStrategy(input: {
     if (active?.kind !== "thread" || !over || !rects[0]) return [];
     const target = resolveSidebarDropTarget(items, active.key, sidebarListItemId(over));
     if (!target) return [];
+    if (items.some((item) => item.kind === "project")) {
+      type ProjectItem = Extract<SidebarListItem, { kind: "project" }>;
+      const groups: { header: ProjectItem | null; section: SidebarSection; rows: ThreadItem[] }[] =
+        [];
+      let group: (typeof groups)[number] | undefined;
+      for (const item of items) {
+        if (item.kind === "marker") group = undefined;
+        else if (item.kind === "project") {
+          group = { header: item, section: item.section, rows: [] };
+          groups.push(group);
+        } else {
+          if (!group) {
+            group = { header: null, section: item.section, rows: [] };
+            groups.push(group);
+          }
+          group.rows.push(item);
+        }
+      }
+      const source = groups.find((group) => group.rows.some((row) => row.key === active.key));
+      if (!source) return [];
+      const destination = groups.find(
+        (group) =>
+          group.section === target.section &&
+          group.header?.projectKey === source.header?.projectKey,
+      );
+      if (!destination) return [];
+      const order =
+        target.section === "pinned"
+          ? target.pinnedOrder
+          : target.section === "settled"
+            ? input.settledOrder
+            : (input.activeOrder ?? target.activeOrder);
+      const ranks = new Map(order.map((key, index) => [key, index]));
+      const settledVisible = new Set(
+        input.settledExpanded
+          ? input.settledOrder.slice(0, input.settledVisibleCount ?? input.settledOrder.length)
+          : [],
+      );
+      if (input.routeThreadKey) settledVisible.add(input.routeThreadKey);
+      const projected: SidebarListItem[] = [];
+      const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
+      const appendGroups = (section: SidebarSection) => {
+        let visibleCount = 0;
+        for (const group of groups.filter((group) => group.section === section)) {
+          const rows = group.rows.filter(
+            (row) =>
+              row.key !== active.key && (section !== "settled" || settledVisible.has(row.key)),
+          );
+          if (
+            group === destination &&
+            (group.header?.expanded !== false || input.routeThreadKey === active.key) &&
+            (section !== "settled" || settledVisible.has(active.key))
+          ) {
+            rows.push({ ...active, section });
+            rows.sort((a, b) => (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity));
+          }
+          const count =
+            (group.header?.threadCount ?? group.rows.length) -
+            Number(group === source) +
+            Number(group === destination);
+          if (section === "settled" && !input.settledExpanded && rows.length === 0) continue;
+          if (group.header && (section === "active" || count > 0)) {
+            projected.push(group.header);
+            visibleCount++;
+          }
+          projected.push(...rows);
+          visibleCount += rows.length;
+        }
+        if (
+          visibleCount === 0 &&
+          (section === "active" || (section === "settled" && input.settledExpanded))
+        ) {
+          marker(`${section}-placeholder`);
+        }
+      };
+      marker("pinned-header");
+      appendGroups("pinned");
+      marker("pinned-divider");
+      appendGroups("active");
+      for (const section of ["working", "snoozed", "settled"] as const) {
+        if (!items.some((item) => item.kind === "marker" && item.marker === `${section}-header`))
+          continue;
+        if (
+          section === "snoozed" &&
+          active.section === "snoozed" &&
+          (input.snoozedThreadCount ?? 0) <= 1
+        )
+          continue;
+        marker(`${section}-header`);
+        appendGroups(section);
+      }
+      const scale = (rects[activeIndex]?.height ?? 36) / 36;
+      const heightOf = (item: SidebarListItem) => {
+        if (item.kind === "project") return 48 * scale;
+        if (item.kind === "thread") return rects[indices.get(item.key)!]?.height ?? 36 * scale;
+        if (item.marker === "pinned-header" || item.marker === "pinned-divider") {
+          return (input.boundaryLabelHeight ?? 0) * scale;
+        }
+        if (item.marker.endsWith("placeholder")) return 36 * scale;
+        return rects[indices.get(sidebarListItemId(item))!]?.height ?? 32 * scale;
+      };
+      const firstShelf = items.findIndex(isShelfHeader);
+      const shelfRect = rects[firstShelf];
+      const beforeShelf = rects[firstShelf - 1];
+      const bottom = Math.max(...rects.map((rect) => rect?.bottom ?? 0));
+      let shelfSpace =
+        shelfRect && beforeShelf && shelfRect.top > beforeShelf.bottom + 1
+          ? Math.max(
+              0,
+              bottom - rects[0].top - projected.reduce((sum, item) => sum + heightOf(item) + 1, -1),
+            )
+          : 0;
+      const result = items.map(() => hidden);
+      let top = rects[0].top;
+      for (const item of projected) {
+        if (isShelfHeader(item)) {
+          top += shelfSpace;
+          shelfSpace = 0;
+        }
+        const index = indices.get(sidebarListItemId(item));
+        const rect = index === undefined ? undefined : rects[index];
+        if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
+        top += heightOf(item) + 1;
+      }
+      result[activeIndex] = stationary;
+      return result;
+    }
     const groups: Record<SidebarSection, ThreadItem[]> = {
       pinned: [],
       active: [],
@@ -132,6 +259,7 @@ export function createSidebarSortingStrategy(input: {
         }
         continue;
       }
+      if (item.kind !== "thread") continue;
       if (item.section === "pinned" || item.section === "active" || item.section === "working")
         cardHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;

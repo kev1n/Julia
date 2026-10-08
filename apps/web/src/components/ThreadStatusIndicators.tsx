@@ -16,7 +16,7 @@ import {
   type ThreadPullRequestLink,
   type VcsStatusResult,
 } from "@t3tools/contracts";
-import { GitBranchIcon, TerminalIcon } from "lucide-react";
+import { FolderGit2Icon, GitBranchIcon, TerminalIcon } from "lucide-react";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { useProject } from "../state/entities";
@@ -571,10 +571,11 @@ export function ThreadTerminalStatusButton({
 
 export function ThreadWorktreeIndicator({
   thread,
-  active = false,
+  toneClassName,
 }: {
   thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
-  active?: boolean;
+  /** Replaces the muted tint, e.g. with the branch's pull request state. */
+  toneClassName?: string | undefined;
 }) {
   const worktreePath = thread.worktreePath?.trim();
   if (!worktreePath) {
@@ -598,13 +599,7 @@ export function ThreadWorktreeIndicator({
           />
         }
       >
-        <GitBranchIcon
-          aria-hidden
-          className={cn(
-            "size-4 shrink-0",
-            active ? "text-sidebar-branch-active" : "text-sidebar-muted-foreground",
-          )}
-        />
+        <FolderGit2Icon className={cn("size-3 shrink-0", toneClassName ?? "text-muted-foreground/40")} />
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
