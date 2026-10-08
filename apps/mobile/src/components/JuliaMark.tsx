@@ -3,7 +3,6 @@ import Svg, { Path, Circle } from "react-native-svg";
 import { withUniwind } from "uniwind";
 
 const ThemedPath = withUniwind(Path);
-const ThemedCircle = withUniwind(Circle);
 
 /** Julia's monogram, matching the web JuliaMark. */
 export function JuliaMark(props: {
@@ -29,14 +28,7 @@ export function JuliaMark(props: {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <ThemedCircle
-        cx={24}
-        cy={4}
-        r={2}
-        color={props.color}
-        colorClassName={props.colorClassName}
-        fill="currentColor"
-      />
+      <Circle cx={24} cy={4} r={2} fill="#9dcebc" />
     </Svg>
   );
 }
