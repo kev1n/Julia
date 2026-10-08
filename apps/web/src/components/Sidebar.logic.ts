@@ -201,12 +201,13 @@ export type SidebarListMarker =
   | "active-placeholder"
   | "settled-placeholder"
   | "pinned-divider"
+  | "draft-block"
   | "working-header"
   | "snoozed-header"
   | "settled-header";
 
-export function sidebarMarkerId(marker: SidebarListMarker): string {
-  return `${SIDEBAR_MARKER_PREFIX}${marker}`;
+export function sidebarMarkerId(marker: SidebarListMarker, projectKey?: string): string {
+  return `${SIDEBAR_MARKER_PREFIX}${marker}${projectKey === undefined ? "" : `:${projectKey}`}`;
 }
 
 export type SidebarListItem =
@@ -226,14 +227,18 @@ export type SidebarListItem =
       readonly threadCount: number;
       readonly visible: boolean;
     }
-  | { readonly kind: "marker"; readonly marker: SidebarListMarker };
+  | {
+      readonly kind: "marker";
+      readonly marker: SidebarListMarker;
+      readonly projectKey?: string | undefined;
+    };
 
 export function sidebarProjectHeaderId(section: SidebarSection, projectKey: string): string {
   return `sidebar-project-${section}-${projectKey}`;
 }
 
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "marker" ? sidebarMarkerId(item.marker) : item.key;
+  return item.kind === "marker" ? sidebarMarkerId(item.marker, item.projectKey) : item.key;
 }
 
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
@@ -269,17 +274,19 @@ export function resolveSidebarDropTarget(
     const active = items[activeIndex]!;
     const over = items[overIndex]!;
     if (active.kind !== "thread") return null;
-    if (over.kind !== "marker" && over.projectKey !== active.projectKey) return null;
+    if (over.projectKey !== undefined && over.projectKey !== active.projectKey) return null;
     const section =
       over.kind === "thread"
         ? over.section
         : over.kind === "project"
-          ? over.unified && active.section === "pinned"
+          ? over.unified
             ? "pinned"
             : over.section
           : over.marker === "pinned-header"
             ? "pinned"
-            : over.marker === "pinned-divider" || over.marker === "active-placeholder"
+            : over.marker === "pinned-divider" ||
+                over.marker === "active-placeholder" ||
+                over.marker === "draft-block"
               ? "active"
               : over.marker === "settled-header" || over.marker === "settled-placeholder"
                 ? "settled"

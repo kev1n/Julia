@@ -228,13 +228,17 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       }
       positions = next;
     },
-    release() {
+    release(destination?: { node: HTMLElement; top: number }) {
       suspend();
       const origin = parent.getBoundingClientRect().top;
       released = new Map(
         Array.from(parent.children)
           .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
-          .map((node) => [node, node.getBoundingClientRect().top - origin]),
+          .map((node) => [
+            node,
+            (node === destination?.node ? destination.top : node.getBoundingClientRect().top) -
+              origin,
+          ]),
       );
     },
     suspend,
