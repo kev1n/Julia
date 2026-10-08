@@ -9,18 +9,33 @@ const ACP_REGISTRY_IDENTITY_STEP = 1;
 
 const PROVIDER_STEP = msg("Provider", { $context: "wizard step" });
 const IDENTITY_STEP_LABEL = msg("Identity", { $context: "wizard step" });
+const SIGN_IN_STEP = msg("Sign in", { $context: "wizard step" });
 
 export const ADD_PROVIDER_WIZARD_STEPS = [
   PROVIDER_STEP,
   IDENTITY_STEP_LABEL,
   msg("Config", { $context: "wizard step" }),
 ] as const;
-export const ACP_REGISTRY_WIZARD_STEPS = [
+export const CLAUDE_WIZARD_STEPS = [
   PROVIDER_STEP,
-  IDENTITY_STEP_LABEL,
-  msg("Sign in", { $context: "wizard step" }),
+  msg("Account", { $context: "wizard step" }),
+  msg("Setup", { $context: "wizard step" }),
+  SIGN_IN_STEP,
 ] as const;
+export const ACP_REGISTRY_WIZARD_STEPS = [PROVIDER_STEP, IDENTITY_STEP_LABEL, SIGN_IN_STEP] as const;
 export const LOCAL_ACP_WIZARD_STEPS = [PROVIDER_STEP, IDENTITY_STEP_LABEL] as const;
+
+/** A new slot must not inherit the machine's existing Claude login. */
+export function resolveClaudeAccountConfig(
+  config: Readonly<Record<string, unknown>>,
+  mode: "new" | "existing",
+  instanceId: string,
+  slotId: string,
+): Record<string, unknown> {
+  if (mode === "existing") return { ...config };
+  const homePath = typeof config.homePath === "string" ? config.homePath.trim() : "";
+  return { ...config, homePath: homePath || `~/.claude-t3/${instanceId}-${slotId}` };
+}
 
 export interface ProviderIdentityDraft {
   readonly label: string;

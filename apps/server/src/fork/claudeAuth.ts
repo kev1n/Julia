@@ -120,35 +120,36 @@ export const makeClaudeAuth = Effect.fn("fork.makeClaudeAuth")(function* (option
     methods: Effect.succeed([
       {
         id: "claudeai",
-        name: "Claude subscription",
-        description: "Sign in with your Claude Pro or Max account.",
+        name: "Sign in on this machine",
+        description:
+          "Uses your Claude Pro or Max account on this machine only. Other machines keep their own login.",
         type: "terminal" as const,
       },
       {
         id: "token",
-        name: "Claude subscription, all machines",
-        description: "Sign in once and save a one-year token on every machine.",
+        name: "Share login with connected machines",
+        description:
+          "Sign in once to create a subscription token, then save it on connected machines. Missing account slots are created. Offline machines are skipped; reconnect and save the token again to copy it there. This is a one-time copy, not continuous sync.",
         type: "terminal" as const,
       },
     ]),
     defaultMethodId: "claudeai",
-    authenticate: (methodId, context) =>
-      Effect.gen(function* () {
-        if (methodId === "token") {
-          const exitCode = yield* runClaude(["setup-token"], context, {
-            fixedCols: 400,
-            holdAfterExit: true,
-          }).pipe(Effect.scoped);
-          if (exitCode !== 0) return yield* failure("start", "Claude did not create a token.");
-          return;
-        }
-        const exitCode = yield* runClaude(["auth", "login", "--claudeai"], context).pipe(
-          Effect.scoped,
-        );
-        if (exitCode !== 0) return yield* failure("start", "Claude sign-in did not finish.");
-        yield* context.verifying;
-        yield* options.onChanged(true);
-      }),
+    authenticate: Effect.fn("claudeAuth.authenticate")(function* (methodId, context) {
+      if (methodId === "token") {
+        const exitCode = yield* runClaude(["setup-token"], context, {
+          fixedCols: 400,
+          holdAfterExit: true,
+        }).pipe(Effect.scoped);
+        if (exitCode !== 0) return yield* failure("start", "Claude did not create a token.");
+        return;
+      }
+      const exitCode = yield* runClaude(["auth", "login", "--claudeai"], context).pipe(
+        Effect.scoped,
+      );
+      if (exitCode !== 0) return yield* failure("start", "Claude sign-in did not finish.");
+      yield* context.verifying;
+      yield* options.onChanged(true);
+    }),
     logout: Effect.gen(function* () {
       const exitCode = yield* runClaude(["auth", "logout"]).pipe(Effect.scoped);
       if (exitCode !== 0) return yield* failure("logout", "Claude could not sign out.");
