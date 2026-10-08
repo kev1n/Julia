@@ -294,6 +294,10 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `packages/contracts/src/settings.ts` (again): `keepUsageWindowsOpen`, off by default.
 - `apps/server/src/orchestration-v2/runtimeLayer.ts`: registers the session window keep-alive.
 - `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts`: its toggle.
+- `packages/contracts/src/settings.ts` (again): `syncAutofixModelSelections`, the auto-fix chat's
+  models in order (default Claude Opus, then GPT-6.1).
+- `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts` (again): its row
+  (`SyncAutofixModelsSettings.tsx`) and restore entry.
 - `apps/web/src/components/ChatView.tsx`: Auto's candidates, rule and hook (replacing upstream's
   weighted balance), the Auto account, the Auto chip text and tooltip; the moved-thread banner.
 - `apps/web/src/components/BranchToolbar.tsx`, `apps/web/src/components/BranchToolbarEnvironmentSelector.tsx`:
@@ -401,9 +405,10 @@ the tailnet from build-mac, not through GitHub: uploading them from build-mac fa
 three on 2026-10-06 (broken pipe and TLS errors on 80-150 MB uploads).
 
 **When the sync fails** (a rebase conflict, or a failed check, desktop build or phone build),
-`fork/scripts/autofix.sh` hands it to an agent chat in T3 Code on build-mac (full access; Opus
-on the Claude account Auto would pick, or GPT-6.1 on the Codex account Auto would pick when
-every Claude account is limited, `apps/server/src/fork/autofixAccount.ts`), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
+`fork/scripts/autofix.sh` hands it to an agent chat in T3 Code on build-mac (full access; the first
+model in Settings > General > "Fork sync auto-fix models" whose provider has an account with
+usage left, on the account Auto would pick; default Claude Opus, then GPT-6.1; see
+`apps/server/src/fork/autofixAccount.ts`), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
 under the project `t3code-fork` on build-mac. The chat works in the git worktree
 `~/t3-fork/autofix/<stamp>/worktree` (branch `autofix/<stamp>`, started at origin/owner): it
 rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
