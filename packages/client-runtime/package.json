@@ -35,6 +35,10 @@
       "types": "./src/savedViews.ts",
       "default": "./src/savedViews.ts"
     },
+    "./context-window": {
+      "types": "./src/contextWindow.ts",
+      "default": "./src/contextWindow.ts"
+    },
     "./thread-move": {
       "types": "./src/threadMove.ts",
       "default": "./src/threadMove.ts"
