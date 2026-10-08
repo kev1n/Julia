@@ -1,6 +1,6 @@
 #!/bin/bash
 # When the daily sync cannot rebase, check or build the fork, hand the problem to
-# a Claude chat on this Mac's T3 Code server (it shows in Owner's app) and judge
+# an agent chat on this Mac's T3 Code server (it shows in Owner's app) and judge
 # what it leaves behind. Called by sync.sh; it never pushes or publishes.
 #   fork/scripts/autofix.sh <upstream-ref> <fork-head> <problem> <sync-log> <dir> <limit-seconds>
 # The agent works in the git worktree <dir>/worktree on branch autofix/<stamp>,
@@ -73,7 +73,7 @@ $commits
 Write \`$report\` (outside the repo). First line exactly \`RESOLVED\` or \`UNRESOLVED\`. Then, in plain words for Owner: what conflicted or failed (file and fork commit), how you resolved it, and the result of each of the three commands. If unresolved: why, and what a human should do next.
 PROMPT
 
-echo "autofix: launching a Claude chat on $(hostname -s) in $worktree"
+echo "autofix: launching an agent chat on $(hostname -s) in $worktree"
 node "$here/autofix-thread.mjs" "$repo" "$worktree" "Fork sync auto-fix: $latest" "$dir/prompt.md" "$limit" > "$dir/thread.json" ||
   verdict "could not run the chat on the T3 Code server"
 cat "$dir/thread.json"
