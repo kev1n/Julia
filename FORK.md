@@ -168,6 +168,20 @@ environment and thread id plus the repository's canonical key; paths are reposit
   `t3_fleet_thread_send` (auto, queue or steer; no restart across machines; `idempotencyKey`
   required; a timeout or lost answer comes back as `outcome: "unknown"` and is never retried
   silently). File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
+- Remote subagents (`remoteTasks.ts`): `delegate_task` takes an optional `machine` (label or
+  environment id); omitted or this machine means T3's own local child. On another machine the
+  child is an ordinary top-level thread (the orchestrator's parent/child records cannot span two
+  databases) in the project with the same repository, in a fresh worktree of the parent
+  checkout's base branch from origin, so the parent's uncommitted or unpushed work is not there.
+  Model and modes inherit as for a local child, and the instance must exist there (instance ids
+  match across the three Macs). Its task id is `fleet:<environmentId>:<threadId>`, which
+  `task_status` and `task_cancel` route to the owning machine. When its first run ends, the
+  child's machine posts the result to the parent's (`peer/task-result`), which wakes the parent
+  thread like a local child's result, within the parent's own modes. Undelivered results wait in
+  `~/.t3/userdata/fork-remote-tasks.json` and are retried every 30 s, so a restart or an offline
+  parent only delays them; a parent that reads a terminal result with `task_status` or
+  `mode: "wait"` acknowledges it instead. `orchestrator_capabilities` takes the same `machine` and
+  lists that machine's providers and models (`peer/providers`) with the caller's own inheritance.
 - Permissions: fleet servers authenticate each other with a shared secret in
   `~/.t3/userdata/fork-fleet.json` (mode 600, generated once on 2026-10-06, never in git). The
   source server vouches for the calling thread; the destination acts for it as a client whose
@@ -295,6 +309,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/desktop/src/app/DesktopUserData.ts`: the fork app's Electron profile directory.
 - `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment.
 - `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, routes, publisher) to the MCP server.
+- `packages/contracts/src/orchestratorMcp.ts`: optional `machine` on `delegate_task`, `machine` and
+  `link` on its result.
+- `apps/server/src/mcp/toolkits/orchestrator/handlers.ts`, `tools.ts`: `delegate_task`,
+  `task_status` and `task_cancel` hand remote tasks to `fork/fleet/remoteTasks.ts`; the tool
+  descriptions mention `machine`; `orchestrator_capabilities` takes a `machine` too.
+- `apps/server/src/mcp/OrchestratorMcpService.ts`: exports `taskStatusForRun`.
 - `apps/mobile/app.config.ts`: `withOwnerFork(config)` (identity and update URL, only with `T3CODE_MOBILE_OWNER=1`).
 - `apps/mobile/src/components/EnvironmentMachineSymbol.tsx`: looks up a machine picture before T3's glyph.
 - `apps/mobile/src/features/usage/UsageLimitsPooled.tsx`: the Use now / Resets next marks under each account.

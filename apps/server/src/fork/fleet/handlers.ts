@@ -19,7 +19,7 @@ import { FleetHttpError, FleetOperationError, STALE_AFTER_MS, fleetRequest } fro
 import { findOverlaps, isActive } from "./fleetIndex.ts";
 import type { FleetIntent } from "./model.ts";
 import { fleetConfig, localSnapshot, refreshNow, setIntents } from "./publisher.ts";
-import type { PeerSource } from "./routes.ts";
+import type { PeerSource } from "./peer.ts";
 import { FleetToolkit } from "./tools.ts";
 import * as FleetSuggestions from "./threadOverlaps.ts";
 import { loadView, overlapOut, summarize, type FleetView } from "./view.ts";
@@ -27,11 +27,10 @@ import { loadView, overlapOut, summarize, type FleetView } from "./view.ts";
 const fail = (code: OrchestratorMcpFailure["code"], message: string) =>
   new OrchestratorMcpFailure({ code, message });
 
-const view = (refresh: Effect.Effect<unknown> = Effect.void) =>
-  Effect.gen(function* () {
-    yield* refresh;
-    return yield* Effect.promise(() => loadView(fleetConfig(), localSnapshot()));
-  });
+const view = Effect.fn("handlers.view")(function* (refresh: Effect.Effect<unknown> = Effect.void) {
+  yield* refresh;
+  return yield* Effect.promise(() => loadView(fleetConfig(), localSnapshot()));
+});
 
 const envelope = (current: FleetView) => ({
   asOf: current.asOf,
@@ -52,33 +51,34 @@ const callerThread = Effect.gen(function* () {
 });
 
 /** Rescan the caller's checkout, publish, then compute overlaps for it. */
-const overlapsForCaller = (extraKeys: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const caller = yield* callerThread;
-    const before = localSnapshot();
-    const own = before?.threads.find((thread) => thread.threadId === caller.id);
-    const path = own?.checkoutKey?.slice(own.environmentId.length + 1);
-    const current = yield* view(
-      refreshNow(path === undefined ? "active" : new Set([path])).pipe(Effect.ignore),
-    );
-    const snapshot = localSnapshot();
-    const me = snapshot?.threads.find((thread) => thread.threadId === caller.id) ?? null;
-    if (me === null) return { current, me: null, overlaps: [] };
-    const myCheckout = snapshot?.checkouts.find((checkout) => checkout.key === me.checkoutKey);
-    const overlaps = findOverlaps({
-      me,
-      myCheckout,
-      extraKeys,
-      entries: current.entries,
-      now: current.now,
-      staleAfterMs: STALE_AFTER_MS,
-    });
-    return {
-      current,
-      me: summarize(current, me),
-      overlaps: overlaps.map((overlap) => overlapOut(current, overlap)),
-    };
+const overlapsForCaller = Effect.fn("handlers.overlapsForCaller")(function* (
+  extraKeys: ReadonlyArray<string>,
+) {
+  const caller = yield* callerThread;
+  const before = localSnapshot();
+  const own = before?.threads.find((thread) => thread.threadId === caller.id);
+  const path = own?.checkoutKey?.slice(own.environmentId.length + 1);
+  const current = yield* view(
+    refreshNow(path === undefined ? "active" : new Set([path])).pipe(Effect.ignore),
+  );
+  const snapshot = localSnapshot();
+  const me = snapshot?.threads.find((thread) => thread.threadId === caller.id) ?? null;
+  if (me === null) return { current, me: null, overlaps: [] };
+  const myCheckout = snapshot?.checkouts.find((checkout) => checkout.key === me.checkoutKey);
+  const overlaps = findOverlaps({
+    me,
+    myCheckout,
+    extraKeys,
+    entries: current.entries,
+    now: current.now,
+    staleAfterMs: STALE_AFTER_MS,
   });
+  return {
+    current,
+    me: summarize(current, me),
+    overlaps: overlaps.map((overlap) => overlapOut(current, overlap)),
+  };
+});
 
 const peerSource = Effect.gen(function* () {
   const { scope, caller } = yield* readCaller();
@@ -92,19 +92,18 @@ const peerSource = Effect.gen(function* () {
   } satisfies PeerSource;
 });
 
-const owner = (current: FleetView, environmentId: string) =>
-  Effect.gen(function* () {
-    const entry = current.entries.find(
-      (candidate) => candidate.snapshot.environmentId === environmentId,
+const owner = Effect.fn("handlers.owner")(function* (current: FleetView, environmentId: string) {
+  const entry = current.entries.find(
+    (candidate) => candidate.snapshot.environmentId === environmentId,
+  );
+  if (entry === undefined) {
+    return yield* fail(
+      "thread_not_found",
+      `Environment ${environmentId} is not in the fleet index (hub ${current.hub}).`,
     );
-    if (entry === undefined) {
-      return yield* fail(
-        "thread_not_found",
-        `Environment ${environmentId} is not in the fleet index (hub ${current.hub}).`,
-      );
-    }
-    return entry.snapshot;
-  });
+  }
+  return entry.snapshot;
+});
 
 type PeerReply<A> =
   | { readonly ok: true; readonly result: A }

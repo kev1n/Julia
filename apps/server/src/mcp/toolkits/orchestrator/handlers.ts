@@ -7,21 +7,30 @@ import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import * as RemoteDelegation from "../../../peer/RemoteDelegation.ts";
 import { readCaller } from "../../threadAccess.ts";
+import * as RemoteTasks from "../../../fork/fleet/remoteTasks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
 
 const handlers = {
-  orchestrator_capabilities: McpToolAccess.reads((input) =>
+  orchestrator_capabilities: McpToolAccess.reads(({ machine, ...input }) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-      return yield* service.capabilities(scope, input);
+      const local = yield* service.capabilities(scope, input);
+      const remote = machine === undefined ? null : yield* RemoteTasks.resolveMachine(machine);
+      if (remote === null) return local;
+      // The caller's own inheritance and limits, with the other machine's catalog.
+      return { ...local, providers: yield* RemoteTasks.providers(remote) };
     }),
   ),
-  delegate_task: McpToolAccess.actsAsCaller((input) =>
+  // Fork (Owner): `machine` naming another fleet machine runs the child there,
+  // and its `fleet:` task id routes status and cancel back to it.
+  delegate_task: McpToolAccess.actsAsCaller(({ machine, ...input }) =>
     Effect.gen(function* () {
+      const remote = machine === undefined ? null : yield* RemoteTasks.resolveMachine(machine);
+      if (remote !== null) return yield* RemoteTasks.delegate(remote, input);
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.delegateTask(scope, input);
@@ -29,6 +38,7 @@ const handlers = {
   ),
   task_status: McpToolAccess.actsAsCaller(({ taskId }) =>
     Effect.gen(function* () {
+      if (RemoteTasks.isRemoteTaskId(taskId)) return yield* RemoteTasks.status(taskId);
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.taskStatus(scope, taskId);
@@ -36,6 +46,7 @@ const handlers = {
   ),
   task_cancel: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {
+      if (RemoteTasks.isRemoteTaskId(input.taskId)) return yield* RemoteTasks.cancel(input);
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.cancelTask(scope, input);
