@@ -240,6 +240,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 // Fork (Owner): move a thread to another machine.
 import { receiveMove } from "./fork/moveThread.ts";
+import * as FleetSuggestions from "./fork/fleet/threadOverlaps.ts";
 import { ForkMoveError } from "@t3tools/contracts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
@@ -1403,6 +1404,7 @@ export const layerWsRpc = (
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
   settingsClient: { readonly secretReferences: boolean },
+  fleetSuggestions: FleetSuggestions.FleetSuggestions["Service"] | undefined,
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -2744,6 +2746,10 @@ export const layerWsRpc = (
                 message: cause instanceof Error ? cause.message : String(cause),
               }),
           }),
+        [WS_METHODS.forkFleetOverlaps]: (input) =>
+          fleetSuggestions
+            ? fleetSuggestions.read(input.threadId)
+            : Effect.succeed({ overlaps: [], status: "unavailable" as const }),
         [WS_METHODS.serverGetProcessResourceHistory]: (input) =>
           processResourceMonitor.readHistory(input),
         [WS_METHODS.serverGetResourceTelemetryHistory]: (input) =>
@@ -3541,6 +3547,7 @@ export const WS_RPC_SERVER_OPTIONS = {
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
+    const fleetSuggestions = yield* Effect.serviceOption(FleetSuggestions.FleetSuggestions);
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const npmRelease = yield* NpmRelease.NpmRelease;
     const pullRequests = yield* PullRequestService.PullRequestService;
@@ -3616,6 +3623,7 @@ export const layer = Layer.unwrap(
               serverBrowser,
               reportProfiles,
               readSettingsClient(url.value),
+              Option.getOrUndefined(fleetSuggestions),
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
