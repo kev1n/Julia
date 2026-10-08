@@ -125,8 +125,11 @@ export function SidebarTabSessionRow(props: {
             )}
             <span
               className={cn(
-                "min-w-0 flex-1 truncate text-sidebar-foreground",
-                isUnread && !statuses.has("working") ? "font-semibold" : "font-normal",
+                "min-w-0 flex-1 truncate group-hover/session:text-sidebar-foreground group-focus-within/session:text-sidebar-foreground",
+                isUnread && !statuses.has("working") ? "font-bold" : "font-normal",
+                status === null && !isUnread && !props.isActive
+                  ? "text-sidebar-muted-foreground"
+                  : "text-sidebar-foreground",
                 statuses.has("working") && "text-sidebar-foreground/85",
               )}
             >

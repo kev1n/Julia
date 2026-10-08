@@ -1057,10 +1057,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         <Text
           className={cn(
             "flex-1 text-base",
-            !recede && "font-t3-medium",
+            isUnread ? "font-t3-bold" : status !== "ready" && "font-t3-medium",
             selected
               ? selectedThreadRowColors.foregroundClassName
-              : rowAppearance.foregroundClassName,
+              : status === "ready" && !isUnread
+                ? rowAppearance.mutedForegroundClassName
+                : rowAppearance.foregroundClassName,
           )}
           numberOfLines={2}
         >
