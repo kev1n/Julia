@@ -5,6 +5,8 @@ import {
   isProviderDriverKind,
   ProviderDriverKind,
 } from "@t3tools/contracts";
+import { msg } from "gt-i18n";
+
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
 import { makeProviderClientRegistry, type ProviderIcon } from "@t3tools/provider-core/client";
 import { modelShortName } from "@t3tools/provider-core/modelShortName";
@@ -44,10 +46,11 @@ export const providerClients = makeProviderClientRegistry([
     environmentFields: [
       {
         name: "CLAUDE_CODE_OAUTH_TOKEN",
-        label: "Subscription token",
-        description:
-          'Optional. Signs this account in on every machine. Sign in with "all machines" to fill it.',
-        placeholder: "Paste token",
+        label: msg("Subscription token"),
+        description: msg(
+          'Optional. Choose "Share login with connected machines" during sign-in to fill it. Saving or clearing this token also applies to connected machines; offline machines are skipped. This is not continuous sync.',
+        ),
+        placeholder: msg("Paste token"),
         sensitive: true,
         sharedAcrossMachines: true,
       },
