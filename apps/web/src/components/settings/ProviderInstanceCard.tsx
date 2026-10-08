@@ -784,8 +784,13 @@ export function ProviderInstanceCard({
   const shareEnvironmentField = (field: ProviderEnvironmentField, value: string) => {
     if (!field.sharedAcrossMachines) return;
     void shareProviderSecret({ instanceId, name: field.name, value, includeSource: false }).then(
-      (description) => {
-        if (description) toastManager.add({ type: "success", title: field.label, description });
+      (result) => {
+        if (result?.description)
+          toastManager.add({
+            type: result.failed.length > 0 ? "error" : "success",
+            title: field.label,
+            description: result.description,
+          });
       },
     );
   };

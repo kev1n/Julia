@@ -5,8 +5,33 @@ import {
   getProviderIdentityDraft,
   resolveAcpRegistryWizardNavigation,
   resolveWizardNavigation,
+  resolveClaudeAccountConfig,
   updateProviderIdentityDraft,
 } from "./AddProviderInstanceDialog.logic";
+
+describe("Claude account setup", () => {
+  it("isolates new slots instead of inheriting the machine's login", () => {
+    const first = resolveClaudeAccountConfig(
+      { binaryPath: "claude" },
+      "new",
+      "claude_work",
+      "first",
+    );
+    const second = resolveClaudeAccountConfig({}, "new", "claude_work", "second");
+    expect(first).toEqual({ binaryPath: "claude", homePath: "~/.claude-t3/claude_work-first" });
+    expect(second.homePath).not.toBe(first.homePath);
+    expect(resolveClaudeAccountConfig({ homePath: "  " }, "new", "claude_work", "first")).toEqual({
+      homePath: first.homePath,
+    });
+  });
+
+  it("uses the machine's login only when explicitly requested, and respects custom directories", () => {
+    expect(resolveClaudeAccountConfig({}, "existing", "claude_work", "slot")).toEqual({});
+    expect(
+      resolveClaudeAccountConfig({ homePath: " ~/.claude_work " }, "new", "claude_work", "slot"),
+    ).toEqual({ homePath: "~/.claude_work" });
+  });
+});
 
 describe("resolveWizardNavigation", () => {
   const invalidId = { instanceIdError: "Instance ID is required." };

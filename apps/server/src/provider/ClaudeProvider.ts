@@ -8,11 +8,13 @@ import {
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -39,8 +41,8 @@ import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
 import { readClaudeTierMultiplier, withClaudeTier } from "../fork/claudePlanTier.ts";
-import type { ProviderWorkspaceSnapshot } from "./ProviderDriver.ts";
-import { makeUnavailableUsageLimits } from "./providerUsageLimits.ts";
+import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
+import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,
@@ -63,6 +65,9 @@ const CLAUDE_PRESENTATION = {
   showInteractionModeToggle: true,
   reportsContextWindow: true,
 } as const;
+const decodeClaudeLoginStatus = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ loggedIn: Schema.Boolean })),
+);
 function toTitleCaseWords(value: string): string {
   const parts: Array<string> = [];
   for (const part of value.split(/[\s_-]+/g)) {
@@ -467,7 +472,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   never,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > {
-  const resolvedEnvironment = environment ?? process.env;
+  const resolvedEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const allModels = providerModelsFromSettings(
     modelCatalog.models.map((entry) => entry.model),
@@ -609,6 +614,50 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
     endpoint.hostname !== "" &&
     endpoint.hostname !== "api.anthropic.com";
+
+  // SDK initialization succeeds even for a fresh, signed-out config directory.
+  // When nothing in its account payload names a credential, ask the CLI rather
+  // than mistaking a running subprocess for an authenticated account. A CLI that
+  // cannot be asked leaves the decision to `claudeAuthStatus`.
+  const hasApiKey = Boolean(capabilities.apiKeySource) && capabilities.apiKeySource !== "none";
+  if (
+    !customApiEndpoint &&
+    (!capabilities.tokenSource || capabilities.tokenSource === "none") &&
+    !hasApiKey &&
+    !capabilities.email &&
+    !capabilities.subscriptionType &&
+    (!capabilities.apiProvider || capabilities.apiProvider === "firstParty")
+  ) {
+    const probe = yield* runClaudeCommand(
+      claudeSettings,
+      ["auth", "status"],
+      resolvedEnvironment,
+    ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.exit);
+    if (Exit.isSuccess(probe) && Option.isSome(probe.value)) {
+      const login = decodeClaudeLoginStatus(probe.value.value.stdout);
+      if (Option.isNone(login) || !login.value.loggedIn) {
+        return buildServerProvider({
+          presentation: CLAUDE_PRESENTATION,
+          enabled: claudeSettings.enabled,
+          checkedAt,
+          models,
+          updateRequiredModels,
+          slashCommands: dedupedSlashCommands,
+          skills,
+          probe: {
+            installed: true,
+            version: parsedVersion,
+            status: "warning",
+            auth: { status: Option.isSome(login) ? "unauthenticated" : "unknown" },
+            message: Option.isSome(login)
+              ? "Sign in to this Claude account in Settings > Providers."
+              : "Could not verify this Claude account's sign-in. Try refreshing provider status.",
+          },
+        });
+      }
+    }
+  }
+
   if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
