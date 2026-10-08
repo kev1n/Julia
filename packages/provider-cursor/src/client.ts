@@ -13,9 +13,10 @@ export const cursorClient = defineProviderClient({
     {
       name: "CURSOR_API_KEY",
       label: "Cursor API key",
-      description: "Optional. Overrides browser sign-in for this provider.",
+      description: "Optional. Signs this account in on every machine instead of browser sign-in.",
       placeholder: "Paste API key",
       sensitive: true,
+      sharedAcrossMachines: true,
     },
   ],
   icon: {

@@ -3,6 +3,8 @@ import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 import { useNowMinuteMs } from "../../lib/clock";
 import * as Dialog from "../../components/ui/Dialog";
 import React, { useEffect, useRef, useState } from "react";
+import { AsyncResult } from "effect/reactivity";
+import { mobilePreferencesAtom } from "../../state/preferences";
 
 import type {
   EnvironmentId,
@@ -446,15 +448,23 @@ export function NewTaskFlowProvider(
     stickySelection: stickyModelSelection,
     modelOptions,
   });
-  // Fork (Owner): the default runs on the account with the most usage left;
-  // a pending task being edited keeps the account it was saved with.
-  const selectedDefaultModel = useMemo(
-    () =>
-      draftModelSelection || editingPendingTask
-        ? resolvedModel
-        : withAutoAccount(resolvedModel, selectedEnvironmentServerConfig?.providers ?? []),
-    [draftModelSelection, editingPendingTask, resolvedModel, selectedEnvironmentServerConfig],
-  );
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const modelFavorites = AsyncResult.isSuccess(preferences)
+    ? preferences.value.modelFavorites
+    : undefined;
+  // Fork (Owner): the default runs on the account with the most usage left.
+  const selectedDefaultModel = (() => {
+    if (draftModelSelection) return resolvedModel;
+    const automatic = withAutoAccount(
+      resolvedModel,
+      selectedEnvironmentServerConfig?.providers ?? [],
+      undefined,
+      modelFavorites,
+    );
+    return automatic && automatic.model !== resolvedModel?.model
+      ? withRememberedModelOptions(automatic)
+      : automatic;
+  })();
   const selectedModel = resolveNewThreadModelSelection({
     defaultSelection: selectedDefaultModel,
     explicitSelection:

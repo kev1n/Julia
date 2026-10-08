@@ -58,6 +58,11 @@ vi.mock("../../state/session", () => ({
 vi.mock("../../state/presentation", () => ({
   useEnvironmentPresentation: mocks.presentation,
 }));
+// Fork: the real preferences store loads Expo's native runtime.
+vi.mock("../../state/preferences", async () => {
+  const { AsyncResult, Atom } = await import("effect/reactivity");
+  return { mobilePreferencesAtom: Atom.make(AsyncResult.initial()) };
+});
 vi.mock("../../state/orchestration", () => ({ orchestrationEnvironment: {} }));
 vi.mock("../../state/threads", () => ({ olderSettledThreads: {}, threadFamilies: {} }));
 vi.mock("../../state/pull-requests", () => ({ composerPullRequests: {} }));

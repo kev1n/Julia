@@ -32,12 +32,14 @@ import { ModelEsque } from "./components/chat/providerIconUtils";
 import {
   type ProviderInstanceEntry,
   deriveProviderInstanceEntries,
+  isProviderInstancePickerReady,
   NO_PROVIDER_MODEL_SELECTION,
   resolveDefaultProviderModelSelection,
   resolveProjectDefaultProviderModelSelection,
 } from "./providerInstances";
 import { sortModelsForProviderInstance } from "./modelOrdering";
 import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
+import { chooseNewChatModelSubscription } from "@t3tools/shared/modelSubscriptions";
 
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 const DEFAULT_TEXT_GENERATION_INSTANCE_ID = ProviderInstanceId.make("codex");
@@ -244,6 +246,46 @@ export function getAppModelOptionsForInstance(
     selectedModel,
     preferences.hiddenModels,
   );
+}
+
+/** New drafts may leave an exhausted model, but only for another preferred or pinned model. */
+export function resolveNewChatModelSelection(
+  selection: ModelSelection,
+  settings: UnifiedSettings,
+  providers: ReadonlyArray<ServerProvider>,
+  now: number,
+): ModelSelection {
+  const choice = chooseNewChatModelSubscription(
+    selection,
+    deriveProviderInstanceEntries(providers).flatMap((entry) =>
+      getAppModelOptionsForInstance(settings, entry)
+        .filter((model) => !model.isLegacy || model.slug === selection.model)
+        .map((model) => ({
+          instanceId: entry.instanceId,
+          catalog:
+            entry.driverKind === "acpRegistry"
+              ? `acpRegistry:${entry.acpRegistryAgentId ?? entry.instanceId}`
+              : entry.driverKind,
+          model: model.slug,
+          available:
+            isProviderInstancePickerReady(entry) &&
+            entry.installed &&
+            entry.snapshot.auth.status !== "unauthenticated" &&
+            !model.isUnavailable,
+          usageLimits: entry.snapshot.usageLimits,
+          value: model,
+        })),
+    ),
+    settings.favorites ?? [],
+    now,
+  );
+  if (!choice || (choice.instanceId === selection.instanceId && choice.model === selection.model)) {
+    return selection;
+  }
+  // Options belong to the model, not to the account being left behind.
+  return choice.model === selection.model
+    ? { ...selection, instanceId: choice.instanceId }
+    : { instanceId: choice.instanceId, model: choice.model };
 }
 
 export function resolveAppModelSelection(

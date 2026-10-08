@@ -899,7 +899,7 @@ export function ProviderInstanceCard({
   };
   const shareProviderSecret = useShareProviderSecret(environmentId);
   // Shared sign-ins (Claude token, Cursor key) follow this provider to every machine.
-  const shareEnvironmentField = (field: ProviderEnvironmentFieldDefinition, value: string) => {
+  const shareEnvironmentField = (field: ProviderEnvironmentField, value: string) => {
     if (!field.sharedAcrossMachines) return;
     void shareProviderSecret({ instanceId, name: field.name, value, includeSource: false }).then(
       (description) => {
@@ -907,7 +907,7 @@ export function ProviderInstanceCard({
       },
     );
   };
-  const updateEnvironmentField = (field: ProviderEnvironmentFieldDefinition, value: string) => {
+  const updateEnvironmentField = (field: ProviderEnvironmentField, value: string) => {
     updateEnvironment(nextProviderEnvironmentWithFieldValue(instance.environment, field, value));
     shareEnvironmentField(field, value);
   };
