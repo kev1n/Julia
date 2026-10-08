@@ -37,6 +37,7 @@ import { resolveEventKeys } from "@t3tools/shared/keybindings";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils";
+import { WorkspaceBackButton } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import {
@@ -269,6 +270,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarContent className="overflow-x-hidden">
         <SidebarGroup>
           <div className="flex flex-col gap-2">
+            <WorkspaceBackButton className="self-start" />
             <div
               className={cn(
                 "flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
