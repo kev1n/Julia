@@ -33,8 +33,8 @@ import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { useEnvironmentScope } from "../../state/session";
 
-/** Session actions select a chat; lifecycle actions still target that chat,
- * never silently settle, rename or delete the other tabs in its workspace. */
+/** One sidebar row for a workspace's chat tabs. Settle and snooze move every
+ * tab (see useThreadActions); rename and delete still target the selected chat. */
 export function SidebarTabSessionRow(props: {
   session: WorkspaceChatSession;
   dimmed?: boolean;
