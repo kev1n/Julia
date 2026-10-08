@@ -25,6 +25,14 @@ machine, the thread starts on a connected one if any is connected.
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+On web and desktop, you can open a fresh draft even when its project's machine
+is offline. Use **Run on** to choose a connected machine. If the same repository
+and project folder are registered there, the draft uses that project. Otherwise,
+choose an existing folder to register, or clone the repository on that machine.
+Your draft text stays in place; existing threads and uncommitted work are not moved.
+When the original machine is unavailable, the draft uses your configured defaults
+instead of waiting to read its `t3.json`.
+
 ### Chats in one workspace
 
 On web and desktop, chats in the same working directory appear as tabs above the

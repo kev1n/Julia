@@ -1197,9 +1197,12 @@ export default function ChatView(props: ChatViewProps) {
   const logicalProjectEnvironments = useLogicalProjectEnvironments(
     activeProject,
     activeProjectIsScratch && draftId !== null,
+    draftId !== null,
   );
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
-  const canAutoBalanceEnvironments = hasMultipleEnvironments && !activeProjectIsScratch;
+  const canAutoBalanceEnvironments =
+    logicalProjectEnvironments.filter((environment) => environment.projectId !== null).length > 1 &&
+    !activeProjectIsScratch;
   const activeEnvironmentOption =
     logicalProjectEnvironments.find(
       (environment) => environment.environmentId === activeThread?.environmentId,
@@ -1779,6 +1782,7 @@ export default function ChatView(props: ChatViewProps) {
     composerHasAttachments,
     activeProjectKey,
     activeProjectIsScratch,
+    activeProject: activeProject ?? null,
     projectGroupingSettings,
     sendInFlightRef,
   });
@@ -2717,10 +2721,9 @@ export default function ChatView(props: ChatViewProps) {
         if (!canChangeEnvironment) return false;
         if (event.repeat) return;
         const currentId = readPendingEnvironmentChange()?.environmentId ?? environmentId;
-        const index = logicalProjectEnvironments.findIndex(
-          (env) => env.environmentId === currentId,
-        );
-        const next = logicalProjectEnvironments[(index + 1) % logicalProjectEnvironments.length];
+        const selectableEnvironments = logicalProjectEnvironments.filter((env) => !env.disabled);
+        const index = selectableEnvironments.findIndex((env) => env.environmentId === currentId);
+        const next = selectableEnvironments[(index + 1) % selectableEnvironments.length];
         if (next) onEnvironmentChangeStable(next.environmentId);
       },
       "thread.steerQueuedMessage": ({ event }) =>
