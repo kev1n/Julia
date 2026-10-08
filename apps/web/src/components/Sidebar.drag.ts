@@ -43,7 +43,8 @@ export function createSidebarCollisionDetection(
     const pointer = args.pointerCoordinates;
     const items = options.items;
     // The pointer chooses a slot, not the centre of the card picked up.
-    const unified = items?.some((item) => item.kind === "project" && item.unified);
+    const sharedPins = items?.some((item) => item.kind === "marker" && item.sharedPins);
+    const unified = sharedPins || items?.some((item) => item.kind === "project" && item.unified);
     let collisions = closestCenter(
       unified && pointer
         ? {
@@ -77,7 +78,7 @@ export function createSidebarCollisionDetection(
       )
       ?.node.current?.querySelector(".sidebar-drag-boundary-label")
       ?.getBoundingClientRect();
-    if (items && boundary && source?.kind === "thread" && pointer) {
+    if (!sharedPins && items && boundary && source?.kind === "thread" && pointer) {
       boundarySection ??= source.section === "pinned" ? "pinned" : "active";
       // Only pointer movement changes sections; opening the destination moves rows under stationary gestures.
       const previousY = previousPointerY ?? pointer.y;
@@ -145,6 +146,100 @@ export function createSidebarSortingStrategy(input: {
     if (active?.kind !== "thread" || !over || !rects[0]) return [];
     const target = resolveSidebarDropTarget(items, active.key, sidebarListItemId(over));
     if (!target) return [];
+    if (items.some((item) => item.kind === "marker" && item.sharedPins)) {
+      const pinnedRanks = new Map(target.pinnedOrder.map((key, index) => [key, index]));
+      const activeRanks = new Map(
+        (input.activeOrder ?? target.activeOrder).map((key, index) => [key, index]),
+      );
+      const projected: SidebarListItem[] = [];
+      const pins = items.filter(
+        (item): item is ThreadItem =>
+          item.kind === "thread" && item.section === "pinned" && item.key !== active.key,
+      );
+      if (target.section === "pinned") pins.push({ ...active, section: "pinned" });
+      pins.sort(
+        (a, b) => (pinnedRanks.get(a.key) ?? Infinity) - (pinnedRanks.get(b.key) ?? Infinity),
+      );
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index]!;
+        if (item.kind === "thread" && (item.section === "pinned" || item.key === active.key))
+          continue;
+        projected.push(item);
+        if (item.kind === "marker" && item.marker === "pinned-header") {
+          projected.push(...pins);
+        }
+        if (item.kind !== "project") continue;
+        const children: SidebarListItem[] = [];
+        while (index + 1 < items.length) {
+          const child = items[index + 1]!;
+          if (child.kind === "project" || child.projectKey !== item.projectKey) break;
+          index++;
+          if (child.kind !== "thread" || child.key !== active.key) children.push(child);
+        }
+        const destination =
+          item.projectKey === active.projectKey && item.section === target.section;
+        const rows = children.filter((child): child is ThreadItem => child.kind === "thread");
+        if (
+          destination &&
+          (item.expanded || input.routeThreadKey === active.key) &&
+          (target.section !== "settled" ||
+            input.settledExpanded ||
+            input.routeThreadKey === active.key)
+        )
+          rows.push({ ...active, section: target.section });
+        if (item.section === "active")
+          rows.sort(
+            (a, b) => (activeRanks.get(a.key) ?? Infinity) - (activeRanks.get(b.key) ?? Infinity),
+          );
+        else if (item.section === "settled") {
+          const ranks = new Map(input.settledOrder.map((key, index) => [key, index]));
+          rows.sort((a, b) => (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity));
+        }
+        const count =
+          item.threadCount -
+          Number(item.section === active.section && item.projectKey === active.projectKey) +
+          Number(destination);
+        if ((!item.visible && rows.length === 0) || (item.section !== "active" && count <= 0))
+          projected.pop();
+        projected.push(...children.filter((child) => child.kind !== "thread"), ...rows);
+      }
+      const result = items.map(() => hidden);
+      // Slot spacing belongs to the list, never to a row's old trailing gap.
+      // Preserve the shelf's flexible bottom space without carrying it upward.
+      const firstShelf = items.findIndex(isShelfHeader);
+      const heightOf = (item: SidebarListItem) => {
+        const rect = rects[indices.get(sidebarListItemId(item))!];
+        if (item.kind === "project" && !item.visible) return 48;
+        return rect?.height ?? 0;
+      };
+      const shelfGap =
+        firstShelf > 0 && rects[firstShelf]!.top > rects[firstShelf - 1]!.bottom + 1
+          ? Math.max(
+              0,
+              Math.max(...rects.map((rect) => rect?.bottom ?? 0)) -
+                rects[0].top -
+                projected.reduce((sum, item) => {
+                  const height = heightOf(item);
+                  return sum + height + (height > 0 ? 1 : 0);
+                }, -1),
+            )
+          : 0;
+      let top = rects[0].top;
+      let gapApplied = false;
+      for (const item of projected) {
+        if (!gapApplied && isShelfHeader(item)) {
+          top += shelfGap;
+          gapApplied = true;
+        }
+        const index = indices.get(sidebarListItemId(item))!;
+        const rect = rects[index];
+        if (!rect) continue;
+        result[index] = { ...stationary, y: top - rect.top };
+        top += heightOf(item) + (rect.height > 0 ? 1 : 0);
+      }
+      if (!input.includeActiveSlot) result[activeIndex] = stationary;
+      return result;
+    }
     if (items.some((item) => item.kind === "project" && item.unified)) {
       // Pins and active rows share a fixed project footprint. Reorder only
       // that block: a gap after its last row belongs to the next header, not
