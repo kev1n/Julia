@@ -4,7 +4,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 import { showThreadUndoNotice } from "./thread-undo-notice";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, type ScopedProjectRef } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { msg } from "gt-react-native";
@@ -261,6 +261,7 @@ export function useThreadListActions(): {
   readonly moveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
+    projectRefs?: readonly ScopedProjectRef[],
   ) => Promise<boolean>;
   readonly renameThread: (thread: EnvironmentThreadShell) => void;
   readonly regenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -700,7 +701,11 @@ export function useThreadListActions(): {
   const reorderActiveMutation = useAtomCommand(threadEnvironment.reorderActive, {
     reportFailure: false,
   });
-  const moveThread = async (thread: EnvironmentThreadShell, direction: ThreadMoveDestination) => {
+  const moveThread = async (
+    thread: EnvironmentThreadShell,
+    direction: ThreadMoveDestination,
+    projectRefs?: readonly ScopedProjectRef[],
+  ) => {
     if (!checkThreadOperationPermission(thread, m(msg("Could not move thread")))) return false;
     if (getPendingThreadOrder() !== null || appAtomRegistry.get(threadDropBusyAtom)) return false;
     // The rows on screen can be older than the server's while they wait to show. A move
@@ -749,9 +754,28 @@ export function useThreadListActions(): {
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     });
+    const projectKeys =
+      projectRefs && new Set(projectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`));
+    const scopedOrder = projectKeys
+      ? ordered.filter((row) => projectKeys.has(`${row.environmentId}:${row.projectId}`))
+      : ordered;
+    let pendingDirection = direction;
+    if (projectKeys && typeof direction === "string") {
+      const index = scopedOrder.findIndex(
+        (row) => row.id === thread.id && row.environmentId === thread.environmentId,
+      );
+      const neighbour = scopedOrder[index + (direction === "up" ? -1 : 1)];
+      if (!neighbour) return false;
+      pendingDirection = {
+        targetId: scopedThreadKey(neighbour.environmentId, neighbour.id),
+        placement: direction === "up" ? "before" : "after",
+      };
+    }
     const assignments = createThreadMovePlanner({
-      allThreads: shells,
-      ordered,
+      allThreads: projectKeys
+        ? shells.filter((row) => projectKeys.has(`${row.environmentId}:${row.projectId}`))
+        : shells,
+      ordered: scopedOrder,
       section,
       reorderableEnvironmentIds: new Set(
         [...configs.keys()].filter((environmentId) => connectedEnvironmentIds.has(environmentId)),
@@ -779,7 +803,7 @@ export function useThreadListActions(): {
             section,
             ordered,
             movedId: scopedThreadKey(thread.environmentId, thread.id),
-            direction,
+            direction: pendingDirection,
             assignments,
           }),
         );

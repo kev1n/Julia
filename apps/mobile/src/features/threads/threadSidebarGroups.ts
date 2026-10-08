@@ -74,7 +74,6 @@ export function groupThreadSidebarItems(input: {
   };
   for (const row of input.items) {
     if (row.type === "v2-thread") {
-      if (block[0]?.item.pinned !== row.item.pinned) flush();
       block.push(row);
     } else {
       flush();
