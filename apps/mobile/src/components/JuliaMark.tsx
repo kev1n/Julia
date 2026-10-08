@@ -10,13 +10,14 @@ export function JuliaMark(props: {
   readonly height: number;
   readonly color?: ColorValue;
   readonly colorClassName?: string;
+  readonly wordmark?: boolean;
 }) {
   return (
     <Svg
       accessibilityLabel="Julia"
       height={props.height}
-      width={props.height}
-      viewBox="0 0 32 32"
+      width={props.wordmark ? props.height * 0.75 : props.height}
+      viewBox={props.wordmark ? "5 0 24 32" : "0 0 32 32"}
       fill="none"
     >
       <ThemedPath

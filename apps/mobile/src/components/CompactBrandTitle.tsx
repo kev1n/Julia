@@ -11,7 +11,7 @@ import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
 const BRAND_MAX_FONT_SCALE = 1.4;
-const WORDMARK_SUFFIX = "Julia";
+const WORDMARK_SUFFIX = "ulia";
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
@@ -52,16 +52,21 @@ export function CompactBrandTitle(
         props.fit && { flexShrink: 0 },
       ]}
     >
-      <JuliaMark colorClassName="accent-icon" height={Math.round(15 * scale)} />
-      {/* A logo beside a fixed-size wordmark: it may grow with Dynamic Type, not crowd the bar. */}
-      <Text
-        allowFontScaling={props.allowFontScaling}
-        maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
-        className="font-t3-medium text-foreground-muted"
-        style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
-      >
-        {WORDMARK_SUFFIX}
-      </Text>
+      <View className="flex-row items-center">
+        <JuliaMark
+          colorClassName="text-foreground-muted"
+          height={Math.round(24 * scale)}
+          wordmark
+        />
+        <Text
+          allowFontScaling={props.allowFontScaling}
+          maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
+          className="font-t3-medium text-foreground-muted"
+          style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
+        >
+          {WORDMARK_SUFFIX}
+        </Text>
+      </View>
       {showStage ? (
         <View
           className="rounded-full bg-subtle px-1.5 py-0.5"
