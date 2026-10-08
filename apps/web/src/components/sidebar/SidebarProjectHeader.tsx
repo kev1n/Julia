@@ -83,7 +83,10 @@ export function SidebarProjectHeader(props: {
           type="button"
           draggable
           aria-expanded={props.expanded}
-          aria-label={`${props.project.displayName}, ${props.count} threads`}
+          aria-label={gt("{project}, {count} sessions", {
+            project: props.project.displayName,
+            count: props.count,
+          })}
           onClick={props.onToggle}
           onDragStart={(event) => {
             event.dataTransfer.setData(PROJECT_DRAG_TYPE, props.project.projectKey);
