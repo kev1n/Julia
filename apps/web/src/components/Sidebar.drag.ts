@@ -48,6 +48,11 @@ export function createSidebarCollisionDetection(
       unified && pointer
         ? {
             ...args,
+            // Layout-only markers have no visible hit area. Their centres
+            // must not steal the edges of a row or project heading.
+            droppableContainers: args.droppableContainers.filter(
+              (container) => (args.droppableRects.get(container.id)?.height ?? 0) >= 1,
+            ),
             collisionRect: {
               ...args.collisionRect,
               top: pointer.y,
@@ -204,8 +209,7 @@ export function createSidebarSortingStrategy(input: {
       const floatingPinTarget =
         items[0]?.kind === "marker" &&
         items[0].marker === "pinned-header" &&
-        rects[0].height > 0 &&
-        rects[0].bottom <= (rects[1]?.top ?? 0);
+        items[0].projectKey === undefined;
       const projected: SidebarListItem[] = [];
       let index = 0;
       while (index < items.length) {
@@ -274,7 +278,7 @@ export function createSidebarSortingStrategy(input: {
         )
           return (
             (item.projectKey === undefined || item.projectKey === active.projectKey
-              ? (input.boundaryLabelHeight ?? 0)
+              ? rect?.height || input.boundaryLabelHeight || 0
               : 0) * scale
           );
         return rect?.height ?? 0;
