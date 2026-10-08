@@ -71,6 +71,51 @@ const extractingRunner = (fs: FileSystem.FileSystem, path: Path.Path, commands: 
   });
 
 it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
+  it.effect("installs an uncached fork runtime using the fork checksums and archive", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-fork-" });
+      const forkVersion = "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77";
+      const forkArchive = `t3-${forkVersion}-darwin-arm64.tar.gz`;
+      const baseUrl = `https://build-mac-host.example.ts.net:8444/${forkVersion}`;
+      const requests: string[] = [];
+      const checksum = yield* archiveHex(archiveBytes);
+      const httpClient = HttpClient.make((request) => {
+        requests.push(request.url);
+        const body =
+          request.url === `${baseUrl}/SHA256SUMS`
+            ? `${checksum}  ${forkArchive}\n`
+            : request.url === `${baseUrl}/${forkArchive}`
+              ? archiveBytes
+              : undefined;
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            body === undefined ? new Response("Not Found", { status: 404 }) : new Response(body),
+          ),
+        );
+      });
+      const paths = yield* ensurePinnedRuntimeInstalled({
+        baseDir,
+        version: forkVersion,
+        fs,
+        path,
+        platform: "darwin",
+        arch: "arm64",
+        httpClient,
+        runner: extractingRunner(fs, path),
+        validate: (runtime) =>
+          fs.exists(runtime.entryPath).pipe(
+            Effect.flatMap((exists) => (exists ? Effect.void : Effect.die("missing runtime"))),
+            Effect.orDie,
+          ),
+      });
+      assert.deepEqual(requests, [`${baseUrl}/SHA256SUMS`, `${baseUrl}/${forkArchive}`]);
+      assert.equal(yield* fs.readFileString(paths.sentinelPath), `${forkVersion}\n`);
+    }),
+  );
+
   it.effect("installs the verified release archive as the runtime executable", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
