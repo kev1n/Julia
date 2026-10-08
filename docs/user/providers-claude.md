@@ -9,20 +9,15 @@ shared provider settings.
 Use a separate Claude config directory for each account. This also works for named
 presets that need different Claude settings or a router connection.
 
-Keep your existing account in the default directory. On the environment's machine,
-create the second login:
+In **Settings > Providers**, add Claude, name the account, and choose **Sign in to a
+different account**. T3 creates a separate login directory and continues to sign-in.
+Choose the intended Claude account on the sign-in page; your existing login is
+unchanged. You can finish sign-in later from that slot's provider settings.
 
-```bash
-mkdir -p ~/.claude_personal
-CLAUDE_CONFIG_DIR=~/.claude_personal claude auth login
-```
-
-Add another Claude instance in **Settings > Providers**:
-
-| Instance        | Binary path | CLAUDE_CONFIG_DIR path |
-| --------------- | ----------- | ---------------------- |
-| Claude Work     | `claude`    | Leave empty            |
-| Claude Personal | `claude`    | `~/.claude_personal`   |
+Choose **Use this machine's existing login** only when you want another slot for
+the same account. It does not create a separate login. Changing or signing out of
+a shared login affects every slot using it. Advanced configuration lets you use a
+specific config directory, binary, or router configuration.
 
 On mobile, tap **Add Claude account** in **Settings > Providers** and enter a name and the
 config folder. The login itself still happens on the environment's machine.
@@ -31,6 +26,24 @@ An empty config-directory setting uses Claude Code's normal configuration. The
 custom setting changes `CLAUDE_CONFIG_DIR`, leaving `HOME` and the system keychain
 location intact. Use the same variable for the login command. Setting `HOME`
 instead can put credentials where this provider will not find them.
+
+### Using an account on other machines
+
+**Copy account slot to other machines** copies the account's settings and ID to
+connected, paired T3 servers. It does not copy Claude's credentials. Each server
+uses its own login directory, even when the directory paths look the same.
+
+During sign-in, choose **Sign in on this machine** for a local login, or **Share
+login with connected machines** to create a subscription token and save it on the
+connected servers. Token sharing also creates the slot if it is missing. Saving
+or clearing **Subscription token** in provider settings copies that change to
+connected machines too. It does not clone your keychain or Claude configuration.
+
+These are one-time copies, not continuous sync. Offline machines are skipped;
+reconnect them and save the token again, or sign in separately there. Read the
+result message to see which machines succeeded or were skipped. Native mobile
+supports machine-local sign-in; use web or desktop to share a token. A phone
+connected to a server uses that server's account and does not need its own copy.
 
 Check the account reported in provider settings after signing in. Existing
 threads can switch only between Claude instances with the same config directory.

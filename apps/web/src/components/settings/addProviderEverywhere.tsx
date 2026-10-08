@@ -4,7 +4,7 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { useEnvironments } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
@@ -31,49 +31,49 @@ export function useAddProviderEverywhere(sourceEnvironmentId: EnvironmentId) {
     .map((environment) => environment.label);
 
   /** Returns a sentence for the success toast, or null when nothing else was attempted. */
-  const addToOtherMachines = useCallback(
-    async (instanceId: ProviderInstanceId, instance: ProviderInstanceConfig) => {
-      if (!enabled || otherLabels.length === 0) return null;
-      const plan = planProviderFanOut({
-        sourceEnvironmentId,
-        instanceId,
-        candidates: environments.map((environment) => ({
-          environmentId: environment.environmentId,
-          label: environment.label,
-          connected:
-            environment.connection.phase === "connected" && environment.serverConfig !== null,
-          canManageProviders: readEnvironmentScope(
-            environment.environmentId,
-            AuthProvidersManageScope,
-          ),
-          instanceIds: new Set(
-            Object.keys(environment.serverConfig?.settings.providerInstances ?? {}),
-          ),
-        })),
-      });
-      const results = await Promise.all(
-        plan.targets.map(async (target) => ({
-          label: target.label,
-          ok:
-            (
-              await mutateProviderInstance({
-                environmentId: target.environmentId,
-                input: {
-                  patch: {},
-                  providerInstanceMutation: { operation: "create", instanceId, instance },
-                },
-              })
-            )._tag === "Success",
-        })),
-      );
-      return describeFanOut(
-        results.filter((result) => result.ok).map((result) => result.label),
-        results.filter((result) => !result.ok).map((result) => result.label),
-        plan.skipped,
-      );
-    },
-    [enabled, environments, mutateProviderInstance, otherLabels.length, sourceEnvironmentId],
-  );
+  const addToOtherMachines = async (
+    instanceId: ProviderInstanceId,
+    instance: ProviderInstanceConfig,
+  ) => {
+    if (!enabled || otherLabels.length === 0) return null;
+    const plan = planProviderFanOut({
+      sourceEnvironmentId,
+      instanceId,
+      candidates: environments.map((environment) => ({
+        environmentId: environment.environmentId,
+        label: environment.label,
+        connected:
+          environment.connection.phase === "connected" && environment.serverConfig !== null,
+        canManageProviders: readEnvironmentScope(
+          environment.environmentId,
+          AuthProvidersManageScope,
+        ),
+        instanceIds: new Set(
+          Object.keys(environment.serverConfig?.settings.providerInstances ?? {}),
+        ),
+      })),
+    });
+    const results = await Promise.all(
+      plan.targets.map(async (target) => ({
+        label: target.label,
+        ok:
+          (
+            await mutateProviderInstance({
+              environmentId: target.environmentId,
+              input: {
+                patch: {},
+                providerInstanceMutation: { operation: "create", instanceId, instance },
+              },
+            })
+          )._tag === "Success",
+      })),
+    );
+    return describeFanOut(
+      results.filter((result) => result.ok).map((result) => result.label),
+      results.filter((result) => !result.ok).map((result) => result.label),
+      plan.skipped,
+    );
+  };
 
   return { enabled, setEnabled, otherLabels, addToOtherMachines };
 }
@@ -90,75 +90,78 @@ export function useShareProviderSecret(sourceEnvironmentId: EnvironmentId | unde
     reportFailure: false,
   });
 
-  /** Returns the toast sentence, or null when there is no other machine. */
-  return useCallback(
-    async (input: {
-      readonly instanceId: ProviderInstanceId;
-      readonly name: string;
-      readonly value: string;
-      /** Also save it on the source machine, when the caller has not already. */
-      readonly includeSource: boolean;
-    }) => {
-      if (sourceEnvironmentId === undefined) return null;
-      const source = environments.find(
-        (environment) => environment.environmentId === sourceEnvironmentId,
-      );
-      const sourceInstance = source?.serverConfig?.settings.providerInstances[input.instanceId];
-      const removing = input.value.trim().length === 0;
-      const candidates = environments.filter(
-        (environment) => input.includeSource || environment.environmentId !== sourceEnvironmentId,
-      );
-      if (candidates.length === 0) return null;
-      const added: Array<string> = [];
-      const failed: Array<string> = [];
-      const skipped: Array<{ label: string; reason: "offline" | "no-permission" }> = [];
-      await Promise.all(
-        candidates.map(async (environment) => {
-          if (environment.connection.phase !== "connected" || !environment.serverConfig) {
-            skipped.push({ label: environment.label, reason: "offline" });
-            return;
-          }
-          if (!readEnvironmentScope(environment.environmentId, AuthProvidersManageScope)) {
-            skipped.push({ label: environment.label, reason: "no-permission" });
-            return;
-          }
-          const existing = environment.serverConfig.settings.providerInstances[input.instanceId];
-          const base = existing ?? (removing ? undefined : sourceInstance);
-          if (!base) return;
-          const { environment: baseEnvironment, ...rest } = base;
-          // A copied entry carries only this secret; the source's other secrets are redacted.
-          const nextEnvironment = withProviderSecret(
-            existing ? baseEnvironment : [],
-            input.name,
-            input.value,
-          );
-          const instance: ProviderInstanceConfig =
-            nextEnvironment.length > 0 ? { ...rest, environment: nextEnvironment } : rest;
-          const result = await mutateProviderInstance({
-            environmentId: environment.environmentId,
-            input: {
-              patch: {},
-              providerInstanceMutation: {
-                operation: existing ? "upsert" : "create",
-                instanceId: input.instanceId,
-                instance,
-              },
+  /** Returns the per-machine outcome, or null when there is no other machine. */
+  return async (input: {
+    readonly instanceId: ProviderInstanceId;
+    readonly name: string;
+    readonly value: string;
+    /** Also save it on the source machine, when the caller has not already. */
+    readonly includeSource: boolean;
+  }) => {
+    if (sourceEnvironmentId === undefined) return null;
+    const source = environments.find(
+      (environment) => environment.environmentId === sourceEnvironmentId,
+    );
+    const sourceInstance = source?.serverConfig?.settings.providerInstances[input.instanceId];
+    const removing = input.value.trim().length === 0;
+    const candidates = environments.filter(
+      (environment) => input.includeSource || environment.environmentId !== sourceEnvironmentId,
+    );
+    if (candidates.length === 0) return null;
+    const added: Array<string> = [];
+    const failed: Array<string> = [];
+    const skipped: Array<{ label: string; reason: "offline" | "no-permission" }> = [];
+    await Promise.all(
+      candidates.map(async (environment) => {
+        if (environment.connection.phase !== "connected" || !environment.serverConfig) {
+          skipped.push({ label: environment.label, reason: "offline" });
+          return;
+        }
+        if (!readEnvironmentScope(environment.environmentId, AuthProvidersManageScope)) {
+          skipped.push({ label: environment.label, reason: "no-permission" });
+          return;
+        }
+        const existing = environment.serverConfig.settings.providerInstances[input.instanceId];
+        const base = existing ?? (removing ? undefined : sourceInstance);
+        if (!base) {
+          if (!removing) failed.push(environment.label);
+          return;
+        }
+        const { environment: baseEnvironment, ...rest } = base;
+        // A copied entry carries only this secret; the source's other secrets are redacted.
+        const nextEnvironment = withProviderSecret(
+          existing ? baseEnvironment : [],
+          input.name,
+          input.value,
+        );
+        const instance: ProviderInstanceConfig =
+          nextEnvironment.length > 0 ? { ...rest, environment: nextEnvironment } : rest;
+        const result = await mutateProviderInstance({
+          environmentId: environment.environmentId,
+          input: {
+            patch: {},
+            providerInstanceMutation: {
+              operation: existing ? "upsert" : "create",
+              instanceId: input.instanceId,
+              instance,
             },
-          });
-          (result._tag === "Success" ? added : failed).push(environment.label);
-        }),
-      );
-      return describeFanOut(
+          },
+        });
+        (result._tag === "Success" ? added : failed).push(environment.label);
+      }),
+    );
+    return {
+      failed,
+      description: describeFanOut(
         added,
         failed,
         skipped,
         removing
           ? { done: "Removed from", failed: "Could not remove from" }
           : { done: "Saved on", failed: "Could not save on" },
-      );
-    },
-    [environments, mutateProviderInstance, sourceEnvironmentId],
-  );
+      ),
+    };
+  };
 }
 
 export function AddEverywhereRow({
@@ -173,11 +176,11 @@ export function AddEverywhereRow({
   if (otherLabels.length === 0) return null;
   return (
     <SettingsRow
-      title="Add to all machines"
-      description={`Also add it to ${otherLabels.join(", ")}. Each machine signs in separately.`}
+      title="Copy account slot to other machines"
+      description={`Creates the same slot on connected machines: ${otherLabels.join(", ")}. Does not copy the login. Offline machines are skipped; there is no automatic sync.`}
       control={
         <Switch
-          aria-label="Add to all machines"
+          aria-label="Copy account slot to other machines"
           checked={enabled}
           onCheckedChange={(checked) => onEnabledChange(checked)}
         />
