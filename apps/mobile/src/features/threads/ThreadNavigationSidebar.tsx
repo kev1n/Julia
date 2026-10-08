@@ -262,6 +262,11 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     titleRegenerationEnvironmentIds,
   } = listEnvironments;
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
+  const scopeByProjectRef = new Map(
+    projectScopes.flatMap((scope) =>
+      scope.projectRefs.map((ref) => [`${ref.environmentId}:${ref.projectId}`, scope] as const),
+    ),
+  );
   const pendingOrder = usePendingThreadOrder();
   const {
     layout: threadListV2Layout,
@@ -289,6 +294,9 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey: props.selectedThreadKey ?? null,
+    projectGroupKey: (thread) =>
+      scopeByProjectRef.get(`${thread.environmentId}:${thread.projectId}`)?.key ??
+      `${thread.environmentId}:${thread.projectId}`,
   });
   const ungroupedListItems: readonly SidebarRow[] =
     settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0
@@ -545,7 +553,13 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             onPinThread={pinThread}
             onUnpinThread={unpinThread}
             onSetThreadAutoSettle={setThreadAutoSettle}
-            onMoveThread={moveThread}
+            onMoveThread={(thread, direction) =>
+              moveThread(
+                thread,
+                direction,
+                scopeByProjectRef.get(`${thread.environmentId}:${thread.projectId}`)?.projectRefs,
+              )
+            }
             onSwipeableClose={handleSwipeableClose}
             onSwipeableWillOpen={handleSwipeableWillOpen}
             simultaneousSwipeGesture={sidebarScrollGesture}

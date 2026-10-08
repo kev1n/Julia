@@ -2438,6 +2438,17 @@ code {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-thread-list > li {
+    /* Sortable transforms have inline transitions; placement remains instant. */
+    transition: none !important;
+  }
+
+  .sidebar-drag-boundary-label {
+    animation: none;
+  }
+}
+
 /* Rich text composer (Tiptap). The stored prompt stays markdown; only the
    surface renders styled text. Markers (** * ` ~~) appear as non-editable
    widgets while the caret is on styled text. */
