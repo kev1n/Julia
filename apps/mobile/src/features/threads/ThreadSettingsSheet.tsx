@@ -674,6 +674,7 @@ type ThreadSettingsCatalogItem =
       readonly recommended: boolean;
       readonly isLast: boolean;
     }
+  | { readonly kind: "notice"; readonly key: string; readonly text: string }
   | { readonly kind: "empty"; readonly key: "empty" }
   | { readonly kind: "options"; readonly key: "options" };
 
@@ -813,7 +814,25 @@ function useThreadSettingsCatalogItems(
   const hasFavorites = groups.some(isFavorite);
   const firstByCatalog = new Set<string>();
   const searching = searchQuery.trim().length > 0;
-  return [...groups]
+  // Favorites list only selectable models, so it never explains gated ones.
+  // Accounts of one provider share a notice, so each text appears once.
+  const notices = new Map<string, ThreadSettingsCatalogItem>();
+  if (providerFilter !== FAVORITES_PROVIDER_FILTER) {
+    for (const group of providerGroups) {
+      if (
+        !group.updateRequired ||
+        (providerFilter !== null &&
+          providerFilter !== ALL_MODELS_FILTER &&
+          group.providerKey !== providerFilter)
+      )
+        continue;
+      const text = formatProviderUpdateRequiredNotice(group.updateRequired, searchQuery);
+      if (text && !notices.has(text)) {
+        notices.set(text, { kind: "notice", key: `notice:${group.providerKey}`, text });
+      }
+    }
+  }
+  const modelItems = [...groups]
     .sort((a, b) => {
       const firstA = a.subscriptions[0]!;
       const firstB = b.subscriptions[0]!;
@@ -884,6 +903,7 @@ function useThreadSettingsCatalogItems(
           : []),
       ];
     });
+  return [...modelItems, ...notices.values()];
 }
 
 function ThreadSettingsOptionsItem(props: {
@@ -1055,6 +1075,8 @@ function ThreadSettingsMainContent(props: {
           option={item.option}
         />
       );
+    } else if (item.kind === "notice") {
+      content = <Text className="mx-8 mt-2 text-xs text-foreground-muted">{item.text}</Text>;
     } else if (item.kind === "empty") {
       content = (
         <View className="items-center px-8 py-14">

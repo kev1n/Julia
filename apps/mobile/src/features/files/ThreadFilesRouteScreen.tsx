@@ -590,6 +590,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
           expandedPaths={entriesQuery.expandedPaths}
           setExpandedPaths={entriesQuery.setExpandedPaths}
           entries={entriesQuery.entries}
+          loadedDirectories={entriesQuery.loadedDirectories}
           loadingDirectories={entriesQuery.loadingDirectories}
           onLoadDirectory={entriesQuery.loadDirectory}
           error={entriesQuery.error}

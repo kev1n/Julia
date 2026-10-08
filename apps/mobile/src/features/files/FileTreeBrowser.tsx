@@ -35,6 +35,7 @@ const FileTreeRow = function FileTreeRow(props: {
   readonly item: VisibleFileTreeNode;
   readonly selected: boolean;
   readonly expanded: boolean;
+  readonly loaded: boolean;
   readonly loading: boolean;
   readonly onPressDirectory: (path: string, expand: boolean) => void;
   readonly onPreviewFile?: (path: string) => void;
@@ -91,6 +92,10 @@ const FileTreeRow = function FileTreeRow(props: {
       </Text>
       {node.kind === "directory" && props.expanded && props.loading ? (
         <AppActivityIndicator size="small" accessibilityLabel={`Loading ${node.name}`} />
+      ) : node.kind === "directory" && props.loaded ? (
+        <Text className="text-2xs font-t3-medium text-foreground-tertiary">
+          {node.children.length}
+        </Text>
       ) : null}
     </Pressable>
   );
@@ -110,6 +115,7 @@ export function FileTreeBrowser(props: {
   readonly searchResultPaths: ReadonlySet<string> | null;
   readonly searchTruncated: boolean;
   readonly selectedPath: string | null;
+  readonly loadedDirectories: ReadonlySet<string>;
   readonly loadingDirectories: ReadonlySet<string>;
   readonly onLoadDirectory: (path: string, retry?: boolean) => void;
   readonly onPreviewFile?: (path: string) => void;
@@ -127,6 +133,7 @@ export function FileTreeBrowser(props: {
     onLoadDirectory,
     onPreviewFile,
     onSelectFile,
+    loadedDirectories,
     loadingDirectories,
     selectedPath: controlledSelectedPath,
   } = props;
@@ -202,6 +209,7 @@ export function FileTreeBrowser(props: {
       item={item}
       selected={item.node.kind === "file" && item.node.path === selectedPath}
       expanded={expandedPaths.has(item.node.path)}
+      loaded={loadedDirectories.has(item.node.path)}
       loading={loadingDirectories.has(item.node.path)}
       onPressDirectory={toggleDirectory}
       onPreviewFile={onPreviewFile}
@@ -209,7 +217,7 @@ export function FileTreeBrowser(props: {
     />
   );
 
-  const extraData = { expandedPaths, loadingDirectories, selectedPath };
+  const extraData = { expandedPaths, loadedDirectories, loadingDirectories, selectedPath };
 
   // Keep the list as direct screen content so UIKit can apply header insets.
   return (
