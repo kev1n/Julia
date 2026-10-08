@@ -91,8 +91,9 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-On web and desktop, drag a thread onto its project heading (**Pin here** while dragging)
-or into that project's pinned rows to pin it. This also works when the project has no pins.
+On web and desktop, drag a thread onto **Drop here to pin** at the top of the sidebar,
+its project heading (**Pin here** while dragging), or that project's pinned rows to pin it.
+This also works when the project has no pins. Threads stay in their original project.
 Drag a pinned thread into its project's active rows to unpin it, without a confirmation.
 The outlined slot shows where the thread will land; neighboring rows move aside without
 being covered by the dragged thread.
