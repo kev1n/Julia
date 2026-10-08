@@ -14,11 +14,12 @@
  *   mode, so the existing rule applies here, at the destination: a target may
  *   not run with broader modes than its caller. Idempotency keys are
  *   namespaced per source thread.
+ * - POST peer/delegate, peer/task, peer/task-cancel, peer/task-result, peer/providers:
+ *   delegate_task and orchestrator_capabilities with a `machine` (remoteTasks.ts).
  */
 import {
   OrchestratorMcpFailure,
   OrchestratorMcpThreadReadInput,
-  RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -27,23 +28,15 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
-import type { McpInvocationScope } from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
 import { MoveFailure, packBranch } from "../moveThread.ts";
 import { authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
+import { PeerSource, peerScope } from "./peer.ts";
+import * as RemoteTasks from "./remoteTasks.ts";
 import * as FleetSuggestions from "./threadOverlaps.ts";
 import { fleetConfig } from "./publisher.ts";
-
-export const PeerSource = Schema.Struct({
-  environmentId: Schema.String,
-  label: Schema.String,
-  threadId: Schema.String,
-  title: Schema.String,
-  runtimeMode: RuntimeMode,
-});
-export type PeerSource = typeof PeerSource.Type;
 
 const PeerRead = Schema.Struct({ source: PeerSource, input: OrchestratorMcpThreadReadInput });
 const PeerSend = Schema.Struct({
@@ -74,19 +67,6 @@ const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
 
 const json = (body: unknown, status = 200) => HttpServerResponse.jsonUnsafe(body, { status });
 
-const peerScope = (environmentId: string, source: PeerSource): McpInvocationScope => ({
-  environmentId: environmentId as McpInvocationScope["environmentId"],
-  capabilities: new Set(["orchestration"]),
-  issuedAt: Date.now(),
-  requestNamespace: `fleet:${source.environmentId}:${source.threadId}`,
-  thread: undefined,
-  client: {
-    sessionId: `fleet:${source.environmentId}:${source.threadId}`,
-    label: `${source.label} · ${source.title}`,
-    access: source.runtimeMode,
-  },
-});
-
 const asReply = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.map((result) => json({ ok: true, result })),
@@ -106,7 +86,12 @@ export const layer = Layer.unwrap(
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
     const suggestions = yield* FleetSuggestions.FleetSuggestions;
-    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service, suggestions));
+    const remoteTasks = yield* RemoteTasks.makePeerHandlers;
+    return HttpRouter.add(
+      "*",
+      "/fork/fleet/*",
+      handle(environment, service, suggestions, remoteTasks),
+    );
   }),
 );
 
@@ -114,6 +99,7 @@ const handle = (
   environment: ServerEnvironment.ServerEnvironment["Service"],
   service: OrchestratorMcpService.OrchestratorMcpService["Service"],
   suggestions: FleetSuggestions.FleetSuggestions["Service"],
+  remoteTasks: RemoteTasks.PeerHandlers,
 ) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -158,6 +144,10 @@ const handle = (
             headers,
             contentType: "application/x-git-bundle",
           });
+    }
+    const remoteTask = remoteTasks.get(path);
+    if (remoteTask !== undefined && request.method === "POST") {
+      return yield* asReply(remoteTask(yield* request.json));
     }
     if (request.method !== "POST" || (path !== "peer/read" && path !== "peer/send")) {
       return HttpServerResponse.text("Not Found", { status: 404 });
