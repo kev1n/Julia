@@ -11,7 +11,7 @@ import {
   type ThreadSearchSubject,
 } from "@t3tools/shared/paletteSearch";
 import { threadSearchSubject } from "@t3tools/client-runtime/state/thread-search";
-import type { CommandPaletteLinkedThreads } from "../commandPaletteBus";
+import type { CommandPaletteLinkedThreads, CommandPaletteProjectSetup } from "../commandPaletteBus";
 import type { DraftId } from "../composerDraftStore";
 import {
   addProjectRemoteSourceLabel,
@@ -86,6 +86,7 @@ export type CommandPaletteOpenIntent =
       readonly kind: "add-project";
       /** The draft a project is being picked for; one with user content moves to it. */
       readonly draftId?: DraftId;
+      readonly projectSetup?: CommandPaletteProjectSetup;
     }
   | {
       readonly kind: "search";
@@ -112,7 +113,11 @@ export type CommandPaletteUiAction =
       readonly query: string;
       readonly linkedThreads?: CommandPaletteLinkedThreads;
     }
-  | { readonly _tag: "OpenAddProject"; readonly draftId?: DraftId }
+  | {
+      readonly _tag: "OpenAddProject";
+      readonly draftId?: DraftId;
+      readonly projectSetup?: CommandPaletteProjectSetup;
+    }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | {
@@ -175,6 +180,7 @@ export function reduceCommandPaletteUiState(
       return openWithIntent({
         kind: "add-project",
         ...(action.draftId ? { draftId: action.draftId } : {}),
+        ...(action.projectSetup ? { projectSetup: action.projectSetup } : {}),
       });
     case "OpenNewThreadIn":
       return openWithIntent({ kind: "new-thread-in" });

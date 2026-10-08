@@ -12,6 +12,14 @@ first under the same project heading. Working, Snoozed, and Settled keep their s
 - **Mobile**: **New thread** uses the current, filtered, or last-opened project. Disable **Settings → General → Use last project** to pick every time.
 - **Defaults**: New threads inherit your last model and mode unless the project sets its own model default.
 
+On web and desktop, you can open a fresh draft even when its project's machine
+is offline. Use **Run on** to choose a connected machine. If the same repository
+and project folder are registered there, the draft uses that project. Otherwise,
+choose an existing folder to register, or clone the repository on that machine.
+Your draft text stays in place; existing threads and uncommitted work are not moved.
+When the original machine is unavailable, the draft uses your configured defaults
+instead of waiting to read its `t3.json`.
+
 ### Chats in one workspace
 
 On web and desktop, chats in the same working directory appear as tabs above the

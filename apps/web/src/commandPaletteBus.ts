@@ -1,7 +1,13 @@
 import type { EnvironmentId, PullRequestLinkedThreadsResult } from "@t3tools/contracts";
-
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import type { DraftId } from "./composerDraftStore";
 import { dispatchCommandPalette, isCommandPaletteMounted } from "./commandPaletteStore";
+
+export interface CommandPaletteProjectSetup {
+  readonly environmentId: EnvironmentId;
+  readonly draftId: DraftId;
+  readonly sourceProject: EnvironmentProject;
+}
 
 export interface CommandPaletteLinkedThreads {
   readonly environmentId: EnvironmentId;
@@ -14,6 +20,7 @@ export interface CommandPaletteOpenDetail {
   readonly draftId?: DraftId | null;
   readonly query?: string;
   readonly linkedThreads?: CommandPaletteLinkedThreads;
+  readonly projectSetup?: CommandPaletteProjectSetup;
 }
 
 export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void {
@@ -26,6 +33,7 @@ export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void 
     dispatchCommandPalette({
       _tag: "OpenAddProject",
       ...(detail.draftId ? { draftId: detail.draftId } : {}),
+      ...(detail.projectSetup ? { projectSetup: detail.projectSetup } : {}),
     });
   } else if (detail.query !== undefined) {
     dispatchCommandPalette({

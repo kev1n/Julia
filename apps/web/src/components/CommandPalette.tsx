@@ -62,7 +62,7 @@ import {
   type ScopedProjectRef,
 } from "@t3tools/contracts";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   ArrowRightLeftIcon,
   ArrowLeftIcon,
@@ -166,6 +166,7 @@ import {
 } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
+  ensureBrowseDirectoryPath,
   findProjectByPath,
   getBrowseDirectoryPath,
   hasTrailingPathSeparator,
@@ -177,6 +178,13 @@ import {
   resolveProjectPathForDispatch,
 } from "@t3tools/client-runtime/state/projects";
 import { resolvePastedPath } from "@t3tools/shared/path";
+import { type CommandPaletteProjectSetup } from "../commandPaletteBus";
+import {
+  deriveRepositoryRelativeProjectPath,
+  freshThreadCloneUrl,
+  freshThreadClonedProjectPath,
+  completeFreshThreadProjectSetup,
+} from "../lib/freshThreadProject";
 import {
   dispatchCommandPalette,
   getCommandPaletteReturnFocus,
@@ -197,7 +205,7 @@ import {
   isWindowsPlatform,
   newProjectId,
 } from "../lib/utils";
-import { buildThreadRouteParams } from "../threadRoutes";
+import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import {
   applyWslEnvironmentConfiguration,
   parseWslUncPath,
@@ -307,6 +315,7 @@ import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
 const NEW_THREAD_IN_GROUP = "projects";
+const PROJECT_SETUP_GROUP = "project-setup";
 
 /** The submenu an open intent starts in; its groups resolve while rendering. */
 function openIntentView(
@@ -317,7 +326,13 @@ function openIntentView(
     case "add-project":
       return {
         addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
-        groups: [{ value: ADD_PROJECT_ENTRY_GROUP, label: "", items: [] }],
+        groups: [
+          {
+            value: intent.projectSetup ? PROJECT_SETUP_GROUP : ADD_PROJECT_ENTRY_GROUP,
+            label: "",
+            items: [],
+          },
+        ],
       };
     case "new-thread-in":
       return {
@@ -452,6 +467,29 @@ function OpenCommandPaletteDialog(props: {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { openChildSearch, setOpen } = props;
+  const router = useRouter();
+  // Keyed by palette session like the search below: a setup intent seeds this mount only.
+  const [projectSetup, setProjectSetup] = useState<CommandPaletteProjectSetup | null>(() =>
+    props.initialContext || props.openIntent?.kind !== "add-project"
+      ? null
+      : (props.openIntent.projectSetup ?? null),
+  );
+  const projectSetupRef = useRef<CommandPaletteProjectSetup | null>(projectSetup);
+  // Async project setup continues only while the palette still shows that setup.
+  const isProjectSetupCurrent = useStableCallback(
+    (setup: CommandPaletteProjectSetup) => projectSetupRef.current === setup,
+  );
+  const replaceProjectSetup = useStableCallback((setup: CommandPaletteProjectSetup | null) => {
+    projectSetupRef.current = setup;
+    setProjectSetup(setup);
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the pending project setup when the palette unmounts
+  useEffect(
+    () => () => {
+      projectSetupRef.current = null;
+    },
+    [],
+  );
   // Keyed by palette session: the intent and restored search only seed this
   // mount, and closing must not change what the closing palette shows.
   const [initialSearch] = useState(
@@ -503,6 +541,9 @@ function OpenCommandPaletteDialog(props: {
   const loadBrowsePath = useAtomQueryRunner(filesystemEnvironment.browse, {
     reportFailure: false,
     reportDefect: false,
+  });
+  const cloneRepository = useAtomCommand(sourceControlEnvironment.cloneRepository, {
+    reportFailure: false,
   });
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
@@ -581,7 +622,7 @@ function OpenCommandPaletteDialog(props: {
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
   const [addProjectEnvironmentId, setAddProjectEnvironmentId] = useState<EnvironmentId | null>(
-    null,
+    () => projectSetup?.environmentId ?? null,
   );
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
   const [addProjectCloneFlow, setAddProjectCloneFlow] = useState<AddProjectCloneFlow | null>(null);
@@ -620,6 +661,20 @@ function OpenCommandPaletteDialog(props: {
     await openSyncedProject(projectRef, project);
   };
   const createNewProject = useNewProject(openAddedProject);
+  // Machine setup preserves the local draft instead of opening a previous
+  // destination thread or replacing the user's text with a different draft.
+  const completeProjectSetup = (
+    projectRef: ScopedProjectRef,
+    setup: CommandPaletteProjectSetup,
+  ) => {
+    if (!isProjectSetupCurrent(setup)) return;
+    const route = resolveThreadRouteTarget(router.state.matches.at(-1)?.params ?? {});
+    completeFreshThreadProjectSetup(
+      setup,
+      projectRef,
+      route?.kind === "draft" ? route.draftId : null,
+    );
+  };
   const cloneLookupGeneration = useRef(0);
   const [isRemoteProjectLookingUp, setIsRemoteProjectLookingUp] = useState(false);
   const [isRemoteProjectCloning, setIsRemoteProjectCloning] = useState(false);
@@ -1043,6 +1098,7 @@ function OpenCommandPaletteDialog(props: {
     setAddProjectCloneFlow(null);
     setNewProjectFlow(null);
     if (viewStack.length <= 1) {
+      replaceProjectSetup(null);
       setAddProjectEnvironmentId(null);
     } else if (newProjectFlow?.sourcesEnvironmentId) {
       setAddProjectEnvironmentId(newProjectFlow.sourcesEnvironmentId);
@@ -1075,8 +1131,13 @@ function OpenCommandPaletteDialog(props: {
     }
   }
 
-  const startAddProjectBrowse = async (environmentId: EnvironmentId): Promise<void> => {
-    const initialQuery = getAddProjectInitialQueryForEnvironment(environmentId);
+  const startAddProjectBrowse = async (
+    environmentId: EnvironmentId,
+    initialPath?: string,
+  ): Promise<void> => {
+    const initialQuery = initialPath
+      ? ensureBrowseDirectoryPath(initialPath)
+      : getAddProjectInitialQueryForEnvironment(environmentId);
     const initialBrowsePath = getBrowseDirectoryPath(initialQuery);
     const browseCwd = getBrowseCwdForEnvironment(environmentId);
     const view: CommandPaletteView = {
@@ -1941,6 +2002,44 @@ function OpenCommandPaletteDialog(props: {
   const rootGroups = buildRootGroups({ actionItems, recentThreadItems }, messages);
   const sourceSelectionViewValue =
     addProjectEnvironmentId === null ? null : `sources:${addProjectEnvironmentId}`;
+  const projectSetupGroups = (
+    setup: CommandPaletteProjectSetup,
+  ): ReadonlyArray<CommandPaletteGroup> => [
+    {
+      value: PROJECT_SETUP_GROUP,
+      label: gt("Set up {project} on {machine}", {
+        project: setup.sourceProject.title,
+        machine: environmentLabelById.get(setup.environmentId) ?? setup.environmentId,
+      }),
+      items: [
+        {
+          kind: "action",
+          value: "project-setup:folder",
+          searchTerms: ["folder", "register"],
+          title: gt("Use an existing folder"),
+          description: gt("Repository already here? Choose its project folder to register it."),
+          icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+          keepOpen: true,
+          run: async () => {
+            await startAddProjectBrowse(setup.environmentId);
+          },
+        },
+        {
+          kind: "action",
+          value: "project-setup:clone",
+          searchTerms: ["clone", "repository"],
+          title: gt("Clone repository"),
+          description: gt("Repository missing? Clone and register it on this machine."),
+          icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
+          keepOpen: true,
+          run: async () => {
+            startAddProjectClone(setup.environmentId, "url");
+            setQuery(freshThreadCloneUrl(setup.sourceProject) ?? "");
+          },
+        },
+      ],
+    },
+  ];
   const activeGroups =
     addProjectEnvironmentId !== null &&
     currentView !== null &&
@@ -1949,24 +2048,26 @@ function OpenCommandPaletteDialog(props: {
           addProjectEnvironmentId,
           buildPaletteRemoteSourceReadiness(sourceControlDiscovery.data, messages),
         )
-      : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
-        ? addProjectEntryGroups()
-        : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
-          ? [
-              {
-                value: NEW_THREAD_IN_GROUP,
-                label: gt("Projects"),
-                // Every project archived and no "No project" home leaves only adding one.
-                items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
-              },
-            ]
-          : currentView?.groups[0]?.value.startsWith(PORT_FORWARD_GROUP_PREFIX) && portForwardItem
-            ? portForwardItem.groups
-            : currentView?.groups[0]?.value === "themes"
-              ? changeThemeItem.groups
-              : currentView?.groups[0]?.value === "appearance"
-                ? changeAppearanceItem.groups
-                : (currentView?.groups ?? rootGroups);
+      : currentView?.groups[0]?.value === PROJECT_SETUP_GROUP && projectSetup
+        ? projectSetupGroups(projectSetup)
+        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
+          ? addProjectEntryGroups()
+          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
+            ? [
+                {
+                  value: NEW_THREAD_IN_GROUP,
+                  label: gt("Projects"),
+                  // Every project archived and no "No project" home leaves only adding one.
+                  items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
+                },
+              ]
+            : currentView?.groups[0]?.value.startsWith(PORT_FORWARD_GROUP_PREFIX) && portForwardItem
+              ? portForwardItem.groups
+              : currentView?.groups[0]?.value === "themes"
+                ? changeThemeItem.groups
+                : currentView?.groups[0]?.value === "appearance"
+                  ? changeAppearanceItem.groups
+                  : (currentView?.groups ?? rootGroups);
 
   const isLinkedThreadSearch =
     linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
@@ -2049,6 +2150,7 @@ function OpenCommandPaletteDialog(props: {
     },
     closeProjectView = captureProjectViewClose(),
   ) => {
+    const setup = projectSetup;
     const environment = environments.find(
       (candidate) => candidate.environmentId === input.environmentId,
     );
@@ -2112,7 +2214,7 @@ function OpenCommandPaletteDialog(props: {
         existing.id,
         clientSettings.sidebarThreadSortOrder,
       );
-      if (latestThread && latestThread.settledOverride !== "settled") {
+      if (!setup && latestThread && latestThread.settledOverride !== "settled") {
         await navigate({
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(
@@ -2120,9 +2222,12 @@ function OpenCommandPaletteDialog(props: {
           ),
         });
       } else {
-        const navigationResult = await settlePromise(() =>
-          handleNewThread(scopeProjectRef(existing.environmentId, existing.id)),
-        );
+        const navigationResult = await settlePromise(async () => {
+          const projectRef = scopeProjectRef(existing.environmentId, existing.id);
+          if (!setup) return handleNewThread(projectRef);
+          completeProjectSetup(projectRef, setup);
+          return null;
+        });
         if (navigationResult._tag === "Failure") {
           const error = squashAtomCommandFailure(navigationResult);
           toastManager.add(
@@ -2156,7 +2261,7 @@ function OpenCommandPaletteDialog(props: {
         projectId,
         title: inferProjectTitleFromPath(cwd),
         workspaceRoot: cwd,
-        createWorkspaceRootIfMissing: true,
+        createWorkspaceRootIfMissing: setup === null,
         defaultModelSelection: null,
       },
     });
@@ -2174,9 +2279,12 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
-    const navigationResult = await settlePromise(() =>
-      openAddedProject(scopeProjectRef(input.environmentId, projectId)),
-    );
+    const navigationResult = await settlePromise(async () => {
+      const projectRef = scopeProjectRef(input.environmentId, projectId);
+      if (!setup) return openAddedProject(projectRef);
+      await waitForProject(projectRef);
+      completeProjectSetup(projectRef, setup);
+    });
     if (navigationResult._tag === "Failure") {
       const error = squashAtomCommandFailure(navigationResult);
       toastManager.add(
@@ -2362,6 +2470,7 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
+    const setup = projectSetup;
     const rawDestination = (destinationPathInput ?? query).trim();
     if (
       !readEnvironmentScope(addProjectCloneFlow.environmentId, AuthSourceControlWriteScope) ||
@@ -2407,6 +2516,43 @@ function OpenCommandPaletteDialog(props: {
       currentProjectCwdForBrowse,
     );
     if (destinationPath.length === 0) {
+      return;
+    }
+
+    // Setup waits for the clone before registering the intended project folder
+    // (which may be a monorepo subdirectory) and retargeting the existing draft.
+    if (setup !== null) {
+      setIsRemoteProjectCloning(true);
+      const cloneResult = await cloneRepository({
+        environmentId: addProjectCloneFlow.environmentId,
+        input: {
+          remoteUrl: addProjectCloneFlow.remoteUrl,
+          destinationPath,
+        },
+      });
+      setIsRemoteProjectCloning(false);
+      if (cloneResult._tag === "Failure") {
+        if (!isAtomCommandInterrupted(cloneResult)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: gt("Clone failed"),
+              description: errorMessage(squashAtomCommandFailure(cloneResult)),
+            }),
+          );
+        }
+        return;
+      }
+      if (setup && !isProjectSetupCurrent(setup)) return;
+      const projectCwd = setup
+        ? freshThreadClonedProjectPath(setup.sourceProject, cloneResult.value.cwd)
+        : cloneResult.value.cwd;
+      if (projectCwd === null) {
+        // No cached repository root: let the user identify its project folder.
+        await startAddProjectBrowse(addProjectCloneFlow.environmentId, cloneResult.value.cwd);
+        return;
+      }
+      await handleAddProject(projectCwd);
       return;
     }
 
@@ -3262,6 +3408,30 @@ function OpenCommandPaletteDialog(props: {
       showBackHint={isSubmenu}
       value={query}
     >
+      {projectSetup ? (
+        <div className="px-4 py-2 text-sm text-muted-foreground">
+          {deriveRepositoryRelativeProjectPath(projectSetup.sourceProject)
+            ? gt(
+                "Set up {project} on {machine}. Choose the {path} project folder inside the repository.",
+                {
+                  project: projectSetup.sourceProject.title,
+                  machine:
+                    environmentLabelById.get(projectSetup.environmentId) ??
+                    projectSetup.environmentId,
+                  path: deriveRepositoryRelativeProjectPath(projectSetup.sourceProject),
+                },
+              )
+            : gt(
+                "Set up {project} on {machine}. Choose its existing folder, or clone the repository first.",
+                {
+                  project: projectSetup.sourceProject.title,
+                  machine:
+                    environmentLabelById.get(projectSetup.environmentId) ??
+                    projectSetup.environmentId,
+                },
+              )}
+        </div>
+      ) : null}
       {newProjectPathPreview !== null ? (
         <NewProjectSummary
           name={newProjectName}

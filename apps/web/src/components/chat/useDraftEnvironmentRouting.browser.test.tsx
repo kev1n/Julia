@@ -45,11 +45,14 @@ const resources = vi.hoisted(() => ({
   pickedEnvironmentId: null as EnvironmentId | null,
   refreshSelection: vi.fn<(ids: readonly EnvironmentId[]) => Promise<EnvironmentId | null>>(),
 }));
-vi.mock("../../hooks/useLoadBalancedEnvironment", () => ({
-  useLoadBalancedEnvironment: () => ({
+// Fork: Auto placement replaces upstream's load-balanced environment hook.
+vi.mock("../../fork/autoPlacement/useAutoPlacement", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../fork/autoPlacement/useAutoPlacement")>()),
+  useAutoPlacement: () => ({
     pending: false,
     failed: false,
     environmentId: resources.pickedEnvironmentId,
+    lastChosen: null,
     refresh: () => {},
     refreshSelection: resources.refreshSelection,
   }),
@@ -219,6 +222,7 @@ function setup() {
     composerHasAttachments: false,
     activeProjectKey: "project",
     activeProjectIsScratch: false,
+    activeProject: null,
     projectGroupingSettings: DEFAULT_UNIFIED_SETTINGS,
     sendInFlightRef: { current: false },
   };

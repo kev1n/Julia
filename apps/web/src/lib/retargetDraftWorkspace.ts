@@ -10,7 +10,7 @@ import { readProject, readThreadShells } from "../state/entities";
 import { readEnvironment } from "../state/environments";
 import { readUnloadedThreadCount } from "../state/olderSettledShelf";
 import { resolveNewDraftStartFromOrigin } from "./chatThreadActions";
-import { peekT3ProjectFile, readT3ProjectFile } from "./t3ProjectFileDefaults";
+import { peekT3ProjectFile, readT3ProjectFileOnceConnected } from "./t3ProjectFileDefaults";
 
 function readWorkspaceContext(projectRef: ScopedProjectRef) {
   const project = readProject(projectRef);
@@ -30,7 +30,11 @@ async function newThreadWorkspace(projectRef: ScopedProjectRef, signal: AbortSig
     const cached = peekT3ProjectFile(projectRef.environmentId, workspaceRoot);
     if (cached === undefined) {
       // A paired project can appear before its connection summary reports connected.
-      projectFile = await readT3ProjectFile(projectRef.environmentId, workspaceRoot, signal);
+      projectFile = await readT3ProjectFileOnceConnected(
+        projectRef.environmentId,
+        workspaceRoot,
+        signal,
+      );
       ({ project, serverConfig, settings } = readWorkspaceContext(projectRef));
     } else {
       projectFile = cached;
