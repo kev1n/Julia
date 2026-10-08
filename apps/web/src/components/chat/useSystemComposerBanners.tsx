@@ -23,6 +23,7 @@ import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ENVIRONMENT_RECONNECT_WARNING_GRACE_MS } from "../ChatView.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
+import { useFleetOverlapBanner } from "../../fork/fleetOverlaps/useFleetOverlapBanner";
 import { useMovedThreadBanner } from "../../fork/moveThread/movedThreads";
 
 export type EnvironmentUnavailableState = {
@@ -37,6 +38,7 @@ interface SystemComposerBannersInput {
   readonly activeEnvironmentUnavailableState: EnvironmentUnavailableState | null;
   readonly activeThreadEnvironmentId: EnvironmentId | null;
   readonly movedThreadRef: ScopedThreadRef | null;
+  readonly fleetOverlapRef: ScopedThreadRef | null;
 }
 
 /**
@@ -50,6 +52,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     activeEnvironmentUnavailableState,
     activeThreadEnvironmentId,
     movedThreadRef,
+    fleetOverlapRef,
   } = input;
   const navigate = useNavigate();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
@@ -116,6 +119,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     handleDisconnectActiveEnvironment,
   );
   const movedThreadBanner = useMovedThreadBanner(movedThreadRef);
+  const fleetOverlapBanner = useFleetOverlapBanner(fleetOverlapRef);
   const serverUpdateState = useAtomValue(
     serverEnvironment.updateStateAtom(activeThreadEnvironmentId),
   );
@@ -180,6 +184,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
       });
     }
     if (movedThreadBanner) items.push(movedThreadBanner);
+    if (fleetOverlapBanner) items.push(fleetOverlapBanner);
     return items;
   })() as ComposerBannerStackItem[];
 }

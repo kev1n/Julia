@@ -165,6 +165,7 @@ import type {
   ThreadFeedLatestRun,
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
+import { FleetOverlapNotice } from "../../fork/FleetOverlapNotice";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
@@ -1451,6 +1452,10 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                       onDismiss={() => props.onDismissFeedback(submission.id)}
                     />
                   ))}
+                  <FleetOverlapNotice
+                    environmentId={props.environmentId}
+                    threadId={props.selectedThread.id}
+                  />
                   {composerError !== null ? (
                     <Animated.View
                       className="shrink-0"

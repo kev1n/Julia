@@ -157,6 +157,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.agentSessionsImport]: "workspace",
   // Fork (Owner): move a thread to another machine.
   [WS_METHODS.forkMoveReceive]: "workspace",
+  [WS_METHODS.forkFleetOverlaps]: "workspace",
   [WS_METHODS.assetsCreateUrl]: "workspace",
   [WS_METHODS.assetsPersistChatAttachments]: "orchestration",
   [WS_METHODS.attachmentsCreateUploadUrl]: "workspace",

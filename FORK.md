@@ -167,7 +167,7 @@ environment and thread id plus the repository's canonical key; paths are reposit
   call), `t3_fleet_thread_read` (fetched from the owning server, T3's paging) and
   `t3_fleet_thread_send` (auto, queue or steer; no restart across machines; `idempotencyKey`
   required; a timeout or lost answer comes back as `outcome: "unknown"` and is never retried
-  silently). Every answer carries `asOf`, the hub's state and per-machine `coverage`.
+  silently). File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
 - Permissions: fleet servers authenticate each other with a shared secret in
   `~/.t3/userdata/fork-fleet.json` (mode 600, generated once on 2026-10-06, never in git). The
   source server vouches for the calling thread; the destination acts for it as a client whose
@@ -179,8 +179,14 @@ environment and thread id plus the repository's canonical key; paths are reposit
 - No overlap alerts: nothing is ever sent into a thread. An earlier version had the hub steer
   overlap notes into both threads' turns whenever they changed the same file; it fired on overlaps
   nobody needed to act on (two branches adding an entry to the same `package.json`), so it was
-  removed. Agents check for themselves with `t3_who_else`, whose description tells them to before
-  editing shared code and before committing. Old servers may leave `fork-fleet-notices.json` and,
+  removed. Quiet, dismissible suggestions in web/desktop and mobile compare user goals and
+  recent agent findings, not just shared files. A configured GPT-6-Luna or Haiku 5.5 judges
+  conflicting intents and duplicate investigations in one shared check per repository.
+  Unchanged evidence is free of new model calls; changed evidence is checked at most once
+  per five minutes, with a fleet-wide cap of three attempts per ten minutes on the hub, low reasoning,
+  and a 64,000-character input cap. Only viewed chats or explicit tool calls request checks. "Review with agent" only fills a draft; neither agent receives anything until
+  the user sends it. Agents can check the same reasons with `t3_coordination_suggestions`;
+  `t3_who_else` remains the separate raw file-evidence tool. Old servers may leave `fork-fleet-notices.json` and,
   on mac-a, `fork-fleet-alerts-state.json` behind; nothing reads them now.
 
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,

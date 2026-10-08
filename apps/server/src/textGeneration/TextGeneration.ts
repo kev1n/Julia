@@ -21,6 +21,8 @@ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as ThreadTitleLinks from "./ThreadTitleLinks.ts";
+import type { FleetRelationsOutput } from "./FleetRelationsPrompt.ts";
+import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
 
 export type {
   BranchNameGenerationInput,
@@ -35,11 +37,45 @@ export type {
   ThreadTitleGenerationResult,
 } from "@t3tools/provider-core/server/textGeneration";
 
-export class TextGeneration extends Context.Service<TextGeneration, ProviderTextGeneration>()(
-  "t3/textGeneration/TextGeneration",
-) {}
+export class TextGeneration extends Context.Service<
+  TextGeneration,
+  {
+    readonly generateFleetRelations: (input: {
+      cwd: string;
+      context: string;
+      modelSelection: ModelSelection;
+    }) => Effect.Effect<typeof FleetRelationsOutput.Type, TextGenerationError>;
+
+    /**
+     * Generate a commit message from staged change context.
+     */
+    readonly generateCommitMessage: (
+      input: CommitMessageGenerationInput,
+    ) => Effect.Effect<CommitMessageGenerationResult, TextGenerationError>;
+
+    /**
+     * Generate change request title/body from branch and diff context.
+     */
+    readonly generatePrContent: (
+      input: PrContentGenerationInput,
+    ) => Effect.Effect<PrContentGenerationResult, TextGenerationError>;
+
+    /**
+     * Generate a concise branch name from a user message.
+     */
+    readonly generateBranchName: (
+      input: BranchNameGenerationInput,
+    ) => Effect.Effect<BranchNameGenerationResult, TextGenerationError>;
+
+    /** Generate a concise thread title from a first message or thread history. */
+    readonly generateThreadTitle: (
+      input: ThreadTitleGenerationInput,
+    ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+  }
+>()("t3/textGeneration/TextGeneration") {}
 
 type TextGenerationOp =
+  | "generateFleetRelations"
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
@@ -127,6 +163,11 @@ export const make = Effect.gen(function* () {
     );
   });
   return TextGeneration.of({
+    generateFleetRelations: Effect.fn("TextGeneration.generateFleetRelations")(function (input) {
+      return resolveInstance(registry, "generateFleetRelations", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateFleetRelations(input)),
+      );
+    }),
     generateCommitMessage: Effect.fn("TextGeneration.generateCommitMessage")(function (input) {
       return generate("generateCommitMessage", input.modelSelection, (service, modelSelection) =>
         service.generateCommitMessage({ ...input, modelSelection }),

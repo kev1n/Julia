@@ -33,6 +33,7 @@ import { MoveFailure, packBranch } from "../moveThread.ts";
 import { authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
+import * as FleetSuggestions from "./threadOverlaps.ts";
 import { fleetConfig } from "./publisher.ts";
 
 export const PeerSource = Schema.Struct({
@@ -62,6 +63,9 @@ const MovePack = Schema.Struct({
   haves: Schema.Array(Schema.String),
 });
 
+const decodeSuggestionRequest = Schema.decodeUnknownEffect(
+  Schema.Struct({ environmentId: Schema.String, threadId: Schema.String }),
+);
 const decodeSnapshot = Schema.decodeUnknownEffect(FleetSnapshot);
 const decodeMovePack = Schema.decodeUnknownEffect(MovePack);
 const decodePeerRead = Schema.decodeUnknownEffect(PeerRead);
@@ -101,13 +105,15 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service));
+    const suggestions = yield* FleetSuggestions.FleetSuggestions;
+    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service, suggestions));
   }),
 );
 
 const handle = (
   environment: ServerEnvironment.ServerEnvironment["Service"],
   service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+  suggestions: FleetSuggestions.FleetSuggestions["Service"],
 ) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -116,6 +122,15 @@ const handle = (
       return HttpServerResponse.text("Not Found", { status: 404 });
     }
     const path = new URL(request.url, "http://local").pathname.slice("/fork/fleet/".length);
+    if (path === "hub/suggestions" && config.hub && request.method === "POST") {
+      const decoded = yield* decodeSuggestionRequest(yield* request.json).pipe(Effect.result);
+      if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
+      return json(
+        yield* suggestions.read(decoded.success.threadId, {
+          environmentId: decoded.success.environmentId,
+        }),
+      );
+    }
     if (path === "hub/index" && config.hub) return json(hubIndex(Date.now()));
     if (path === "hub/publish" && config.hub && request.method === "POST") {
       const snapshot = yield* decodeSnapshot(yield* request.json).pipe(Effect.result);

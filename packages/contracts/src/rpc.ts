@@ -35,6 +35,7 @@ import {
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
 // Fork (Owner): move a thread to another machine.
+import { ForkFleetOverlapsInput, ForkFleetOverlapsResult } from "./forkFleet.ts";
 import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -518,6 +519,7 @@ export const WS_METHODS = {
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
   forkMoveReceive: "fork.moveReceive",
+  forkFleetOverlaps: "fork.fleetOverlaps",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
@@ -909,6 +911,12 @@ const WsForkMoveReceiveRpc = Rpc.make(WS_METHODS.forkMoveReceive, {
   payload: ForkMoveReceiveInput,
   success: ForkMoveReceiveResult,
   error: Schema.Union([ForkMoveError, EnvironmentAuthorizationError]),
+});
+
+const WsForkFleetOverlapsRpc = Rpc.make(WS_METHODS.forkFleetOverlaps, {
+  payload: ForkFleetOverlapsInput,
+  success: ForkFleetOverlapsResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsServerGetProcessResourceHistoryRpc = Rpc.make(WS_METHODS.serverGetProcessResourceHistory, {
@@ -1981,6 +1989,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,
   WsForkMoveReceiveRpc,
+  WsForkFleetOverlapsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,

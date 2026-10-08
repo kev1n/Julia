@@ -5,6 +5,7 @@
  * offline machine.
  */
 import {
+  ForkFleetOverlapsResult,
   OrchestratorMcpFailure,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
@@ -17,6 +18,7 @@ import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
 import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
+import * as FleetSuggestions from "./threadOverlaps.ts";
 import { FleetCoverage, FleetIntent, FleetLifecycle } from "./model.ts";
 
 const Envelope = {
@@ -75,6 +77,7 @@ const dependencies = [
   ThreadManagementService.ThreadManagementService,
   OrchestratorMcpService.OrchestratorMcpService,
   ServerEnvironment.ServerEnvironment,
+  FleetSuggestions.FleetSuggestions,
 ];
 const shared = { failure: OrchestratorMcpFailure, failureMode: "return" as const, dependencies };
 
@@ -99,13 +102,24 @@ const FleetListTool = Tool.make("t3_fleet_list", {
 const WhoElseTool = Tool.make("t3_who_else", {
   ...shared,
   description:
-    "Which other active threads, on any of Owner's machines, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write. Nothing tells you about overlaps on its own: call this before editing shared code and before committing. On a write/write overlap, read that thread with t3_fleet_thread_read and decide whether to coordinate with t3_fleet_thread_send.",
+    "Which other active threads, on any of Owner's machines, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write. Nothing tells you about overlaps on its own: call this before editing shared code and before committing. File overlap is not evidence of conflicting goals; use t3_coordination_suggestions for conflicting intents or duplicate investigations. On a write/write overlap, read that thread with t3_fleet_thread_read and decide whether to coordinate with t3_fleet_thread_send.",
   parameters: Schema.Struct({ paths: Schema.optional(Schema.Array(Schema.String)) }),
   success: Schema.Struct({
     ...Envelope,
     me: Schema.NullOr(ThreadSummary),
     overlaps: Schema.Array(Overlap),
   }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+const SuggestionsTool = Tool.make("t3_coordination_suggestions", {
+  ...shared,
+  description:
+    "Check whether other active chats have conflicting goals or are investigating the same specific bug, even in different files. Returns concrete intent-based reasons, not file-overlap alerts. Read related chats before deciding to coordinate. Nothing is sent automatically. status=checking means queued or evaluating (checks are throttled); unavailable means no evaluation could be made, not that there are no conflicts. partial=true means relevant chats were omitted because data was unavailable or the input cap was reached. The same suggestions appear in the clients.",
+  parameters: Tool.EmptyParams,
+  success: ForkFleetOverlapsResult,
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
@@ -169,6 +183,7 @@ const FleetThreadSendTool = Tool.make("t3_fleet_thread_send", {
 export const FleetToolkit = Toolkit.make(
   FleetListTool,
   WhoElseTool,
+  SuggestionsTool,
   WorkPublishTool,
   FleetThreadReadTool,
   FleetThreadSendTool,
