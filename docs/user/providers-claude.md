@@ -4,18 +4,21 @@ T3 Code drives your Claude Code installation, login, skills, and plugins. See [p
 
 ## Multiple accounts and presets
 
-Isolate separate Claude accounts or router presets with distinct `CLAUDE_CONFIG_DIR` directories:
+Use a separate Claude config directory (`CLAUDE_CONFIG_DIR`) for each account or for router presets that need different Claude settings.
 
-```bash
-mkdir -p ~/.claude_personal
-CLAUDE_CONFIG_DIR=~/.claude_personal claude auth login
-```
-
-Add a second Claude instance in **Settings → Providers** (or **Add Claude account** on mobile) pointing **CLAUDE_CONFIG_DIR path** to `~/.claude_personal` (leave empty for the default directory). Always use `CLAUDE_CONFIG_DIR` rather than `HOME` so system keychain paths stay intact.
-
-- Existing threads can only switch between Claude instances sharing the same config directory.
+- **New account**: In **Settings → Providers**, add Claude, name it, and choose **Sign in to a different account**. T3 Code creates a separate login directory and continues to sign-in; pick the intended account on the sign-in page. Your existing login is unchanged, and you can finish sign-in later from that slot's provider settings.
+- **Same account**: **Use this machine's existing login** adds another slot without a separate login, so signing out of it affects every slot using it. Advanced configuration sets a specific config directory, binary, or router configuration.
+- **Mobile**: Tap **Add Claude account** in **Settings → Providers** and enter a name and config folder. The login itself still happens on the environment's machine.
+- An empty config directory uses Claude Code's normal configuration. Use `CLAUDE_CONFIG_DIR` (not `HOME`) for the login command too, so the system keychain location stays intact.
+- Existing threads can only switch between Claude instances sharing the same config directory; separate account directories stay isolated, including local conversation state.
 - Put API keys and endpoint overrides in **Environment variables** (not **Launch arguments**).
 - Paths in `--settings` and `--append-system-prompt-file` expand `~` to the server's home directory; other relative paths resolve from the thread's workspace.
+
+### Using an account on other machines
+
+**Copy account slot to other machines** copies the account's settings and ID to connected, paired T3 servers, but not Claude's credentials; each server uses its own login directory.
+
+During sign-in, choose **Sign in on this machine** for a local login, or **Share login with connected machines** to create a subscription token and save it on the connected servers (creating the slot if missing). Saving or clearing **Subscription token** in provider settings copies that change too. These are one-time copies: offline machines are skipped, and the result message lists which succeeded. Native mobile supports machine-local sign-in only; use web or desktop to share a token.
 
 ## Compact long conversations
 

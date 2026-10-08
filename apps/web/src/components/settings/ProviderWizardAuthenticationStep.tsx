@@ -14,11 +14,13 @@ export function ProviderWizardAuthenticationStep({
   environmentId,
   environmentLabel,
   instanceId,
+  description,
   onFinish,
 }: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly instanceId: ProviderInstanceId;
+  readonly description?: string | undefined;
   readonly onFinish: () => void;
 }) {
   const gt = useGT();
@@ -41,6 +43,7 @@ export function ProviderWizardAuthenticationStep({
   return (
     <>
       <WizardPanel className="min-h-72">
+        {description ? <p className="mb-4 text-sm text-muted-foreground">{description}</p> : null}
         <SettingsGroup variant="plain">
           {provider && (canAuthenticate || signedIn) ? (
             <ProviderAuthenticationSection

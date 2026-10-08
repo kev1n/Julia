@@ -1,5 +1,5 @@
 import * as CodexErrors from "effect-codex-app-server/errors";
-import { vi } from "vite-plus/test";
+import { afterEach, beforeEach, vi } from "vite-plus/test";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as CodexInstallation from "./CodexInstallation.ts";
 import * as CodexManagedTokenBroker from "./CodexManagedTokenBroker.ts";
@@ -4800,6 +4800,33 @@ it.layer(
   });
 
   describe("checkClaudeProviderStatus", () => {
+    beforeEach(() => {
+      // The fork reads plan metadata from disk; never use the developer's login in tests.
+      vi.stubEnv("CLAUDE_CONFIG_DIR", "/synthetic/provider-registry-test-claude-home");
+    });
+    afterEach(() => vi.unstubAllEnvs());
+
+    it.effect("does not treat SDK initialization in a fresh Claude slot as a login", () =>
+      Effect.gen(function* () {
+        const status = yield* checkClaudeProviderStatus(
+          { ...defaultClaudeSettings, homePath: "/tmp/fresh-claude-slot" },
+          claudeCapabilities({ apiProvider: "firstParty", tokenSource: "none" }),
+        );
+        assert.strictEqual(status.auth.status, "unauthenticated");
+        assert.strictEqual(status.status, "warning");
+        assert.strictEqual(status.installed, true);
+      }).pipe(
+        Effect.provide(
+          layerMockSpawner((args) => {
+            if (args.join(" ") === "--version") return { stdout: "2.1.291", stderr: "", code: 0 };
+            if (args.join(" ") === "auth status")
+              return { stdout: '{"loggedIn":false,"authMethod":"none"}', stderr: "", code: 1 };
+            throw new Error("Unexpected Claude command");
+          }),
+        ),
+      ),
+    );
+
     it.effect("drops a retired gateway model when the surviving model is configured manually", () =>
       Effect.gen(function* () {
         const surviving = { value: "gateway/current", displayName: "Current", description: "" };
@@ -4957,6 +4984,26 @@ it.layer(
         );
         assert.isNull(status.version, "mise's own version is not Claude's");
       }),
+    );
+
+    it.effect("keeps an unreadable Claude login status unknown instead of authenticated", () =>
+      Effect.gen(function* () {
+        const status = yield* checkClaudeProviderStatus(
+          defaultClaudeSettings,
+          claudeCapabilities(),
+        );
+        assert.strictEqual(status.auth.status, "unknown");
+        assert.strictEqual(status.status, "warning");
+      }).pipe(
+        Effect.provide(
+          layerMockSpawner((args) => {
+            if (args.join(" ") === "--version") return { stdout: "2.1.291", stderr: "", code: 0 };
+            if (args.join(" ") === "auth status")
+              return { stdout: "unavailable", stderr: "", code: 1 };
+            throw new Error("Unexpected Claude command");
+          }),
+        ),
+      ),
     );
 
     it.effect("leaves skills unscanned until a project's composer asks for them", () =>
