@@ -622,6 +622,8 @@ process.exit(0);
     render = renderBootServiceUnit,
     missingUnit = false,
     legacyInstall = false,
+    fromVersion = "1.0.0",
+    targetVersion = "1.1.0",
   ) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -632,7 +634,7 @@ process.exit(0);
       const activatedPath = path.join(root, "activated");
       yield* fs.makeDirectory(path.dirname(databasePath), { recursive: true });
       yield* fs.writeFileString(databasePath, "before trial");
-      const unit = yield* fakeServiceUnit(fs, path, root, "1.0.0", render);
+      const unit = yield* fakeServiceUnit(fs, path, root, fromVersion, render);
       if (missingUnit) yield* fs.remove(unit.path);
       const childSource = `
 import assert from "node:assert/strict";
@@ -641,7 +643,7 @@ const context = JSON.parse(process.env.T3_SERVICE_LAUNCHER_CONTEXT);
 assert.equal(context.protocol, ${SERVICE_LAUNCHER_PROTOCOL});
 if (context.update?.status === "pending") {
   const state = JSON.parse(readFileSync(${JSON.stringify(statePath)}, "utf8"));
-  assert.equal(state.activeVersion, "1.0.0");
+  assert.equal(state.activeVersion, ${JSON.stringify(fromVersion)});
   assert.equal(state.update.status, "pending");
   ${
     missingUnit
@@ -652,7 +654,7 @@ if (context.update?.status === "pending") {
     if (message.type === "committed") {
       const state = JSON.parse(readFileSync(${JSON.stringify(statePath)}, "utf8"));
       assert.equal(state.protocol, ${SERVICE_LAUNCHER_PROTOCOL});
-      assert.equal(state.activeVersion, "1.1.0");
+      assert.equal(state.activeVersion, ${JSON.stringify(targetVersion)});
       assert.equal(state.update.status, "committed");
       writeFileSync(${JSON.stringify(activatedPath)}, message.updateId);
       process.exit(0);
@@ -660,13 +662,13 @@ if (context.update?.status === "pending") {
   });
   process.send({ type: "prepared", updateId: context.update.id });
 } else if (context.update === undefined) {
-  process.send({ type: "request-update", targetVersion: "1.1.0", dbPath: ${JSON.stringify(databasePath)} });
+  process.send({ type: "request-update", targetVersion: ${JSON.stringify(targetVersion)}, dbPath: ${JSON.stringify(databasePath)} });
   setInterval(() => {}, 1_000);
 } else {
   process.exit(0);
 }
 `;
-      for (const version of ["1.0.0", "1.1.0"]) {
+      for (const version of [fromVersion, targetVersion]) {
         yield* writeFakeRuntime(
           fs,
           path,
@@ -680,7 +682,7 @@ if (context.update?.status === "pending") {
         `${JSON.stringify(
           {
             protocol: legacyInstall ? 3 : SERVICE_LAUNCHER_PROTOCOL,
-            activeVersion: "1.0.0",
+            activeVersion: fromVersion,
           },
           null,
           2,
@@ -699,7 +701,7 @@ if (context.update?.status === "pending") {
       );
       assert.include(failure, "Active child exited unexpectedly (0)");
       const state = yield* Effect.promise(() => readServiceState(statePath));
-      assert.equal(state.activeVersion, "1.1.0");
+      assert.equal(state.activeVersion, targetVersion);
       assert.equal(state.update?.status, "committed");
       assert.equal(yield* fs.readFileString(activatedPath), state.update?.id);
       const recover = () =>
@@ -750,6 +752,22 @@ if (context.update?.status === "pending") {
         assert.equal(unit.loadedContents, expected);
         assert.equal(unit.reloads, 1);
       }),
+  );
+
+  it.effect.each([
+    [
+      "0.0.46-nightly.20261007.2787+owner.dd65a77",
+      "0.0.46-nightly.20261007.2787.owner.1791429000+owner.a45def3",
+    ],
+    [
+      "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77",
+      "0.0.46-nightly.20261007.2787.owner.1791429001+owner.9f0409f",
+    ],
+  ] as const)("commits fork release %s → %s only after the trial reports prepared", ([from, to]) =>
+    Effect.gen(function* () {
+      const { fs, root, unit } = yield* commitUpdate(renderBootServiceUnit, false, false, from, to);
+      assert.equal(yield* fs.readFileString(unit.path), renderBootServiceUnit(unitPlan(root, to)));
+    }),
   );
 
   it.effect(
