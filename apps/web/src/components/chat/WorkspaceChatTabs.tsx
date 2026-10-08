@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronDownIcon, GitForkIcon, MessageSquareIcon, PlusIcon, XIcon } from "lucide-react";
+import { ChevronDownIcon, MessageSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -10,6 +10,7 @@ import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ForkChatMenu } from "./ForkChatMenu";
 import { workspaceChatKey } from "./workspaceChatTabs.logic";
 
 const CLOSED_TABS = Schema.Array(Schema.String);
@@ -18,13 +19,13 @@ const EMPTY_TABS: readonly string[] = [];
 export function WorkspaceChatTabs(props: {
   activeThread: Pick<
     EnvironmentThreadShell,
-    "environmentId" | "id" | "projectId" | "worktreePath" | "title"
+    "environmentId" | "id" | "projectId" | "worktreePath" | "title" | "chatGroupId"
   >;
   isServerThread: boolean;
   canCreate: boolean;
   canFork: boolean;
   onNewChat: () => void;
-  onForkChat: () => Promise<void>;
+  onForkChat: (destination: "tab" | "thread") => Promise<void>;
 }) {
   const projectRefs = useMemo(
     () => [scopeProjectRef(props.activeThread.environmentId, props.activeThread.projectId)],
@@ -39,7 +40,6 @@ export function WorkspaceChatTabs(props: {
     CLOSED_TABS,
   );
   const closingRef = useRef<string | null>(null);
-  const [forking, setForking] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const chats = useMemo(
     () =>
@@ -201,25 +201,12 @@ export function WorkspaceChatTabs(props: {
         </TooltipTrigger>
         <TooltipPopup>New chat in this workspace</TooltipPopup>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label="Fork chat with final replies only"
-              disabled={!props.canFork || forking}
-              onClick={() => {
-                setForking(true);
-                void props.onForkChat().finally(() => setForking(false));
-              }}
-              className={actionClass}
-            />
-          }
-        >
-          <GitForkIcon aria-hidden className="size-4" />
-        </TooltipTrigger>
-        <TooltipPopup>Fork into a new tab · user messages and final replies only</TooltipPopup>
-      </Tooltip>
+      <ForkChatMenu
+        size="icon-lg"
+        label="Fork chat"
+        disabled={!props.canFork}
+        onFork={props.onForkChat}
+      />
       {hidden.length > 0 ? (
         <Menu>
           <MenuTrigger

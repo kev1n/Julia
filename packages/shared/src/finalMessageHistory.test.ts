@@ -3,7 +3,7 @@ import { RunId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { selectFinalMessageHistory } from "./finalMessageHistory.ts";
 
 describe("compact fork history", () => {
-  it("keeps inputs and only the last completed root reply per source turn", () => {
+  it("keeps every completed response chunk after work, across fork ancestry", () => {
     const base = {
       threadId: ThreadId.make("ancestor"),
       runId: RunId.make("turn"),
@@ -15,7 +15,9 @@ describe("compact fork history", () => {
       { ...base, id: TurnItemId.make("user"), type: "user_message" as const },
       { ...base, id: TurnItemId.make("commentary"), type: "assistant_message" as const },
       { ...base, id: TurnItemId.make("tool"), type: "dynamic_tool" as const },
+      { ...base, id: TurnItemId.make("heading-and-table"), type: "assistant_message" as const },
       { ...base, id: TurnItemId.make("final"), type: "assistant_message" as const },
+      { ...base, id: TurnItemId.make("trailing-reasoning"), type: "reasoning" as const },
       {
         ...base,
         id: TurnItemId.make("child"),
@@ -37,6 +39,7 @@ describe("compact fork history", () => {
     ];
     expect(selectFinalMessageHistory(items).map((item) => item.id)).toEqual([
       "user",
+      "heading-and-table",
       "final",
       "fork-final",
     ]);
@@ -53,4 +56,32 @@ describe("compact fork history", () => {
     }));
     expect(selectFinalMessageHistory(items)).toEqual(items);
   });
+});
+
+it("keeps all replies when a turn has no work, and excludes nested or unfinished output", () => {
+  const base = {
+    threadId: ThreadId.make("thread"),
+    runId: RunId.make("run"),
+    parentItemId: null,
+    status: "completed" as const,
+    streaming: false,
+  };
+  const items = [
+    { ...base, id: TurnItemId.make("prompt"), type: "user_message" as const },
+    { ...base, id: TurnItemId.make("heading"), type: "assistant_message" as const },
+    { ...base, id: TurnItemId.make("table"), type: "assistant_message" as const },
+    { ...base, id: TurnItemId.make("plan"), type: "proposed_plan" as const },
+    {
+      ...base,
+      id: TurnItemId.make("unfinished"),
+      type: "assistant_message" as const,
+      streaming: true,
+    },
+  ];
+  expect(selectFinalMessageHistory(items).map((item) => item.id)).toEqual([
+    "prompt",
+    "heading",
+    "table",
+    "plan",
+  ]);
 });

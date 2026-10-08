@@ -484,6 +484,9 @@ export interface ProjectionTimelinePageOptions {
   readonly itemId?: TurnItemId;
   readonly attachmentId?: string;
   readonly view?: "messages" | "activity";
+  /** Select on the index before hydrating response payloads. */
+  readonly finalMessagesOnly?: boolean;
+  readonly throughRunId?: RunId;
   readonly limit: number;
 }
 export interface ProjectionTimelinePage {
@@ -1778,6 +1781,43 @@ function visibleTurnItemsThroughRun(input: {
   return [...inheritedPrefix, ...localPrefix];
 }
 
+function selectTimelineHistory<
+  T extends {
+    readonly item: Pick<
+      OrchestrationV2TurnItem,
+      "id" | "threadId" | "runId" | "type" | "status" | "parentItemId"
+    > & { readonly streaming?: boolean };
+  },
+>(
+  rows: readonly T[],
+  thread: Pick<OrchestrationV2AppThread, "id" | "historyOrigin">,
+  runs: readonly OrchestrationV2Run[],
+  options: ProjectionTimelinePageOptions,
+): readonly T[] {
+  if (options.throughRunId === undefined && !options.finalMessagesOnly) return rows;
+  const throughRun = runs.find((run) => run.id === options.throughRunId);
+  const ordinals = new Map(runs.map((run) => [run.id, run.ordinal]));
+  const prefix =
+    options.throughRunId === undefined
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.item.threadId !== thread.id ||
+            (throughRun !== undefined &&
+              isTurnItemAtOrBeforeRun({
+                historyOrigin: thread.historyOrigin,
+                itemRunId: row.item.runId,
+                runOrdinalById: ordinals,
+                sourceRunOrdinal: throughRun.ordinal,
+              })),
+        );
+  if (!options.finalMessagesOnly) return prefix;
+  const ids = new Set(
+    selectFinalMessageHistory(prefix.map((row) => row.item)).map((item) => item.id),
+  );
+  return prefix.filter((row) => ids.has(row.item.id));
+}
+
 // Side chats show only their own rows; the fork transfer carries the parent's context to the model.
 function inheritedRunFork(thread: Pick<OrchestrationV2AppThread, "forkedFrom" | "lineage">) {
   return thread.forkedFrom?.type === "run" && thread.lineage.sideChat !== true
@@ -2328,6 +2368,9 @@ function shellFromState(input: {
     interactionMode: input.state.thread.interactionMode,
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
+    ...(input.state.thread.chatGroupId === undefined
+      ? {}
+      : { chatGroupId: input.state.thread.chatGroupId }),
     pullRequests: threadPullRequestsOf(input.state.thread),
     ...(input.state.thread.linkedPullRequest === undefined
       ? {}
@@ -8267,8 +8310,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
       sql
         .withTransaction(
           Effect.gen(function* () {
+            // Fork: history selection (`throughRunId`, `finalMessagesOnly`) needs the whole index.
             const local =
               options.attachmentId === undefined &&
+              options.throughRunId === undefined &&
+              options.finalMessagesOnly !== true &&
               Number.isSafeInteger(options.limit) &&
               options.limit >= 0 &&
               Number.isSafeInteger(options.afterPosition ?? -1) &&
@@ -8293,8 +8339,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
                         (row) => `${row.thread_id}:${row.turn_item_id}`,
                       ),
                     );
-              const inView = index.visible
-                .map((row, position) => ({ ...row, position }))
+              const inView = selectTimelineHistory(
+                index.visible.map((row, position) => ({ ...row, position })),
+                index.records.thread,
+                index.records.runs,
+                options,
+              )
                 .filter((row) =>
                   options.itemId === undefined
                     ? options.view === "activity" ||
@@ -8818,6 +8868,33 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
     // rolled back later. Checking the run first limits sparse-index seeks to those few runs.
     const selectShellRunItemCounts = (threadIds: ReadonlyArray<ThreadId>) =>
       sql<ShellRunItemCountRow>`
+        WITH terminal AS (
+          SELECT thread_id, run_id, ordinal, type, status, parent_item_id,
+            CASE WHEN type IN ('assistant_message', 'proposed_plan')
+              THEN COALESCE(json_extract(payload_json, '$.streaming'), 0) ELSE 0 END AS streaming,
+            MAX(CASE WHEN type IN ('assistant_message', 'proposed_plan')
+            AND status = 'completed' AND parent_item_id IS NULL
+            AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0
+            THEN ordinal END) OVER (PARTITION BY thread_id, run_id) AS last_reply_ordinal
+          FROM orchestration_v2_projection_turn_items
+          WHERE run_id IS NOT NULL AND thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
+        ), bounded AS (
+          SELECT *, MAX(CASE WHEN type NOT IN ('user_message', 'assistant_message', 'proposed_plan')
+            AND parent_item_id IS NULL AND ordinal < last_reply_ordinal THEN ordinal END)
+            OVER (PARTITION BY thread_id, run_id) AS last_activity_ordinal
+          FROM terminal
+        )
+        -- Fork: only fork sources read per-run counts, so final-message forks count here.
+        , finals AS (
+          SELECT thread_id, run_id,
+            SUM(CASE WHEN type = 'user_message' OR (
+              type IN ('assistant_message', 'proposed_plan') AND status = 'completed'
+              AND parent_item_id IS NULL
+              AND streaming = 0
+              AND ordinal > COALESCE(last_activity_ordinal, -1)
+            ) THEN 1 ELSE 0 END) AS final_message_count
+          FROM bounded GROUP BY thread_id, run_id
+        )
         SELECT counts.thread_id, counts.run_id, counts.item_count - counts.held_count AS item_count,
           COALESCE(finals.final_message_count, 0) - counts.held_count AS final_message_count
         FROM (
@@ -8861,17 +8938,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
           FROM orchestration_v2_projection_turn_item_counts AS per_run
           WHERE per_run.run_key <> '' AND per_run.thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
         ) counts
-        -- Fork: only fork sources read per-run counts, so final-message forks count here.
-        LEFT JOIN (
-          SELECT thread_id, run_id,
-            SUM(CASE WHEN type = 'user_message' THEN 1 ELSE 0 END) +
-            MAX(CASE WHEN type = 'assistant_message' AND status = 'completed'
-              AND parent_item_id IS NULL
-              AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0 THEN 1 ELSE 0 END) AS final_message_count
-          FROM orchestration_v2_projection_turn_items
-          WHERE run_id IS NOT NULL AND thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
-          GROUP BY thread_id, run_id
-        ) finals ON finals.thread_id = counts.thread_id AND finals.run_id = counts.run_id
+        LEFT JOIN finals ON finals.thread_id = counts.thread_id AND finals.run_id = counts.run_id
       `;
 
     const selectShellItemCounts = (threadIds: ReadonlyArray<ThreadId>) =>
@@ -8909,7 +8976,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
           ), 0) AS runless_item_count,
           -- Fork: runless (v1 import) rows also need final-message fork counts.
           COALESCE((
-            SELECT SUM(CASE WHEN item.type = 'user_message' OR (item.type = 'assistant_message'
+            SELECT SUM(CASE WHEN item.type = 'user_message' OR (item.type IN ('assistant_message', 'proposed_plan')
               AND item.status = 'completed' AND item.parent_item_id IS NULL
               AND COALESCE(json_extract(item.payload_json, '$.streaming'), 0) = 0) THEN 1 ELSE 0 END)
             FROM orchestration_v2_projection_turn_items item
@@ -9650,9 +9717,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
     }: Effect.Success<ReturnType<typeof readShellSnapshotRows>>) {
       const { runsByThreadId, itemCountsByThreadId, finalMessageCountsByThreadId } =
         runMapsByThreadId({
-        runRows,
-        itemCountRows,
-      });
+          runRows,
+          itemCountRows,
+        });
       const shellItemCountsByThreadId = shellItemCountMap(shellItemCountRows);
       const { providerThreadsByThreadId, pendingTurnItemsByThreadId } =
         yield* pendingBackgroundDataByThreadId({ providerThreadRows, pendingTurnItemRows });
@@ -10150,9 +10217,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
             ]);
             const { runsByThreadId, itemCountsByThreadId, finalMessageCountsByThreadId } =
               runMapsByThreadId({
-              runRows,
-              itemCountRows,
-            });
+                runRows,
+                itemCountRows,
+              });
             const shellItemCountsByThreadId = shellItemCountMap(shellItemCountRows);
             const { providerThreadsByThreadId, pendingTurnItemsByThreadId } =
               yield* pendingBackgroundDataByThreadId({ providerThreadRows, pendingTurnItemRows });

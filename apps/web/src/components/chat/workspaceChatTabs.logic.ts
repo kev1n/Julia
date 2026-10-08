@@ -1,14 +1,18 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
-/** Environment-local workspace identity. Chats sharing a worktree share tabs. */
+/** Tabs share a checkout and, when explicitly separated by a fork, a chat group. */
 export function workspaceChatKey(
-  thread: Pick<EnvironmentThreadShell, "environmentId" | "projectId" | "worktreePath">,
+  thread: Pick<
+    EnvironmentThreadShell,
+    "environmentId" | "projectId" | "worktreePath" | "chatGroupId"
+  >,
 ): string {
   return JSON.stringify([
     thread.environmentId,
     thread.projectId,
     thread.worktreePath?.replace(/[\\/]+$/, "") ?? null,
+    ...(thread.chatGroupId === undefined ? [] : [thread.chatGroupId]),
   ]);
 }
 
@@ -18,6 +22,7 @@ type WorkspaceChat = Pick<
   | "id"
   | "projectId"
   | "worktreePath"
+  | "chatGroupId"
   | "title"
   | "createdAt"
   | "latestUserMessageAt"

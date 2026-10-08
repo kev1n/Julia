@@ -1557,6 +1557,7 @@ export function useComposerSend(input: ComposerSendInput) {
                       interactionMode: DEFAULT_INTERACTION_MODE,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
+                      chatGroupId: activeThread.chatGroupId,
                       createdAt: activeThread.createdAt,
                     },
                   }

@@ -7432,6 +7432,9 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           if (detail.startsWith("SEARCH counts ")) {
             assert.include(detail, "run_key=?", detail);
           }
+          // Fork: final-message fork counts read a thread's own turn items through its index.
+          if (detail.includes("orchestration_v2_projection_turn_items_thread_run_idx (thread_id=?"))
+            continue;
           if (detail.includes("orchestration_v2_projection_turn_items")) {
             // Only held input is read from the sparse index; transcript history stays unread.
             assert.include(

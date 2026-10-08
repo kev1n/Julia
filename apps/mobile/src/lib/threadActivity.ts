@@ -1338,6 +1338,7 @@ function deriveThreadFeedRunFolds(
       entries.some(
         (entry) =>
           hiddenEntryIds.has(entry.id) &&
+          entry.type !== "message" &&
           !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)),
       );
     if (!hidesNonCompactionWork(group.entries)) continue;
