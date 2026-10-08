@@ -3,7 +3,7 @@
 //   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
 // existing git worktree <worktree> with full access on the account
-// `autofixModelSelection` picks (Claude with usage left, else GPT-6.1 on Codex),
+// `autofixModelSelection` picks from the "Fork sync auto-fix models" setting,
 // and blocks until its run ends or <limit-seconds> pass;
 // then it stops the chat's turn (as the Stop button does) and reports
 // status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
@@ -15,6 +15,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
 
 import { autofixModelSelection } from "../../apps/server/src/fork/autofixAccount.ts";
+import { DEFAULT_SERVER_SETTINGS } from "../../packages/contracts/src/settings.ts";
 
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
 if (!limitSeconds)
@@ -115,7 +116,15 @@ conn.ws.close();
 conn = await connect();
 
 const { providers } = await conn.call("server.getConfig", {});
-const modelSelection = autofixModelSelection(providers, Date.now());
+const settings = await conn.call("server.getSettings", {});
+const modelSelection = autofixModelSelection(
+  // A server older than the setting (the release a failed sync leaves running)
+  // does not report it; use its default then.
+  settings.syncAutofixModelSelections ?? DEFAULT_SERVER_SETTINGS.syncAutofixModelSelections,
+  providers,
+  Date.now(),
+);
+if (!modelSelection) throw new Error("the Fork sync auto-fix models setting is empty");
 console.error(`autofix: running on ${modelSelection.instanceId} (${modelSelection.model})`);
 
 const launch = await conn.call("orchestration.launchThread", {

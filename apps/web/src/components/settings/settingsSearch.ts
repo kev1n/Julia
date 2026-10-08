@@ -457,6 +457,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit 5-hour session window reset keep alive ping"],
   },
   {
+    id: "sync-autofix-models",
+    title: "Fork sync auto-fix models",
+    to: "/settings/threads",
+    searchTerms: [
+      "fork daily sync auto-fix autofix fallback model account usage limit claude codex",
+    ],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Resume after usage limits",
     to: "/settings/threads",
