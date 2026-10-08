@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
 import * as TestClock from "effect/testing/TestClock";
 import { ProviderInstanceId } from "@t3tools/contracts";
-import type { ProviderInstance } from "../../provider/ProviderDriver.ts";
+import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../../provider/ProviderInstanceRegistry.ts";
 import * as FleetSuggestions from "./threadOverlaps.ts";
 import type { FleetSnapshot, FleetThread } from "./model.ts";
