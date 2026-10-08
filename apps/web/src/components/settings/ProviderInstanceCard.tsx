@@ -78,6 +78,7 @@ import {
   settleCustomModelSave,
 } from "./customModelSaves.logic";
 import { getProviderRestartNotice } from "../ProviderUpdateLaunchNotification.logic";
+import { useShareProviderSecret } from "./addProviderEverywhere";
 import {
   getProviderVersionAdvisoryPresentation,
   PROVIDER_STATUS_STYLES,
@@ -970,8 +971,19 @@ export function ProviderInstanceCard({
     );
     updateEnvironment([...dedicatedEnvironment, ...environment]);
   };
-  const updateEnvironmentField = (field: ProviderEnvironmentField, value: string) => {
+  const shareProviderSecret = useShareProviderSecret(environmentId);
+  // Shared sign-ins (Claude token, Cursor key) follow this provider to every machine.
+  const shareEnvironmentField = (field: ProviderEnvironmentFieldDefinition, value: string) => {
+    if (!field.sharedAcrossMachines) return;
+    void shareProviderSecret({ instanceId, name: field.name, value, includeSource: false }).then(
+      (description) => {
+        if (description) toastManager.add({ type: "success", title: field.label, description });
+      },
+    );
+  };
+  const updateEnvironmentField = (field: ProviderEnvironmentFieldDefinition, value: string) => {
     updateEnvironment(nextProviderEnvironmentWithFieldValue(instance.environment, field, value));
+    shareEnvironmentField(field, value);
   };
   const updateEnvironmentFieldSecret = (
     field: ProviderEnvironmentField,
@@ -981,6 +993,7 @@ export function ProviderInstanceCard({
   };
   const removeEnvironmentField = (field: ProviderEnvironmentField) => {
     updateEnvironment(providerEnvironmentWithoutNames(instance.environment, new Set([field.name])));
+    shareEnvironmentField(field, "");
   };
 
   const titleIconNode = (
