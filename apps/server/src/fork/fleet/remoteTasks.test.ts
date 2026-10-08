@@ -67,6 +67,8 @@ function machine(runs: ReadonlyArray<{ id: string; ordinal: number; status: stri
             { runId: "run-1", role: "assistant", text: "Found two bugs.", updatedAt: at, id: "m" },
           ],
           turnItems: [],
+          providerTurns: [],
+          runtimeRequests: [],
         } as never),
     }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
