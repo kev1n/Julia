@@ -4,6 +4,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   groupWorkspaceChatSessions,
   workspaceChatKey,
+  workspaceChatTabs,
   type WorkspaceChatSection,
 } from "./workspaceChatTabs.logic";
 
@@ -147,4 +148,22 @@ it("keeps a new-thread fork separate on the same checkout, and its tab forks tog
     thread,
   ]);
   expect(workspaceChatKey(nestedThread)).not.toBe(workspaceChatKey(thread));
+});
+
+it("lists one strip's open chats, leaving out archived chats, subagents and other checkouts", () => {
+  const tab = (id: string, overrides: Partial<ReturnType<typeof chatDefaults>> = {}) => ({
+    ...chat(id, overrides),
+    archivedAt: null as string | null,
+    lineage: { relationshipToParent: null as "subagent" | "fork" | null },
+  });
+  const first = tab("first");
+  const second = tab("second", { createdAt: "2026-10-07T11:00:00Z" });
+  const threads = [
+    second,
+    first,
+    { ...tab("archived"), archivedAt: "2026-10-07T12:00:00Z" },
+    { ...tab("subagent"), lineage: { relationshipToParent: "subagent" as const } },
+    tab("other checkout", { worktreePath: "/repo/other" }),
+  ];
+  expect(workspaceChatTabs(threads, workspaceChatKey(first))).toEqual([first, second]);
 });
