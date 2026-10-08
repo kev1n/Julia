@@ -6,11 +6,12 @@ import {
 import type {
   EnvironmentId,
   ProviderAuthRespondInput,
+  ProviderAuthState,
   ProviderAuthResponse,
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { CopyIcon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
@@ -24,6 +25,9 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsRow } from "./settingsLayout";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
+import { useShareProviderSecret } from "./addProviderEverywhere";
+import { readClaudeSetupToken } from "./addProviderEverywhere.logic";
+import { toastManager } from "../ui/toast";
 
 const ProviderAuthTerminal = lazy(() => import("./ProviderAuthTerminal"));
 
@@ -158,6 +162,15 @@ export function ProviderAuthenticationSection({
       setError("Could not open the sign-in page. Copy the link and open it in your browser.");
     }
   }
+
+  // Claude's "all machines" sign-in prints a token for ShareClaudeToken to save.
+  const claudeToken =
+    provider.driver === "claudeAgent" &&
+    auth?.phase === "waiting" &&
+    interaction?.type === "terminal" &&
+    !readOnly
+      ? readClaudeSetupToken(interaction.output)
+      : null;
 
   function updateDraft(name: string, value: string) {
     setDraft({ id: draftId, values: { ...values, [name]: value } });
@@ -342,6 +355,15 @@ export function ProviderAuthenticationSection({
               in your browser.
             </p>
           ) : null}
+          {claudeToken && auth?.flowId ? (
+            <ShareClaudeToken
+              key={auth.flowId}
+              environmentId={environmentId}
+              instanceId={instanceId}
+              flowId={auth.flowId}
+              token={claudeToken}
+            />
+          ) : null}
           {interaction?.type === "terminal" ? (
             <div className="py-2">
               <Suspense
@@ -480,4 +502,50 @@ export function ProviderAuthenticationSection({
       ) : null}
     </SettingsRow>
   );
+}
+
+/**
+ * Saves the token Claude's "all machines" sign-in printed on every machine.
+ * It first confirms the flow, which the server holds open until then so the
+ * token is sure to reach this client.
+ */
+function ShareClaudeToken(props: {
+  readonly environmentId: EnvironmentId;
+  readonly instanceId: ProviderInstanceId;
+  readonly flowId: NonNullable<ProviderAuthState["flowId"]>;
+  readonly token: string;
+}) {
+  const respond = useAtomCommand(serverEnvironment.respondProviderAuth, {
+    reportFailure: false,
+    reportDefect: false,
+  });
+  const shareProviderSecret = useShareProviderSecret(props.environmentId);
+  const started = useRef(false);
+  const { environmentId, instanceId, flowId, token } = props;
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void respond({
+      environmentId,
+      input: {
+        instanceId,
+        flowId,
+        interactionId: "terminal",
+        response: { type: "terminal", data: "" },
+      },
+    })
+      .then(() =>
+        shareProviderSecret({
+          instanceId,
+          name: "CLAUDE_CODE_OAUTH_TOKEN",
+          value: token,
+          includeSource: true,
+        }),
+      )
+      .then((description) => {
+        if (description)
+          toastManager.add({ type: "success", title: "Claude subscription token", description });
+      });
+  }, [environmentId, flowId, instanceId, respond, shareProviderSecret, token]);
+  return null;
 }
