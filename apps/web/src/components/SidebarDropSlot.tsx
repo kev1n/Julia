@@ -63,6 +63,7 @@ export function SidebarDropSlot(props: {
       aria-hidden
       inert
       data-thread-selection-safe
+      data-sidebar-motion-skip
       data-testid="sidebar-drop-slot"
       className="sidebar-drop-slot pointer-events-none absolute z-10 rounded-md outline-1 -outline-offset-1 outline-dashed outline-primary/70"
       style={{ top: 0, visibility: "hidden" }}
