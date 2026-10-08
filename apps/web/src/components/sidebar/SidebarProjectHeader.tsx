@@ -19,7 +19,7 @@ export function SidebarProjectHeader(props: {
   expanded: boolean;
   count: number;
   canCreate: boolean;
-  pinDropHint?: boolean;
+  dimmed?: boolean;
   onToggle: () => void;
   onNewThread: () => void;
   onContextMenu: (position: { x: number; y: number }) => void;
@@ -43,7 +43,11 @@ export function SidebarProjectHeader(props: {
     <li
       ref={setNodeRef}
       data-sidebar-project={props.sortableId}
-      className={cn("relative list-none", props.visible ? "h-12" : "-mb-px h-0")}
+      className={cn(
+        "relative list-none transition-opacity duration-150 motion-reduce:transition-none",
+        props.dimmed && "opacity-30",
+        props.visible ? "h-12" : "-mb-px h-0",
+      )}
       style={{
         transform: CSS.Translate.toString(transform),
         transition,
@@ -107,13 +111,8 @@ export function SidebarProjectHeader(props: {
           />
           <ProjectFavicon project={props.project} className="size-4 shrink-0" />
           <span className="truncate">{props.project.displayName}</span>
-          <span
-            className={cn(
-              "shrink-0 text-xs font-normal tabular-nums",
-              props.pinDropHint ? "text-primary" : "text-sidebar-muted-foreground",
-            )}
-          >
-            {props.pinDropHint ? "Pin here" : props.count}
+          <span className="shrink-0 text-xs font-normal text-sidebar-muted-foreground tabular-nums">
+            {props.count}
           </span>
         </button>
         <button

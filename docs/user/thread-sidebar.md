@@ -88,7 +88,8 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 
 ## Pin and reorder threads
 
-Pin a thread from its menu to keep it at the top of its project, without a second project heading.
+Pin a thread from its menu to keep it in **Pins** above your projects. Each pinned thread
+shows its project icon and stays in its original project.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
@@ -107,19 +108,15 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-On web and desktop, drag a thread onto **Drop here to pin** at the top of the sidebar,
-its project heading (**Pin here** while dragging), or that project's pinned rows to pin it.
-This also works when the project has no pins. Threads stay in their original project.
-Drag a pinned thread into its project's active rows to unpin it, without a confirmation.
-The outlined slot shows where the thread will land; neighboring rows move aside without
-being covered by the dragged thread.
+On web and desktop, dragging reveals two destinations: the thread's current project
+and **Pins** above all projects. Other projects and shelves dim. Drag within the
+current project to reorder, or into **Pins** to pin and choose its position among
+your pinned threads. Drag a pinned thread into its own project's active rows to
+unpin it. The outlined slot shows where the thread will land; neighboring rows
+move aside. Threads cannot be dragged into another project. Use the thread menu
+to settle or snooze a thread.
 
-Drag onto **Settled** to settle a thread, or back into its project's active rows to
-un-settle it. Dragging a snoozed thread out of the shelf wakes it; threads cannot be
-dragged into that shelf because snoozing needs a wake time.
-
-Drag a thread within its project to change the order of its pinned or active rows. Other rows
-slide aside to show the spot where the thread will land. Drops into either section keep the position you choose. On
+Drops keep the position you choose. On
 mobile, open a thread's menu and choose **Arrange threads**. Drag a handle within or between
 **Pinned** and **Active** to reorder, pin, or unpin. Drop onto the **Settled** divider to
 settle a thread. The dragged card shows the action before you release it. Expand **Snoozed**
