@@ -81,7 +81,6 @@ import {
   getAntigravitySendBlockReason,
   readFileAsDataUrl,
   resolveComposerInteractionMode,
-  threadShellHasStarted,
 } from "../ChatView.logic";
 import {
   dataTransferHasComposerMention,
@@ -208,8 +207,8 @@ import { readPromptUltrathink } from "./TraitsPicker";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
-  shouldReserveContextWindowMeter,
 } from "./ContextWindowMeter.logic";
+import { ContextWindowMeter } from "./ContextWindowMeter";
 import {
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
@@ -972,14 +971,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection,
     modelOptionsByInstance,
   );
-  const reserveContextWindowMeter = shouldReserveContextWindowMeter({
-    meterEnabled: settings.contextWindowMeterEnabled,
-    detailLoading: props.threadSyncPhase === "loading",
-    threadStarted: threadShellHasStarted(props.activeThreadShell),
-    providerReportsContextWindow: selectedProviderStatus
-      ? selectedProviderStatus.reportsContextWindow === true
-      : null,
-  });
 
   const [composerCursor, setComposerCursor] = useState(() => {
     const value = isLiteralPendingAnswer ? (activePendingProgress?.customAnswer ?? prompt) : prompt;
@@ -3079,6 +3070,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onRemoveFile={removeComposerFileFromDraft}
       />
     ) : null;
+  const contextWindowMeter = (
+    <ContextWindowMeter
+      usage={activeContextWindow}
+      loading={props.threadSyncPhase === "loading"}
+      modelDisplayName={activeThreadModelDisplayName}
+      {...(compactCommandAvailable ? { onCompact: compactThreadContextStable } : {})}
+      compactDisabled={compactDisabled || noProviderAvailable || isSendBusy}
+      compactDisabledReason={resolvedCompactDisabledReason}
+    />
+  );
   const composerAttachButton = showComposerAttachAction ? (
     <ComposerAttachButton
       addComposerAttachments={addComposerAttachments}
@@ -3213,6 +3214,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
                 </button>
                 {collapsedComposerImagePreviews}
+                {contextWindowMeter}
                 <button
                   type="button"
                   data-chat-composer-transition-actions="true"
@@ -3430,6 +3432,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                {contextWindowMeter}
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
@@ -3449,11 +3452,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
-                    activeContextWindow={
-                      settings.contextWindowMeterEnabled ? activeContextWindow : null
-                    }
-                    reserveContextWindowMeter={reserveContextWindowMeter}
-                    activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     canInterrupt={canInterrupt}
@@ -3498,11 +3496,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compactBeforeSendTokens={props.resumeCompactionTokens}
                     keepFullHistory={props.keepFullHistory}
                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
-                    compactDisabled={compactDisabled || noProviderAvailable || isSendBusy}
-                    compactDisabledReason={resolvedCompactDisabledReason}
-                    {...(compactCommandAvailable
-                      ? { onCompactContext: compactThreadContextStable }
-                      : {})}
                   />
                 </div>
               </div>

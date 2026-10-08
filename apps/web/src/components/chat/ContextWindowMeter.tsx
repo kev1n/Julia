@@ -1,31 +1,48 @@
 import { Button } from "../ui/button";
-import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
+import {
+  type ContextWindowSnapshot,
+  formatContextWindowReadout,
+  formatContextWindowTokens,
+} from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
   formatContextWindowCompactionMessage,
   formatContextWindowCost,
 } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
     return null;
   }
-  if (value < 10) {
-    return `${value.toFixed(1).replace(/\.0$/, "")}%`;
-  }
-  return `${Math.round(value)}%`;
+  return `${value.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
 export function ContextWindowMeter(props: {
-  usage: ContextWindowSnapshot;
+  usage: ContextWindowSnapshot | null;
+  loading?: boolean;
   modelDisplayName?: string | null;
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  if (!usage) {
+    const label = props.loading ? "Context loading…" : "Context unavailable";
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<Button size="compact" variant="ghost-muted" aria-label={label} />}>
+          <span aria-hidden="true">–</span>
+        </TooltipTrigger>
+        <TooltipPopup {...composerFloatingLayerProps} side="top">
+          {label}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
+  const readout = formatContextWindowReadout(usage);
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -45,16 +62,7 @@ export function ContextWindowMeter(props: {
         delay={150}
         closeDelay={onCompact ? 150 : 0}
         render={
-          <Button
-            size="icon-sm"
-            variant="ghost-muted"
-            className="size-7"
-            aria-label={
-              usage.maxTokens !== null && usedPercentage
-                ? `Context window ${usedPercentage} used`
-                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
-            }
-          >
+          <Button size="compact" variant="ghost-muted" aria-label={readout}>
             <span className="relative flex size-5 items-center justify-center">
               <svg
                 viewBox="0 0 24 24"
@@ -82,6 +90,9 @@ export function ContextWindowMeter(props: {
                   className="transition-[stroke-dashoffset,stroke] duration-500 ease-out motion-reduce:transition-none"
                 />
               </svg>
+            </span>
+            <span className="tabular-nums">
+              {usedPercentage ?? formatContextWindowTokens(usage.usedTokens)}
             </span>
           </Button>
         }
@@ -172,8 +183,4 @@ export function ContextWindowMeter(props: {
       </PopoverPopup>
     </Popover>
   );
-}
-
-export function ContextWindowMeterPlaceholder() {
-  return <span aria-hidden="true" className="size-7 shrink-0" />;
 }

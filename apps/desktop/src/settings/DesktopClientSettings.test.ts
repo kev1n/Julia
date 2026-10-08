@@ -33,7 +33,6 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   confirmThreadUnpin: false,
-  contextWindowMeterEnabled: false,
   diffFilesCollapsed: true,
   diffIgnoreWhitespace: true,
   diffLayout: "stacked",

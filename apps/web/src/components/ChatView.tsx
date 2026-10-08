@@ -322,8 +322,8 @@ import {
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
 import {
-  deriveLatestContextWindowSnapshot,
-  latestProviderTurnTokenUsage,
+  deriveThreadContextWindowSnapshot,
+  deriveThreadLiveTokenUsage,
 } from "../lib/contextWindow";
 import {
   MOBILE_COMPOSER_VIEW_TRANSITION_NAME,
@@ -523,14 +523,6 @@ export default function ChatView(props: ChatViewProps) {
   const threadDetailLoading = threadSyncPhase === "loading";
   // Held back briefly, so a quick sync does not flash a status line at the end of the timeline.
   const delayedThreadSyncPhase = useDelayedStatus(routeThreadKey, threadSyncPhase);
-  const activeProviderThread = serverProjection?.providerThreads.find(
-    (thread) => thread.id === serverProjection.thread.activeProviderThreadId,
-  );
-  const activeThreadLiveTokenUsage = latestProviderTurnTokenUsage(
-    serverProjection?.providerTurns ?? [],
-    serverProjection,
-    activeProviderThread,
-  );
   const serverVisibleTurnItems = useQuietThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = (() => {
@@ -1428,11 +1420,10 @@ export default function ChatView(props: ChatViewProps) {
     (compactionRunning || (compactRequestIsActive && !compactionSettled));
   const isWorking =
     phase === "running" || isSendBusy || isCompacting || runlessWorkStartedAt !== null;
-  const activeContextWindow = deriveLatestContextWindowSnapshot(
-    serverVisibleTurnItems ?? [],
-    activeThreadLiveTokenUsage,
-    activeProviderThread,
-  );
+  // Latest provider-reported context usage from the active session;
+  // its prompt cache TTL decides when the Compact chip appears.
+  const activeThreadLiveTokenUsage = deriveThreadLiveTokenUsage(serverProjection);
+  const activeContextWindow = deriveThreadContextWindowSnapshot(serverProjection);
   const pendingBackgroundTasks = deriveThreadPendingBackgroundTasks(serverProjection);
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
