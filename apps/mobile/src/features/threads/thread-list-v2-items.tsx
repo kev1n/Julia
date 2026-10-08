@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import * as Dialog from "../../components/ui/Dialog";
+import {
+  ThreadSubagentDisclosure,
+  ThreadSubagentRows,
+  useThreadSubagentList,
+} from "./thread-subagent-list";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
   THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME,
@@ -146,12 +151,6 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     icon: "circle.dashed",
     className: "text-adaptive-sky-600-400",
     iconTintClassName: "accent-adaptive-sky-600-400",
-  },
-  waiting: {
-    label: null,
-    icon: "circle.dashed.inset.filled",
-    className: "text-foreground-muted",
-    iconTintClassName: "accent-foreground-muted",
   },
   failed: {
     label: msg("Failed", { $context: "thread status" }),
@@ -775,6 +774,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly pane?: "screen" | "sidebar";
   readonly showTrailingDivider?: boolean;
   readonly selected?: boolean;
+  readonly selectedThreadKey?: string | null;
   readonly compact?: boolean;
   readonly fullSwipeWidth?: number;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
@@ -857,6 +857,22 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       (thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId),
   )?.iconUrl;
 
+  const subagents = useThreadSubagentList(thread);
+  const disclosure = (
+    <ThreadSubagentDisclosure
+      count={subagents.threads.length}
+      expanded={subagents.expanded}
+      onToggle={subagents.toggle}
+    />
+  );
+  const childRows = (
+    <ThreadSubagentRows
+      threads={subagents.threads}
+      expanded={subagents.expanded}
+      selectedThreadKey={props.selectedThreadKey}
+      onSelectThread={onSelectThread}
+    />
+  );
   const providerInstance = props.providerInstance;
   const providerNameLabel = providerInstance
     ? providerInstanceNameLabel({
@@ -874,7 +890,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 
   const theme = useUniwindTheme();
   const sidebarPane = props.pane === "sidebar";
-  const selected = props.selected === true;
+  const selected =
+    props.selected === true ||
+    subagents.all.some((child) => `${child.environmentId}:${child.id}` === props.selectedThreadKey);
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
 
   const rawStatus = resolveThreadListV2Status(thread);
@@ -1434,6 +1452,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           {thread.title}
         </Text>
         <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
+          {disclosure}
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           {pinnedRow ? (
             <SymbolView
@@ -1768,6 +1787,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
+          {disclosure}
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           <Text
             className={cn(
@@ -1790,7 +1810,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     );
 
   if (!canSwipe)
-    return <View style={rowAppearance.swipeContainerStyle}>{rowContent(() => {})}</View>;
+    return (
+      <View style={rowAppearance.swipeContainerStyle}>
+        {rowContent(() => {})}
+        {childRows}
+      </View>
+    );
 
   return (
     <View collapsable={false}>
@@ -1831,6 +1856,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </Menu>
         )}
       </ThreadSwipeable>
+      {childRows}
     </View>
   );
 });

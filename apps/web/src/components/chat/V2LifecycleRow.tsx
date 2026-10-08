@@ -203,7 +203,7 @@ const STATUS_VISUALS: Record<
 > = {
   pending: { dotClass: "bg-info", label: msg("Queued", { $context: "subagent status" }) },
   running: { dotClass: "bg-info", label: msg("Running", { $context: "subagent status" }) },
-  waiting: { dotClass: "bg-info", label: msg("Waiting", { $context: "subagent status" }) },
+  waiting: { dotClass: "bg-info", label: msg("Working", { $context: "subagent status" }) },
   idle: {
     dotClass: "bg-muted-foreground/50",
     label: msg("Idle · resumable", { $context: "subagent status" }),

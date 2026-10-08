@@ -2444,6 +2444,13 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   issues: Schema.optional(Schema.Array(ThreadIssueLink)),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
+  /** Native subagents can have root turns without app-owned runs. */
+  nativeSubagentActivity: Schema.optional(
+    Schema.Struct({
+      status: OrchestrationV2ExecutionNode.fields.status,
+      completedAt: Schema.NullOr(IsoDateTime),
+    }),
+  ),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),

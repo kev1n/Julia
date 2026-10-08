@@ -100,7 +100,7 @@ function rowStatusLabel(
     case "running":
       return resolve(msg("Working", { $context: "agent status" }));
     case "waiting":
-      return resolve(msg("Waiting", { $context: "agent status" }));
+      return resolve(msg("Working", { $context: "agent status" }));
     case "idle":
       return resolve(msg("Idle", { $context: "agent status" }));
     case "completed":

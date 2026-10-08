@@ -409,7 +409,7 @@ const SUBAGENT_STATUS_LABELS: Record<OrchestrationV2ExecutionNode["status"], str
   idle: msg("Idle"),
   pending: msg("Working"),
   running: msg("Working"),
-  waiting: msg("Waiting"),
+  waiting: msg("Working"),
   completed: msg("Completed"),
   interrupted: msg("Interrupted"),
   failed: msg("Failed"),
@@ -844,10 +844,8 @@ export function presentPendingBackgroundWork(
     const noun = resolve(BACKGROUND_WORK_KINDS[only.kind].singular);
     const named = only.label !== noun;
     const title = named
-      ? waiting
-        ? resolve(msg("Waiting · {label}", { label: only.label }))
-        : resolve(msg("Running · {label}", { label: only.label }))
-      : backgroundWorkSingleTitle(only.kind, waiting, resolve);
+      ? resolve(msg("Running · {label}", { label: only.label }))
+      : backgroundWorkSingleTitle(only.kind, resolve);
     return { title, items, waiting };
   }
   const counts = new Map<BackgroundWorkKind, number>();
@@ -857,30 +855,22 @@ export function presentPendingBackgroundWork(
     resolve,
   );
   return {
-    title: waiting
-      ? resolve(msg("Waiting on {groups}", { groups }))
-      : resolve(msg("Running {groups}", { groups })),
+    title: resolve(msg("Running {groups}", { groups })),
     items,
     waiting,
   };
 }
 
-function backgroundWorkSingleTitle(
-  kind: BackgroundWorkKind,
-  waiting: boolean,
-  resolve: MFunctionType,
-): string {
+function backgroundWorkSingleTitle(kind: BackgroundWorkKind, resolve: MFunctionType): string {
   switch (kind) {
     case "subagent":
-      return waiting ? resolve(msg("Waiting on a subagent")) : resolve(msg("Running a subagent"));
+      return resolve(msg("Running a subagent"));
     case "command":
-      return waiting ? resolve(msg("Waiting on a command")) : resolve(msg("Running a command"));
+      return resolve(msg("Running a command"));
     case "monitor":
-      return waiting ? resolve(msg("Waiting on a monitor")) : resolve(msg("Running a monitor"));
+      return resolve(msg("Running a monitor"));
     case "background_task":
-      return waiting
-        ? resolve(msg("Waiting on a background task"))
-        : resolve(msg("Running a background task"));
+      return resolve(msg("Running a background task"));
   }
 }
 
