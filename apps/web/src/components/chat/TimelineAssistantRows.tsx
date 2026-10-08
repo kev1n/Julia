@@ -1,11 +1,10 @@
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
-import { memo, use, useState } from "react";
+import { memo, use } from "react";
 import { type ChatMessage, type TurnDiffSummary } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
-import { GitForkIcon } from "lucide-react";
-import { Button } from "../ui/button";
+import { ForkChatMenu } from "./ForkChatMenu";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { McpAppFrame } from "./McpAppFrame";
@@ -81,7 +80,6 @@ function AssistantForkButton({
   readonly projectedItem: NonNullable<Extract<TimelineRow, { kind: "message" }>["projectedItem"]>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const [busy, setBusy] = useState(false);
   const support = useV2ItemSupport({
     environmentId: ctx.activeThreadEnvironmentId,
     sourceThreadId: projectedItem.sourceThreadId,
@@ -98,30 +96,16 @@ function AssistantForkButton({
   const runId = projectedItem.item.runId;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void onForkFromRun({ sourceThreadId: projectedItem.sourceThreadId, runId }).finally(
-                () => setBusy(false),
-              );
-            }}
-            aria-label="Fork from this response"
-          />
-        }
-      >
-        <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        Fork from this response · user messages and final replies only
-      </TooltipPopup>
-    </Tooltip>
+    <ForkChatMenu
+      label="Fork from this response"
+      onFork={(destination) =>
+        onForkFromRun({
+          sourceThreadId: projectedItem.sourceThreadId,
+          runId,
+          destination,
+        })
+      }
+    />
   );
 }
 

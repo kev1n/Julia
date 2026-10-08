@@ -82,7 +82,11 @@ export interface TimelineRowSharedState {
   workflowOpening: WorkflowOpening | null;
   /** Absent hides "Fork from this response", as in the guest view. */
   onForkFromRun:
-    | ((input: { readonly sourceThreadId: ThreadId; readonly runId: RunId }) => Promise<void>)
+    | ((input: {
+        readonly sourceThreadId: ThreadId;
+        readonly runId: RunId;
+        readonly destination: "tab" | "thread";
+      }) => Promise<void>)
     | undefined;
   onToggleTurnFold: (runId: RunId) => void;
   onToggleAttemptFold: (attemptId: RunAttemptId) => void;

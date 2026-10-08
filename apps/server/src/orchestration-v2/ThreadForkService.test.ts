@@ -5,7 +5,6 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
-  type OrchestrationV2ThreadProjection,
   ProjectId,
   ProviderInstanceId,
   ProviderThreadId,
@@ -109,12 +108,27 @@ function makeSourceProjection(sourceRun: OrchestrationV2Run): OrchestrationV2Thr
 
 const planFork = (
   sourceRun: OrchestrationV2Run,
-  sourceProjection = makeSourceProjection(sourceRun),
+  options: {
+    destination?: "tab" | "thread";
+    chatGroupId?: ThreadId | null;
+    sourceChatGroupId?: ThreadId;
+    sourceProjection?: OrchestrationV2ThreadProjection;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const service = yield* ThreadForkService.ThreadForkServiceV2;
     return yield* service.plan({
-      sourceProjection,
+      sourceProjection: (() => {
+        const sourceProjection = options.sourceProjection ?? makeSourceProjection(sourceRun);
+        return options.sourceChatGroupId === undefined
+          ? sourceProjection
+          : {
+              ...sourceProjection,
+              thread: { ...sourceProjection.thread, chatGroupId: options.sourceChatGroupId },
+            };
+      })(),
+      ...(options.destination === undefined ? {} : { destination: options.destination }),
+      ...(options.chatGroupId === undefined ? {} : { chatGroupId: options.chatGroupId }),
       sourceRun,
       sourceProviderThread: undefined,
       canonicalSourcePoint: {
@@ -219,7 +233,7 @@ it.effect("preserves pull request context without inheriting any watches", () =>
         branchPullRequest: legacyLink,
       },
     };
-    const result = yield* planFork(sourceRun, sourceProjection);
+    const result = yield* planFork(sourceRun, { sourceProjection });
 
     assert.deepEqual(result.targetThread.pullRequests, links);
     assert.deepEqual(result.targetThread.linkedPullRequest, legacyLink);
@@ -241,4 +255,31 @@ it.effect("rejects in-progress and rolled-back fork sources", () =>
       assert.equal(error.cause, ThreadForkService.forkableSourceRunStatusError(sourceRun));
     }
   }),
+);
+
+it.effect.each([
+  { destination: "thread" as const, sourceChatGroupId: sourceThreadId, expected: targetThreadId },
+  { destination: "tab" as const, sourceChatGroupId: sourceThreadId, expected: sourceThreadId },
+  {
+    destination: "tab" as const,
+    sourceChatGroupId: sourceThreadId,
+    chatGroupId: ThreadId.make("viewed-fork"),
+    expected: ThreadId.make("viewed-fork"),
+  },
+  {
+    destination: "tab" as const,
+    sourceChatGroupId: sourceThreadId,
+    chatGroupId: null,
+    expected: undefined,
+  },
+])(
+  "places a $destination fork in its selected conversation group without changing the checkout",
+  (options) =>
+    Effect.gen(function* () {
+      const { targetThread } = yield* planFork(makeSourceRun("completed"), options);
+      assert.equal(targetThread.chatGroupId, options.expected);
+      assert.equal(targetThread.worktreePath, makeSourceThread().worktreePath);
+      assert.equal(targetThread.branch, makeSourceThread().branch);
+      assert.equal(targetThread.forkedFrom?.type, "run");
+    }),
 );

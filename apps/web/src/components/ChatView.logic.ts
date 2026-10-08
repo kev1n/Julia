@@ -461,6 +461,7 @@ export function buildLocalDraftThread(
     interactionMode: draftThread.interactionMode,
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
+    chatGroupId: draftThread.chatGroupId,
     activeProviderThreadId: null,
     lineage: { rootThreadId: threadId, parentThreadId: null, relationshipToParent: null },
     forkedFrom: null,

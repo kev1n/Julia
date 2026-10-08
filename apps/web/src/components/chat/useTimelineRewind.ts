@@ -174,6 +174,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
   const onForkFromRun = async (input: {
     readonly sourceThreadId: ThreadId;
     readonly runId: RunId;
+    readonly destination: "tab" | "thread";
   }) => {
     if (!activeThread || activeEnvironmentUnavailable) return;
     const targetThreadId = newThreadId();
@@ -186,6 +187,8 @@ export function useTimelineRewind(input: TimelineRewindInput) {
         runId: input.runId,
         title: `${activeThread.title} fork`,
         contextMode: "final_messages",
+        destination: input.destination,
+        chatGroupId: activeThread.chatGroupId ?? null,
       },
     });
     if (result._tag === "Failure") {

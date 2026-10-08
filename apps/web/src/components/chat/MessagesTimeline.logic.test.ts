@@ -1063,7 +1063,11 @@ describe("deriveMessagesTimelineRows", () => {
     };
     const rows = deriveMessagesTimelineRows({ ...input, timelineEntries });
 
-    expect(rows.map((row) => row.id)).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "assistant-first-entry",
+      "assistant-middle-entry",
+      "assistant-final-entry",
+    ]);
     const expanded = deriveMessagesTimelineRows({
       ...input,
       timelineEntries,
@@ -2485,6 +2489,62 @@ describe("deriveMessagesTimelineRows", () => {
 });
 
 describe("v2 run and attempt history", () => {
+  it("keeps every chunk of a message-only final response visible", () => {
+    const timelineEntries = ["## Full answer", "| Result | Status |", "Final paragraph"].map(
+      (text, index) => ({
+        id: `answer-${index}`,
+        kind: "message" as const,
+        createdAt: `2026-01-01T00:00:0${index}Z`,
+        message: {
+          id: `answer-${index}` as never,
+          role: "assistant" as const,
+          text,
+          runId: "turn-1" as never,
+          createdAt: `2026-01-01T00:00:0${index}Z`,
+          updatedAt: `2026-01-01T00:00:0${index}Z`,
+          streaming: false,
+        },
+      }),
+    );
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      isWorking: false,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["answer-0", "answer-1", "answer-2"]);
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+  });
+
+  it("keeps every chunk of a message-only final response visible", () => {
+    const timelineEntries = ["## Full answer", "| Result | Status |", "Final paragraph"].map(
+      (text, index) => ({
+        id: `answer-${index}`,
+        kind: "message" as const,
+        createdAt: `2026-01-01T00:00:0${index}Z`,
+        message: {
+          id: `answer-${index}` as never,
+          role: "assistant" as const,
+          text,
+          runId: "turn-1" as never,
+          createdAt: `2026-01-01T00:00:0${index}Z`,
+          updatedAt: `2026-01-01T00:00:0${index}Z`,
+          streaming: false,
+        },
+      }),
+    );
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      isWorking: false,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["answer-0", "answer-1", "answer-2"]);
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+  });
+
   it("folds settled-turn commentary and work behind a Worked-for row", () => {
     const timelineEntries = [
       {
