@@ -99,7 +99,7 @@ const FleetListTool = Tool.make("t3_fleet_list", {
 const WhoElseTool = Tool.make("t3_who_else", {
   ...shared,
   description:
-    "Which other active threads, on any of Owner's machines, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write.",
+    "Which other active threads, on any of Owner's machines, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write. Nothing tells you about overlaps on its own: call this before editing shared code and before committing. On a write/write overlap, read that thread with t3_fleet_thread_read and decide whether to coordinate with t3_fleet_thread_send.",
   parameters: Schema.Struct({ paths: Schema.optional(Schema.Array(Schema.String)) }),
   success: Schema.Struct({
     ...Envelope,
