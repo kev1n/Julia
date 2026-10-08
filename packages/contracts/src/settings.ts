@@ -1239,6 +1239,23 @@ export const ServerSettings = Schema.Struct({
       ]),
     ),
   ),
+  /**
+   * Fork: when a turn stops on a usage limit, fork the thread into a new tab on
+   * the first of `limitFailoverModelSelections` with an account that has usage
+   * left, and continue there.
+   */
+  continueLimitedThreadsElsewhere: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  /** Fork: the models a usage-limited thread continues on, in order. */
+  limitFailoverModelSelections: Schema.Array(ModelSelection).pipe(
+    Schema.withDecodingDefault(
+      Effect.succeed([
+        { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus-5-5" },
+        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" },
+      ]),
+    ),
+  ),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   backgroundActivity: BackgroundActivitySettings,
 
@@ -1588,6 +1605,8 @@ export const ServerSettingsPatch = Schema.Struct({
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
   keepUsageWindowsOpen: Schema.optionalKey(Schema.Boolean),
   syncAutofixModelSelections: Schema.optionalKey(Schema.Array(ModelSelection)),
+  continueLimitedThreadsElsewhere: Schema.optionalKey(Schema.Boolean),
+  limitFailoverModelSelections: Schema.optionalKey(Schema.Array(ModelSelection)),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

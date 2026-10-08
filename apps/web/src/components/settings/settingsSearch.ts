@@ -428,6 +428,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "limit-failover",
+    title: "Continue limited threads on another account",
+    to: "/settings/threads",
+    searchTerms: [
+      "usage quota rate limit fork tab fallback model account subscription switch failover opus gpt",
+    ],
+  },
+  {
     id: "auto-resume-limited-threads",
     title: "Resume after usage limits",
     to: "/settings/threads",

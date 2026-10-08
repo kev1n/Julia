@@ -90,7 +90,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "./settingsLayout";
-import { SyncAutofixModelsRow, syncAutofixModelsAreDefault } from "./SyncAutofixModelsSettings";
+import { LimitFailoverRow, modelOrderIsDefault, SyncAutofixModelsRow } from "./ModelOrderSettings";
 import { searchableSetting } from "./settingsSearch";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -456,8 +456,13 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.keepUsageWindowsOpen !== DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen
       ? ["Keep session windows running"]
       : []),
-    ...(!syncAutofixModelsAreDefault(settings.syncAutofixModelSelections)
+    ...(!modelOrderIsDefault("syncAutofixModelSelections", settings.syncAutofixModelSelections)
       ? ["Fork sync auto-fix models"]
+      : []),
+    ...(settings.continueLimitedThreadsElsewhere !==
+      DEFAULT_UNIFIED_SETTINGS.continueLimitedThreadsElsewhere ||
+    !modelOrderIsDefault("limitFailoverModelSelections", settings.limitFailoverModelSelections)
+      ? ["Continue limited threads on another account"]
       : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
     ...(settings.persistComposerContextStrip !==
@@ -610,6 +615,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
       keepUsageWindowsOpen: DEFAULT_UNIFIED_SETTINGS.keepUsageWindowsOpen,
       syncAutofixModelSelections: DEFAULT_UNIFIED_SETTINGS.syncAutofixModelSelections,
+      continueLimitedThreadsElsewhere: DEFAULT_UNIFIED_SETTINGS.continueLimitedThreadsElsewhere,
+      limitFailoverModelSelections: DEFAULT_UNIFIED_SETTINGS.limitFailoverModelSelections,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -1537,6 +1544,7 @@ export function ThreadsSettingsPanel() {
       ) : null}
 
       <SettingsSection id="usage-limits" title="Usage limits">
+        <LimitFailoverRow />
         <SettingsRow
           serverScoped
           {...searchableSetting("auto-resume-limited-threads")}

@@ -80,6 +80,7 @@ export function AutoSettleSettingsRows(props: {
     patch: Partial<AutoSettleSettings> & {
       autoResumeLimitedThreads?: boolean;
       snoozeLimitedThreads?: boolean;
+      continueLimitedThreadsElsewhere?: boolean;
     },
   ) => props.write(patch);
 
@@ -104,6 +105,14 @@ export function AutoSettleSettingsRows(props: {
     <View className="gap-6">
       {!projectSelected ? (
         <SettingsSection title="Usage limits">
+          {/* Fork (Owner): the fallback models are chosen in desktop Settings > General. */}
+          <SettingsSwitchRow
+            icon="arrow.triangle.branch"
+            label="Continue on another account"
+            value={uniformMobileSetting(displayTargets, "continueLimitedThreadsElsewhere")}
+            disabled={disabled}
+            onValueChange={(value) => writeToAll({ continueLimitedThreadsElsewhere: value })}
+          />
           <SettingsSwitchRow
             icon="clock"
             label="Resume after usage limits"
