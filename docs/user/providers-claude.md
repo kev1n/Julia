@@ -39,10 +39,18 @@ connected servers. Token sharing also creates the slot if it is missing. Saving
 or clearing **Subscription token** in provider settings copies that change to
 connected machines too. It does not clone your keychain or Claude configuration.
 
+A shared token cannot read the account's email or plan, and its usage can be
+unavailable. To get a full login on every machine, choose **Sign in on every
+machine**. It starts Claude's sign-in on each connected machine and lists them
+together. Open each machine's sign-in page, approve it, and paste the code that
+page shows into that machine's row. This replaces a shared token on those
+machines and creates the slot where it is missing.
+
 These are one-time copies, not continuous sync. Offline machines are skipped;
 reconnect them and save the token again, or sign in separately there. Read the
 result message to see which machines succeeded or were skipped. Native mobile
-supports machine-local sign-in; use web or desktop to share a token. A phone
+supports machine-local sign-in; use web or desktop to share a token or sign in
+on every machine. A phone
 connected to a server uses that server's account and does not need its own copy.
 
 Check the account reported in provider settings after signing in. Existing
