@@ -1,4 +1,5 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
@@ -7,7 +8,8 @@ import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { SidebarInset } from "./ui/sidebar";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-import { useEnvironmentThreadRefs, useQuietThreadShell } from "../state/entities";
+import { readThreadShells, useEnvironmentThreadRefs, useQuietThreadShell } from "../state/entities";
+import { getLatestThreadForProject } from "@t3tools/client-runtime/state/thread-sort";
 import { useEnvironmentShellStatus } from "../state/shell";
 import { useEnvironmentThread } from "../state/threads";
 import {
@@ -38,6 +40,26 @@ export function ThreadRouteView({
   const draftRedirect = useComposerDraftStore((store) =>
     draftId === null ? null : store.getPromotedDraftRedirect(draftId),
   );
+  // Where a closed draft lived, so closing it returns to that project rather than starting a draft
+  // in whichever project was most recently active.
+  const [closedDraftScope, setClosedDraftScope] = useState<{
+    readonly draftId: string;
+    readonly environmentId: EnvironmentId;
+    readonly projectId: ProjectId;
+  } | null>(null);
+  if (
+    draftId !== null &&
+    draftSession &&
+    (closedDraftScope?.draftId !== draftId ||
+      closedDraftScope.environmentId !== draftSession.environmentId ||
+      closedDraftScope.projectId !== draftSession.projectId)
+  ) {
+    setClosedDraftScope({
+      draftId,
+      environmentId: draftSession.environmentId,
+      projectId: draftSession.projectId,
+    });
+  }
   const serverThreadRef = target.kind === "server" ? target.threadRef : null;
   const serverThreadShell = useQuietThreadShell(serverThreadRef);
   const shellStatus = useEnvironmentShellStatus(serverThreadRef?.environmentId ?? null);
@@ -135,7 +157,27 @@ export function ThreadRouteView({
         />
       );
     } else {
-      redirect = <Navigate to="/" replace />;
+      const fallback =
+        closedDraftScope?.draftId === target.draftId
+          ? getLatestThreadForProject(
+              readThreadShells().filter(
+                (thread) =>
+                  thread.environmentId === closedDraftScope.environmentId &&
+                  thread.deletedAt === null,
+              ),
+              closedDraftScope.projectId,
+              "updated_at",
+            )
+          : null;
+      redirect = fallback ? (
+        <Navigate
+          to="/$environmentId/$threadId"
+          params={buildThreadRouteParams(scopeThreadRef(fallback.environmentId, fallback.id))}
+          replace
+        />
+      ) : (
+        <Navigate to="/" search={{ startDraft: false }} replace />
+      );
     }
   } else if (renderState === "ready" || (renderState === "loading" && serverThreadShell !== null)) {
     view = (

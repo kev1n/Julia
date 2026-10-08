@@ -34,6 +34,7 @@ function ChatIndexRouteView() {
 }
 
 function IndexDraftLanding() {
+  const { startDraft } = Route.useSearch();
   const projects = useProjects();
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
@@ -51,7 +52,12 @@ function IndexDraftLanding() {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts a draft thread in the most recent project and navigates to it while still on the index
   useEffect(() => {
     // Starting a draft after the user has left would replace the page they picked.
-    if (mostRecentProject === null || startedAttemptRef.current === attempt || !isStillOnIndex()) {
+    if (
+      startDraft === false ||
+      mostRecentProject === null ||
+      startedAttemptRef.current === attempt ||
+      !isStillOnIndex()
+    ) {
       return;
     }
     const projectRef = scopeProjectRef(mostRecentProject.environmentId, mostRecentProject.id);
@@ -68,9 +74,24 @@ function IndexDraftLanding() {
       .catch(() => {
         setStartState((state) => ({ ...state, failed: true }));
       });
-  }, [attempt, handleNewThread, mostRecentProject]);
+  }, [attempt, handleNewThread, mostRecentProject, startDraft]);
 
   if (mostRecentProject !== null) {
+    if (startDraft === false) {
+      return (
+        <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+          {isElectron ? <WorkspacePageHeader electron /> : null}
+          <Empty className="flex-1">
+            <EmptyHeader>
+              <EmptyTitle>Select a thread</EmptyTitle>
+              <EmptyDescription>
+                Choose a thread from the sidebar, or start a new one.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </SidebarInset>
+      );
+    }
     return startState.failed ? (
       <DraftStartError
         onRetry={() => {
@@ -114,5 +135,7 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
 }
 
 export const Route = createFileRoute("/_chat/")({
+  validateSearch: (raw: Record<string, unknown>): { startDraft?: false } =>
+    raw.startDraft === false || raw.startDraft === "false" ? { startDraft: false } : {},
   component: ChatIndexRouteView,
 });
