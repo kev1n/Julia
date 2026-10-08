@@ -144,6 +144,7 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
       }),
     );
   return {
+    generateFleetRelations: () => unsupported("generateFleetRelations"),
     generateCommitMessage: () => unsupported("generateCommitMessage"),
     generatePrContent: () => unsupported("generatePrContent"),
     generateBranchName: () => unsupported("generateBranchName"),

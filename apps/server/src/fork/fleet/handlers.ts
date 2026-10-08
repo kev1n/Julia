@@ -21,6 +21,7 @@ import type { FleetIntent } from "./model.ts";
 import { fleetConfig, localSnapshot, refreshNow, setIntents } from "./publisher.ts";
 import type { PeerSource } from "./routes.ts";
 import { FleetToolkit } from "./tools.ts";
+import * as FleetSuggestions from "./threadOverlaps.ts";
 import { loadView, overlapOut, summarize, type FleetView } from "./view.ts";
 
 const fail = (code: OrchestratorMcpFailure["code"], message: string) =>
@@ -138,6 +139,12 @@ const handlers = {
         .sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
         .map((thread) => summarize(current, thread));
       return { ...envelope(current), threads };
+    }),
+  ),
+  t3_coordination_suggestions: McpToolAccess.reads(() =>
+    Effect.gen(function* () {
+      const caller = yield* callerThread;
+      return yield* (yield* FleetSuggestions.FleetSuggestions).read(caller.id, { wait: true });
     }),
   ),
   t3_who_else: McpToolAccess.reads((input) =>

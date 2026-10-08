@@ -1160,6 +1160,7 @@ it.effect.each([
             yield* ServerBrowser.ServerBrowser,
             () => Effect.void,
             { secretReferences: true },
+            undefined,
           ).pipe(Layer.provide(configRpcServices)),
         ),
       );
