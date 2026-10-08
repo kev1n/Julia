@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ForkChatMenu } from "./ForkChatMenu";
-import { workspaceChatKey } from "./workspaceChatTabs.logic";
+import { workspaceChatKey, workspaceChatTabs } from "./workspaceChatTabs.logic";
 
 const CLOSED_TABS = Schema.Array(Schema.String);
 const EMPTY_TABS: readonly string[] = [];
@@ -41,18 +41,7 @@ export function WorkspaceChatTabs(props: {
   );
   const closingRef = useRef<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const chats = useMemo(
-    () =>
-      threads
-        .filter(
-          (thread) =>
-            thread.archivedAt === null &&
-            thread.lineage.relationshipToParent !== "subagent" &&
-            workspaceChatKey(thread) === workspaceKey,
-        )
-        .toSorted((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)),
-    [threads, workspaceKey],
-  );
+  const chats = useMemo(() => workspaceChatTabs(threads, workspaceKey), [threads, workspaceKey]);
   const visible = chats.filter(
     (thread) => thread.id === props.activeThread.id || !closed.includes(thread.id),
   );
