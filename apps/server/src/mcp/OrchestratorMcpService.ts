@@ -674,6 +674,28 @@ function canExposeTaskRunResult(run: OrchestrationV2Run | undefined): run is Orc
   );
 }
 
+/**
+ * Fork (Owner): delegated tasks run unattended, so a mode that stops for
+ * approval would leave prompts in a child thread nobody watches. Refuse rather
+ * than escalate past the parent's mode.
+ */
+export function resolveDelegatedRuntimeMode(
+  parentMode: RuntimeMode,
+  requested: OrchestratorMcpRuntimeMode | undefined,
+  target?: Pick<ResolvedTarget, "modelSelection" | "supportedRuntimeModes">,
+): Effect.Effect<RuntimeMode, OrchestratorMcpFailure> {
+  return resolveRuntimeMode(parentMode, requested, target).pipe(
+    Effect.filterOrFail(
+      (resolved) => runtimeModeRank(resolved) >= runtimeModeRank("auto"),
+      (resolved) =>
+        failure(
+          "runtime_mode_requires_approval",
+          `Delegated tasks cannot run in ${resolved}, which stops for approval. Delegate from a thread in auto or full-access mode.`,
+        ),
+    ),
+  );
+}
+
 function stablePart(value: string): string {
   return encodeURIComponent(value);
 }
@@ -2415,7 +2437,7 @@ const make = Effect.gen(function* () {
         providers,
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
       });
-      const runtimeMode = yield* resolveRuntimeMode(
+      const runtimeMode = yield* resolveDelegatedRuntimeMode(
         parent.thread.runtimeMode,
         input.runtimeMode,
         target,
