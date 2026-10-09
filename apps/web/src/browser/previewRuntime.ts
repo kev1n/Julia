@@ -30,8 +30,10 @@ export function alternatePreviewRuntime(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,
   serverBrowser: boolean,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "profileId"> | null | undefined,
 ): PreviewRuntime | null {
+  // Aside's profile lives in the environment's native browser, not Electron.
+  if (snapshot?.profileId === ASIDE_BROWSER_PROFILE_ID) return null;
   if (!snapshot || !serverBrowser || !isPreviewSupportedInRuntime()) return null;
   if (environmentId === primaryEnvironmentId) return null;
   return snapshot.runtime === "server" ? "desktop" : "server";
