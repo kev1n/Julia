@@ -28,6 +28,8 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadProjection,
+  type OrchestratorMcpRuntimeMode,
+  type RuntimeMode,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
@@ -5175,7 +5177,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       const agentId = ProviderInstanceId.make("acp-agent");
       const mode = [{ id: "_t3/session-mode", value: "yolo" }] as const;
       const delegateFrom = (
-        runtimeMode: "approval-required" | "full-access",
+        runtimeMode: "auto" | "full-access",
         held: ReadonlyArray<{ readonly id: string; readonly value: unknown }> | undefined,
       ) => {
         const commands: Array<unknown> = [];
@@ -5267,14 +5269,15 @@ describe("OrchestratorMcpService provider resolution", () => {
         }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
       };
 
-      const refused = yield* delegateFrom("approval-required", undefined);
+      // Fork: delegated tasks never inherit an approval mode, so the parent that may not pick runs in auto.
+      const refused = yield* delegateFrom("auto", undefined);
       assert.isTrue(Exit.isFailure(refused.outcome));
       assert.include(JSON.stringify(refused.outcome), "runtime_mode_escalation_denied");
       assert.lengthOf(refused.commands, 0);
 
       // A parent already running in that mode hands it on; a full-access parent may pick it.
       for (const allowed of [
-        yield* delegateFrom("approval-required", mode),
+        yield* delegateFrom("auto", mode),
         yield* delegateFrom("full-access", undefined),
       ]) {
         assert.isTrue(Exit.isSuccess(allowed.outcome), JSON.stringify(allowed.outcome));
@@ -5498,6 +5501,29 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
   });
+});
+
+describe("delegated task runtime modes", () => {
+  const code = (parent: RuntimeMode, requested?: OrchestratorMcpRuntimeMode) =>
+    OrchestratorMcpService.resolveDelegatedRuntimeMode(parent, requested).pipe(
+      Effect.match({ onFailure: (error) => error.code, onSuccess: (mode) => mode }),
+    );
+
+  it.effect("never start in a mode that stops for approval", () =>
+    Effect.gen(function* () {
+      assert.equal(yield* code("full-access"), "full-access");
+      assert.equal(yield* code("full-access", "auto"), "auto");
+      assert.equal(yield* code("auto", "inherit"), "auto");
+      // Inheriting an approval mode is refused rather than escalated past the parent.
+      assert.equal(yield* code("approval-required"), "runtime_mode_requires_approval");
+      assert.equal(yield* code("auto-accept-edits"), "runtime_mode_requires_approval");
+      assert.equal(
+        yield* code("full-access", "approval-required"),
+        "runtime_mode_requires_approval",
+      );
+      assert.equal(yield* code("auto", "full-access"), "runtime_mode_escalation_denied");
+    }),
+  );
 });
 
 describe("OrchestratorMcpService thread lookup", () => {
