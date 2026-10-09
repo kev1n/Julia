@@ -16,9 +16,10 @@ import {
   usableInstances,
   type AccountChoice,
 } from "@t3tools/shared/accountChoice";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { providerClients } from "../../components/settings/providerDriverMeta";
+import { type ComposerThreadTarget, useComposerDraftStore } from "../../composerDraftStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { shortPlanLabel } from "./planLabel";
 import { resolveNewChatModelSelection } from "../../modelSelection";
@@ -192,4 +193,87 @@ export function autoPlacementLabel(input: {
         .join(" · ")
     : `${machine.label} · no ${driverLabel} account`;
   return { chip, detail };
+}
+
+const NO_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+
+/**
+ * ChatView's whole Auto account wiring: applies Auto's account and the limited
+ * account switch to the composer, and returns the chip/detail for its line.
+ */
+export function useComposerAutoAccount(input: {
+  readonly composerDraftTarget: ComposerThreadTarget;
+  readonly draftId: string | null;
+  /** The thread's selection, used while the composer has none of its own. */
+  readonly threadModelSelection: ModelSelection | undefined;
+  readonly automaticEnvironment: boolean;
+  /** The machine Auto resolved the draft onto, else null. */
+  readonly autoEnvironmentId: string | null;
+  readonly autoEnvironmentProviders: ReadonlyArray<ServerProvider> | undefined;
+  readonly environments: ReadonlyArray<{ readonly environmentId: string; readonly label: string }>;
+  readonly placement: Parameters<typeof autoPlacementLabel>[0]["placement"];
+  readonly driver: ProviderDriverKind;
+  readonly currentInstanceId: ProviderInstanceId | null;
+  /** Off while the composer cannot change its model (locked or still hydrating). */
+  readonly limitedSwitchEnabled: boolean;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly settings: UnifiedSettings;
+  readonly selectModel: (instanceId: ProviderInstanceId, model: string) => void;
+}) {
+  const { composerDraftTarget, threadModelSelection, selectModel } = input;
+  const composerModelSelection = useComposerDraftStore((store) => {
+    const draft = store.getComposerDraft(composerDraftTarget);
+    return draft?.activeProvider
+      ? (draft.modelSelectionByProvider[draft.activeProvider] ?? null)
+      : null;
+  });
+  const explicit = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.modelSelectionExplicit === true,
+  );
+  const autoEnvironmentId = input.automaticEnvironment ? input.autoEnvironmentId : null;
+  const selectAutoAccount = useCallback(
+    (instanceId: ProviderInstanceId) => {
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      const current =
+        (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
+        threadModelSelection;
+      if (current) selectModel(instanceId, current.model);
+    },
+    [composerDraftTarget, threadModelSelection, selectModel],
+  );
+  const account = useAutoAccount({
+    enabled: input.automaticEnvironment,
+    environmentId: autoEnvironmentId,
+    providers: (autoEnvironmentId && input.autoEnvironmentProviders) || NO_PROVIDERS,
+    driver: input.driver,
+    currentInstanceId: input.currentInstanceId,
+    model: composerModelSelection?.model ?? threadModelSelection?.model,
+    explicit,
+    draftId: input.draftId,
+    select: selectAutoAccount,
+  });
+  const selectLimitedModel = useCallback(
+    (selection: ModelSelection) => selectModel(selection.instanceId, selection.model),
+    [selectModel],
+  );
+  useLimitedAccountSwitch({
+    draftId:
+      !input.limitedSwitchEnabled || (input.automaticEnvironment && !autoEnvironmentId)
+        ? null
+        : input.draftId,
+    providers: input.providers,
+    settings: input.settings,
+    currentSelection: composerModelSelection ?? threadModelSelection ?? null,
+    explicit,
+    select: selectLimitedModel,
+  });
+  return input.automaticEnvironment
+    ? autoPlacementLabel({
+        placement: input.placement,
+        environmentId: autoEnvironmentId,
+        environments: input.environments,
+        driver: input.driver,
+        account,
+      })
+    : undefined;
 }
