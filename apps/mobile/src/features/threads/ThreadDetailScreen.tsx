@@ -13,7 +13,12 @@ import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
 import { createThreadVisitTracker } from "@t3tools/client-runtime/state/thread-visits";
-import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
+import {
+  useChildThreadInputs,
+  useThreadReportedModelSelection,
+  useThreadShell,
+} from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import {
@@ -499,6 +504,37 @@ function ThreadDetailBody(
   const toolCallVisibility = AsyncResult.isSuccess(preferences)
     ? (preferences.value.toolCallVisibility ?? "showAll")
     : "showAll";
+  // Fork (Owner): follow limit failover into the new tab when it happens while this
+  // thread is open. Reopening a thread that already moved on stays put.
+  const selectDetail = useSelectWorkspaceDetail();
+  const continuedInThreadId = props.selectedThread.limitRecovery?.continuedIn;
+  const continuedInShell = useThreadShell(
+    continuedInThreadId === undefined
+      ? null
+      : { environmentId: props.environmentId, threadId: continuedInThreadId },
+  );
+  // Set once this thread was seen not yet moved on, so only a live failover is followed.
+  const continuedInWatchRef = useRef<{ threadKey: string; sawUnmoved: boolean } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows a limit failover that the server reports after this screen opened
+  useEffect(() => {
+    const watch = continuedInWatchRef.current;
+    if (watch?.threadKey !== selectedThreadKey || continuedInThreadId === undefined) {
+      continuedInWatchRef.current = {
+        threadKey: selectedThreadKey,
+        sawUnmoved: continuedInThreadId === undefined,
+      };
+      return;
+    }
+    if (!watch.sawUnmoved || continuedInShell === null) return;
+    watch.sawUnmoved = false;
+    selectDetail({
+      name: "Thread",
+      params: {
+        environmentId: String(continuedInShell.environmentId),
+        threadId: String(continuedInShell.id),
+      },
+    });
+  }, [continuedInShell, continuedInThreadId, selectDetail, selectedThreadKey]);
   const queuedCount = useThreadQueuedCount(props.selectedThreadDetailRef);
   const turnSubagents = useThreadTurnSubagents(props.selectedThreadDetailRef);
   const agentsSegment = resolveSubagentPillSegment(turnSubagents);
