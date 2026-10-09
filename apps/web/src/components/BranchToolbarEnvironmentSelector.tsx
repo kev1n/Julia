@@ -170,12 +170,14 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
           </ComposerContextLabel>
         </TooltipTrigger>
         <TooltipPopup>
-          {canMove
-            ? (moveThread.disabledReason ?? "Move this thread to another machine")
-            : (autoEnvironmentDetail ??
-              autoEnvironmentLabel ??
-              activeEnvironment?.label ??
-              "Run on")}
+          <span className="whitespace-pre-line">
+            {canMove
+              ? (moveThread.disabledReason ?? "Move this thread to another machine")
+              : (autoEnvironmentDetail ??
+                autoEnvironmentLabel ??
+                activeEnvironment?.label ??
+                "Run on")}
+          </span>
           {shortcutLabel ? ` · ${shortcutLabel}` : null}
         </TooltipPopup>
       </Tooltip>
