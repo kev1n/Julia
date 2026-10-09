@@ -1,9 +1,9 @@
 /**
  * Fork (Owner): the subscription behind a provider instance and what it has
  * left, as one line for the model pickers (web composer, phone model sheet),
- * e.g. `owner · Max 20x · 88% session · 61% week`.
+ * e.g. `owner · Max 20x · 88% session · resets 3:40 PM · 61% week`.
  */
-import type { ServerProvider } from "@t3tools/contracts";
+import type { ServerProvider, ServerProviderUsageLimits } from "@t3tools/contracts";
 
 import {
   accountStanding,
@@ -27,6 +27,7 @@ export function accountLimitSummary(provider: AccountSummaryProvider, now: numbe
       ? [limitReachedLabel(provider.usageLimits, now)]
       : [
           standing.sessionLeft === null ? null : `${Math.round(standing.sessionLeft)}% session`,
+          sessionResetLabel(provider.usageLimits, standing.sessionLeft, now),
           standing.weeklyLeft === null ? null : `${Math.round(standing.weeklyLeft)}% week`,
           standing.monthlyLeft === null ? null : `${Math.round(standing.monthlyLeft)}% month`,
         ]),
@@ -35,7 +36,7 @@ export function accountLimitSummary(provider: AccountSummaryProvider, now: numbe
 }
 
 /** `no limit left · back Thu 3:40 PM`: when the last used-up window refills. */
-function limitReachedLabel(limits: ServerProvider["usageLimits"], now: number): string {
+function limitReachedLabel(limits: ServerProviderUsageLimits | undefined, now: number): string {
   const backAt = Math.max(
     ...(limits?.windows ?? [])
       .filter((window) => windowRemainingPercent(window, now) < LIMITED_BELOW_PERCENT)
@@ -43,11 +44,27 @@ function limitReachedLabel(limits: ServerProvider["usageLimits"], now: number): 
       .filter(Number.isFinite),
   );
   if (!Number.isFinite(backAt)) return "no limit left";
-  const sameDay = new Date(backAt).toDateString() === new Date(now).toDateString();
-  const time = new Intl.DateTimeFormat(undefined, {
+  return `no limit left · back ${resetTime(backAt, now)}`;
+}
+
+/** `resets 3:40 PM`: when a partly used session refills; null once it already has. */
+function sessionResetLabel(
+  limits: ServerProviderUsageLimits | undefined,
+  sessionLeft: number | null,
+  now: number,
+): string | null {
+  if (sessionLeft === null || sessionLeft >= 100) return null;
+  const resetsAt = limits?.windows.find((window) => window.kind === "session")?.resetsAt;
+  const at = resetsAt === undefined ? Number.NaN : Date.parse(resetsAt);
+  return Number.isFinite(at) && at > now ? `resets ${resetTime(at, now)}` : null;
+}
+
+/** `3:40 PM` today, `Thu 3:40 PM` on another day. */
+function resetTime(at: number, now: number): string {
+  const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
+  return new Intl.DateTimeFormat(undefined, {
     ...(sameDay ? {} : { weekday: "short" }),
     hour: "numeric",
     minute: "2-digit",
-  }).format(backAt);
-  return `no limit left · back ${time}`;
+  }).format(at);
 }

@@ -21,6 +21,7 @@ import {
   type MuseSdkHost,
 } from "./sdk.ts";
 import { museModelCapabilities, resolveMuseReasoningEffort } from "./modelCatalog.ts";
+import { buildFleetRelationsPrompt } from "@t3tools/provider-core/server/fleetRelationsPrompt";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import {
   generatedThreadTitle,
@@ -362,6 +363,12 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
     Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
   return {
+    generateFleetRelations: (input) =>
+      runMuseJson({
+        operation: "generateFleetRelations",
+        ...buildFleetRelationsPrompt(input.context),
+        modelSelection: input.modelSelection,
+      }),
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
