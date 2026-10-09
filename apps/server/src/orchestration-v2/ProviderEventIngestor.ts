@@ -296,14 +296,20 @@ export const layer: Layer.Layer<
         );
       });
 
+    // A provider turn that ended can no longer answer its open questions. One that was
+    // stopped or failed can no longer answer its approvals either; a completed turn's
+    // background work may still be waiting on them.
     const dismissNativeUserInputs = Effect.fn("ProviderEventIngestor.dismissNativeUserInputs")(
       function* (
         input: ProviderEventIngestInput,
         providerTurnId: ProviderTurnId,
+        status: string,
         threadId = input.threadId,
         retained: ReadonlyArray<RuntimeRequestId> = [],
       ) {
-        const pending = yield* projections.getPendingNativeUserInputs(threadId, providerTurnId);
+        const pending = yield* projections.getPendingNativeUserInputs(threadId, providerTurnId, {
+          includeApprovals: status !== "completed",
+        });
         const now = yield* DateTime.now;
         const events: Array<OrchestrationV2DomainEvent> = [];
         const kept = new Set(retained);
@@ -534,6 +540,7 @@ export const layer: Layer.Layer<
                   ? yield* dismissNativeUserInputs(
                       input,
                       input.event.providerTurn.id,
+                      input.event.providerTurn.status,
                       input.event.threadId,
                       input.event.retainedRuntimeRequestIds,
                     )
@@ -664,6 +671,7 @@ export const layer: Layer.Layer<
               const dismissed = yield* dismissNativeUserInputs(
                 input,
                 input.event.providerTurnId,
+                input.event.status,
                 undefined,
                 input.event.retainedRuntimeRequestIds,
               );

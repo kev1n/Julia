@@ -708,9 +708,14 @@ export interface ProjectionStoreV2Shape {
   readonly getRuntimeRecoveryProjection: (
     threadId: ThreadId,
   ) => Effect.Effect<ProjectionRuntimeRecoveryState, ProjectionStoreV2Error>;
+  /**
+   * Open native questions of a provider turn, and with `includeApprovals` its open
+   * approvals too: a turn that was stopped or failed can no longer answer them.
+   */
   readonly getPendingNativeUserInputs: (
     threadId: ThreadId,
     providerTurnId: ProviderTurnId,
+    options?: { readonly includeApprovals?: boolean },
   ) => Effect.Effect<ProjectionPendingUserInputs, ProjectionStoreV2Error>;
   readonly getPlan: (
     threadId: ThreadId,
@@ -4671,6 +4676,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         const projection = yield* readCanonicalProjection(
           threadId,
           localWindow,
+          // Ancestors contribute timeline items, not their provider/control state.
+          // Keep their runs and attempts for fork boundaries and visibility.
           window !== undefined && seenThreadIds.size > 0
             ? ["runs", "attempts", "turnItems"]
             : undefined,
@@ -5865,14 +5872,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const getPendingNativeUserInputs: ProjectionStoreV2Shape["getPendingNativeUserInputs"] = (
       threadId,
       providerTurnId,
+      options,
     ) =>
       sql
         .withTransaction(
           Effect.gen(function* () {
+            const includeApprovals = options?.includeApprovals === true;
             const rows = yield* sql<PayloadRow>`
           SELECT payload_json FROM orchestration_v2_projection_runtime_requests
           WHERE thread_id = ${threadId} AND provider_turn_id = ${providerTurnId}
-            AND kind = 'user_input' AND status = 'pending'
+            AND (kind = 'user_input' OR ${includeApprovals ? 1 : 0} = 1) AND status = 'pending'
         `;
             const runtimeRequests = (yield* decodeRows(
               decodeRuntimeRequestPayload,
@@ -5889,14 +5898,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const itemRows = yield* sql<PayloadRow>`
           SELECT payload_json FROM orchestration_v2_projection_turn_items
           WHERE thread_id = ${threadId} AND provider_turn_id = ${providerTurnId}
-            AND type = 'user_input_request'
+            AND type IN ('user_input_request', 'approval_request')
         `;
             const requestIds = new Set(runtimeRequests.map((request) => request.id));
             return {
               runtimeRequests,
               nodes: yield* decodeRows(decodeNodePayload, threadId)(nodeRows),
               turnItems: (yield* decodeRows(decodeTurnItemPayload, threadId)(itemRows)).filter(
-                (item) => item.type === "user_input_request" && requestIds.has(item.requestId),
+                (item) =>
+                  (item.type === "user_input_request" || item.type === "approval_request") &&
+                  requestIds.has(item.requestId),
               ),
             };
           }),
