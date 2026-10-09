@@ -23,7 +23,7 @@ once per draft (`useLimitedAccountSwitch`; picking that account again then stick
 the phone moves its default model to the account Auto would use
 (`apps/mobile/src/fork/autoAccount.ts`; a model picked in the draft stays), and a scheduled run
 that starts a new thread moves off its saved account when that account is limited or signed out
-(`apps/server/src/fork/scheduledRunAccount.ts`). A scheduled task bound to a thread keeps the
+(`apps/server/src/fork/accountWithLimitLeft.ts`). A scheduled task bound to a thread keeps the
 thread's account.
 
 **Codex default** (`apps/server/src/fork/codexDefaults.ts`). Codex's catalog marks GPT-6.1-Sol as
@@ -69,13 +69,18 @@ turn stops on a usage limit, the server forks the thread into a new tab of the s
 unchanged) and sends it "continue where you left off" on the first model in Settings > General >
 Continue limited threads on another account whose provider has an account other than the limited
 one with usage left, on the account Auto would pick. The default list is Claude Opus 5.5, then
-GPT-6.1 Sol; on by default. The source thread's limit recovery is set off for that run, which marks
+GPT-6.1 Sol; on by default. Replacements must support the chosen model and options, and only
+global or matching model-family quota windows determine its capacity. App-owned subagents retry
+in their existing thread on a compatible account, bounded to three continuations within five
+minutes. Stop cancels recovery. Parents with outstanding delegate results stay in place and
+can receive those results on a compatible account, preserving task ownership.
+The source thread's limit recovery is set off for a forked run, which marks
 it handled and keeps auto-resume from also resuming it, and names the new tab (`continuedIn`), so
 every client shows the source as finished instead of Limited and drops its recovery banner. Only a
 thread no fallback could take reads Limited; with no account left anywhere, auto-resume and snooze
 apply as before. The web "Usage limit reached" alert waits 12 seconds (past one sweep) and is
-dropped if the thread moved meanwhile. Subagent threads are left alone (their result belongs to the parent's
-run). It runs inside upstream's usage-limit sweep, so it works with no client connected and
+dropped if the thread moved meanwhile. Top-level failover runs inside upstream's usage-limit
+sweep; child recovery is reserved when the failed turn commits. Both work with no client connected and
 survives restarts; its command ids derive from the failed run, so a sweep cut short repeats the
 same commands. The phone has the switch (Settings > Threads); the model list is on desktop and web.
 

@@ -732,6 +732,7 @@ export const layer: Layer.Layer<
     const writeFinalRunEvents = Effect.fn("RunExecutionService.writeFinalRunEvents")(
       function* (input: {
         readonly run: OrchestrationV2Run;
+        readonly delegatedChild: boolean;
         readonly rootNode: OrchestrationV2ExecutionNode;
         readonly checkpointScope: OrchestrationV2CheckpointScope;
         readonly providerThread: OrchestrationV2ProviderThread;
@@ -875,9 +876,38 @@ export const layer: Layer.Layer<
           `command:effect:checkpoint.capture:${input.run.id}`,
         );
         // Stopped runs capture rollback points for the next message; enqueue before later starts on this effect lane.
+        // Reserve recovery in the terminal transaction, before the parent can
+        // publish this failure. The replay-safe effect selects a live target.
+        const recoverCapacity =
+          input.delegatedChild &&
+          input.terminal.status === "failed" &&
+          (input.terminal.failure.class === "usage_limit" ||
+            input.terminal.failure.code === "api_error_429") &&
+          (yield* serverSettings.getSettings.pipe(
+            Effect.map((settings) => settings.continueLimitedThreadsElsewhere),
+            Effect.orElseSucceed(() => false),
+          ));
+        const recoveryEffects = recoverCapacity
+          ? [
+              {
+                id: `effect:capacity-continuation:${input.run.id}`,
+                commandId: CommandId.make(`command:capacity-continuation:${input.run.id}`),
+                threadId: input.run.threadId,
+                request: { type: "provider-capacity.continue" as const, sourceRunId: input.run.id },
+                // Transient throttles retry on the same account with bounded backoff.
+                ...(input.terminal.status === "failed" &&
+                input.terminal.failure.class !== "usage_limit"
+                  ? {
+                      availableAt: DateTime.makeUnsafe(DateTime.toEpochMillis(completedAt) + 2_000),
+                    }
+                  : {}),
+              },
+            ]
+          : [];
         const finalization = {
-          effects:
-            input.terminal.status === "completed" ||
+          effects: [
+            ...recoveryEffects,
+            ...(input.terminal.status === "completed" ||
             input.terminal.status === "interrupted" ||
             input.terminal.status === "cancelled"
               ? [
@@ -892,7 +922,8 @@ export const layer: Layer.Layer<
                     },
                   },
                 ]
-              : [],
+              : []),
+          ],
           events: [
             ...cascadedSubagentEvents,
             ...(yield* interruptLostToolCalls({
@@ -1179,6 +1210,7 @@ export const layer: Layer.Layer<
                 cause,
               });
               yield* writeFinalRunEvents({
+                delegatedChild: input.appThread.lineage?.relationshipToParent === "subagent",
                 run: input.run,
                 rootNode: input.rootNode,
                 checkpointScope: input.checkpointScope,
@@ -1320,6 +1352,7 @@ export const layer: Layer.Layer<
                   ? yield* input.loadDroppedInlineHandoffs()
                   : undefined;
               return yield* writeFinalRunEvents({
+                delegatedChild: input.appThread.lineage?.relationshipToParent === "subagent",
                 run: input.run,
                 rootNode: input.rootNode,
                 checkpointScope: input.checkpointScope,
@@ -2185,6 +2218,7 @@ export const layer: Layer.Layer<
                     : [];
                   let nextRetryWarningAt = completedAt;
                   yield* writeFinalRunEvents({
+                    delegatedChild: input.appThread.lineage?.relationshipToParent === "subagent",
                     run: input.run,
                     rootNode: input.rootNode,
                     checkpointScope: input.checkpointScope,
@@ -2361,6 +2395,8 @@ export const layer: Layer.Layer<
                     Ref.get(openRunOwnedSubagents).pipe(
                       Effect.flatMap((openSubagents) =>
                         writeFinalRunEvents({
+                          delegatedChild:
+                            input.appThread.lineage?.relationshipToParent === "subagent",
                           run: input.run,
                           rootNode: input.rootNode,
                           checkpointScope: input.checkpointScope,
