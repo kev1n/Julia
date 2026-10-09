@@ -12,6 +12,7 @@ import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
@@ -41,6 +42,7 @@ it.effect("idle sweeps skip SQL until the next wake time or a relevant event", (
           }),
           Layer.mock(ThreadManagement.ThreadManagementService)({}),
           Layer.mock(ProviderRegistry)({}),
+          Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
           Layer.mock(Orchestrator.OrchestratorV2)({
             streamDomainEvents: Stream.fromQueue(events),
           }),
