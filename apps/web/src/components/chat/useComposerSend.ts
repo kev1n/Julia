@@ -1317,7 +1317,7 @@ export function useComposerSend(input: ComposerSendInput) {
             stackedThreadToast({
               type: "warning",
               title: "Could not open a fresh composer",
-              description: error instanceof Error ? error.message : undefined,
+              ...(error instanceof Error ? { description: error.message } : {}),
             }),
           );
         }
