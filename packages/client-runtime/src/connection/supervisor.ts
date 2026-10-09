@@ -40,9 +40,9 @@ import {
 } from "./routes.ts";
 
 const RETRY_BASE_DELAY_MS = 1_000;
-const RETRY_MAX_DELAY_MS = 300_000;
-// A cold server with a large database can take longer than 15 seconds to
-// answer, and that is not a reason to drop a working connection.
+// Short enough that one environment dropping its sessions repeatedly (a flaky
+// relayed path) still comes back within half a minute of being reachable.
+const RETRY_MAX_DELAY_MS = 30_000;
 const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
 const establishmentTimeout = Duration.fromInputUnsafe(CONNECTION_ESTABLISHMENT_TIMEOUT);
 const synchronizationTimeout = Duration.fromInputUnsafe("75 seconds");
