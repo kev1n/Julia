@@ -516,6 +516,7 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "composer.previousWorktree": msg("Composer: Previous Worktree"),
   "composer.branch": msg("Composer: Branch"),
   "chat.new": msg("Chat: New"),
+  "chat.newTab": msg("Chat: New Tab"),
   "chat.newLocal": msg("Chat: New Local"),
   "chat.newWithoutProject": msg("Chat: New Without Project"),
   "chat.find": msg("Chat: Find"),
