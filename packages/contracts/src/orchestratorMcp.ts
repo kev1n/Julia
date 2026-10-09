@@ -130,6 +130,20 @@ export type OrchestratorMcpTarget = typeof OrchestratorMcpTarget.Type;
 export const OrchestratorMcpRuntimeMode = Schema.Union([Schema.Literal("inherit"), RuntimeMode]);
 export type OrchestratorMcpRuntimeMode = typeof OrchestratorMcpRuntimeMode.Type;
 
+/**
+ * Fork (Owner): a delegated task runs unattended, so it never takes a mode that
+ * stops to ask for approval. Its prompts would sit in a child thread nobody is
+ * watching (apps/server/src/mcp/OrchestratorMcpService.ts resolveDelegatedRuntimeMode).
+ */
+export const OrchestratorMcpDelegatedRuntimeMode = Schema.Literals([
+  "inherit",
+  "auto",
+  "full-access",
+]).annotate({
+  description:
+    "Delegated tasks never run in approval-required or auto-accept-edits; a parent in either mode cannot delegate.",
+});
+
 export const OrchestratorMcpInteractionMode = Schema.Union([
   Schema.Literal("inherit"),
   ProviderInteractionMode,
@@ -187,12 +201,7 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     description: "Mode 'wait' only. Default 4 min. A timeout does not cancel the child.",
   }),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
-  runtimeMode: Schema.optional(
-    OrchestratorMcpRuntimeMode.annotate({
-      description:
-        "Omit unless the user asks for a supervised child. Narrow modes pause for human approval, not read-only. Above yours is rejected.",
-    }),
-  ),
+  runtimeMode: Schema.optional(OrchestratorMcpDelegatedRuntimeMode),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
   /** Fork (Owner): run the child on another fleet machine (apps/server/src/fork/fleet/remoteTasks.ts). */
   machine: Schema.optional(
@@ -919,6 +928,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "provider_unavailable",
       "model_unavailable",
       "runtime_mode_escalation_denied",
+      "runtime_mode_requires_approval",
       "interaction_mode_escalation_denied",
       "task_not_found",
       "task_not_cancellable",
