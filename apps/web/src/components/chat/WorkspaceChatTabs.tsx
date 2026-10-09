@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue } from "@effect/atom-react";
 import { ChevronDownIcon, MessageSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useThreadShellsForProjectRefs } from "../../state/entities";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { primaryServerKeybindingsAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -41,6 +44,8 @@ export function WorkspaceChatTabs(props: {
   );
   const closingRef = useRef<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const newTabShortcut = shortcutLabelForCommand(keybindings, "chat.newTab");
   const chats = useMemo(() => workspaceChatTabs(threads, workspaceKey), [threads, workspaceKey]);
   const visible = chats.filter(
     (thread) => thread.id === props.activeThread.id || !closed.includes(thread.id),
@@ -93,7 +98,7 @@ export function WorkspaceChatTabs(props: {
         ref={viewportRef}
         role="tablist"
         aria-label="Workspace chats"
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto"
       >
         {visible.map((thread) => {
           const active = props.isServerThread && thread.id === props.activeThread.id;
@@ -188,36 +193,42 @@ export function WorkspaceChatTabs(props: {
         >
           <PlusIcon aria-hidden className="size-4" />
         </TooltipTrigger>
-        <TooltipPopup>New chat in this workspace</TooltipPopup>
+        <TooltipPopup>
+          New chat in this workspace{newTabShortcut ? ` (${newTabShortcut})` : ""}
+        </TooltipPopup>
       </Tooltip>
-      <ForkChatMenu
-        size="icon-lg"
-        label="Fork chat"
-        disabled={!props.canFork}
-        onFork={props.onForkChat}
-      />
-      {hidden.length > 0 ? (
-        <Menu>
-          <MenuTrigger
-            render={<button type="button" aria-label="Reopen a chat tab" className={actionClass} />}
-          >
-            <ChevronDownIcon aria-hidden className="size-4" />
-          </MenuTrigger>
-          <MenuPopup>
-            {hidden.map((thread) => (
-              <MenuItem
-                key={thread.id}
-                onClick={() => {
-                  setClosed((ids) => ids.filter((id) => id !== thread.id));
-                  void openChat(thread);
-                }}
-              >
-                {thread.title}
-              </MenuItem>
-            ))}
-          </MenuPopup>
-        </Menu>
-      ) : null}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <ForkChatMenu
+          size="icon-lg"
+          label="Fork chat"
+          disabled={!props.canFork}
+          onFork={props.onForkChat}
+        />
+        {hidden.length > 0 ? (
+          <Menu>
+            <MenuTrigger
+              render={
+                <button type="button" aria-label="Reopen a chat tab" className={actionClass} />
+              }
+            >
+              <ChevronDownIcon aria-hidden className="size-4" />
+            </MenuTrigger>
+            <MenuPopup>
+              {hidden.map((thread) => (
+                <MenuItem
+                  key={thread.id}
+                  onClick={() => {
+                    setClosed((ids) => ids.filter((id) => id !== thread.id));
+                    void openChat(thread);
+                  }}
+                >
+                  {thread.title}
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        ) : null}
+      </div>
     </div>
   );
 }

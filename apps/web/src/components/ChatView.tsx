@@ -119,7 +119,16 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
-import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type SetStateAction,
+  use,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { GitForkIcon } from "lucide-react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -197,7 +206,7 @@ import { isModelPickerOpen } from "../modelPickerVisibility";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
-import { newMessageId } from "~/lib/utils";
+import { newMessageId, newThreadId } from "~/lib/utils";
 import { isInSideChatPane, type SideChatParentPanel } from "~/lib/sideChatPane";
 import {
   NO_PROVIDER_MODEL_SELECTION,
@@ -214,6 +223,9 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { WorkspaceChatTabs } from "./chat/WorkspaceChatTabs";
+import { setChatTabOrigin, useChatTabOriginStore } from "./chat/chatTabOrigins";
+import { Button } from "./ui/button";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { focusTerminalOnThreadEnter, getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -265,6 +277,7 @@ import {
   useThreadHistory,
   useQuietThreadShell,
   useThreadCheckpointSummaries,
+  waitForThreadShell,
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
@@ -2671,6 +2684,7 @@ export default function ChatView(props: ChatViewProps) {
     terminalOpen: Boolean(terminalUiState.terminalOpen),
     previewFocus: isPreviewFocused(),
     previewOpen: previewPanelOpen,
+    rightPanelOpen,
     editableFocus: isEditableFocused(eventTarget),
     modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
     composerFocus:
@@ -2719,6 +2733,9 @@ export default function ChatView(props: ChatViewProps) {
         if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)
           return false;
         openThreadFind(activeThreadKey);
+      },
+      "chat.newTab": ({ event }) => {
+        if (!event.repeat) openNewChatTab();
       },
       "composer.cycleHost": ({ event }) => {
         if (!canChangeEnvironment) return false;
@@ -2826,6 +2843,109 @@ export default function ChatView(props: ChatViewProps) {
       baseComposerDraftTarget,
       setThreadError,
     });
+  const forkThreadFromRun = useAtomCommand(threadEnvironment.forkFromRun, {
+    reportFailure: false,
+  });
+  const canForkChat =
+    isServerThread &&
+    !activeEnvironmentUnavailable &&
+    !isWorking &&
+    threadSupportsCompactFork(serverProjection) &&
+    activeLatestRun !== null &&
+    ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(
+      activeLatestRun.status,
+    ) &&
+    canOperateThread;
+  const newChatTab = async () => {
+    if (!activeThread || !activeProjectRef) return;
+    const created = await handleNewThread(activeProjectRef, {
+      branch: activeThread.branch,
+      worktreePath: activeThread.worktreePath,
+      chatGroupId: activeThread.chatGroupId,
+      envMode: activeThread.worktreePath ? "worktree" : "local",
+    });
+    // A tab opened from a draft keeps whatever origin that draft already had.
+    if (!created || !isServerThread) return;
+    setChatTabOrigin(
+      created.draftId,
+      canForkChat && activeLatestRun
+        ? {
+            threadRef: scopeThreadRef(environmentId, activeThread.id),
+            runId: activeLatestRun.runId,
+            title: activeThread.title,
+            chatGroupId: activeThread.chatGroupId ?? null,
+          }
+        : null,
+    );
+  };
+  const forkChat = async (destination: "tab" | "thread") => {
+    if (!activeThread || !activeLatestRun) return;
+    await onForkFromRunStable({
+      sourceThreadId: activeThread.id,
+      runId: activeLatestRun.runId,
+      destination,
+    });
+  };
+  const openNewChatTab = useEffectEvent(() => {
+    if (!canOperateThread || activeEnvironmentUnavailable) return;
+    void newChatTab();
+  });
+  const chatTabOrigin = useChatTabOriginStore((state) =>
+    draftId === null ? null : (state.byDraftId[draftId] ?? null),
+  );
+  const [isBringingInContext, setIsBringingInContext] = useState(false);
+  // Swaps this new-tab draft for a fork of the chat it was opened from, keeping
+  // whatever the user has already typed.
+  const bringInChatTabOrigin = async () => {
+    if (!chatTabOrigin || draftId === null || isBringingInContext) return;
+    const origin = chatTabOrigin;
+    setIsBringingInContext(true);
+    try {
+      const targetThreadRef = scopeThreadRef(origin.threadRef.environmentId, newThreadId());
+      const result = await forkThreadFromRun({
+        environmentId: origin.threadRef.environmentId,
+        input: {
+          sourceThreadId: origin.threadRef.threadId,
+          targetThreadId: targetThreadRef.threadId,
+          runId: origin.runId,
+          title: `${origin.title} fork`,
+          contextMode: "without_tool_results",
+          destination: "tab",
+          chatGroupId: origin.chatGroupId,
+        },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add({
+            type: "error",
+            title: "Could not bring in that chat's context",
+            ...(error instanceof Error ? { description: error.message } : {}),
+          });
+        }
+        return;
+      }
+      if (!(await waitForThreadShell(targetThreadRef))) {
+        toastManager.add({
+          type: "error",
+          title: "The fork was created, but its thread did not reach this client",
+          description: "Reconnect and open it from the sidebar.",
+        });
+        return;
+      }
+      const draftStore = useComposerDraftStore.getState();
+      draftStore.moveComposerPromptAndImages(draftId, targetThreadRef);
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(targetThreadRef),
+        replace: true,
+      });
+      draftStore.clearDraftThread(draftId);
+      setChatTabOrigin(draftId, null);
+    } finally {
+      setIsBringingInContext(false);
+    }
+  };
   const onCompactContext = () => {
     if (compactDisabled) return;
     void sendStandaloneCommand("/compact", "Failed to compact context.");
@@ -3393,34 +3513,9 @@ export default function ChatView(props: ChatViewProps) {
           activeThread={activeThread}
           isServerThread={isServerThread}
           canCreate={!activeEnvironmentUnavailable && canOperateThread}
-          canFork={
-            isServerThread &&
-            !activeEnvironmentUnavailable &&
-            !isWorking &&
-            threadSupportsCompactFork(serverProjection) &&
-            activeLatestRun !== null &&
-            ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(
-              activeLatestRun.status,
-            ) &&
-            canOperateThread
-          }
-          onNewChat={() => {
-            if (!activeProjectRef) return;
-            void handleNewThread(activeProjectRef, {
-              branch: activeThread.branch,
-              worktreePath: activeThread.worktreePath,
-              chatGroupId: activeThread.chatGroupId,
-              envMode: activeThread.worktreePath ? "worktree" : "local",
-            });
-          }}
-          onForkChat={async (destination) => {
-            if (!activeLatestRun) return;
-            await onForkFromRunStable({
-              sourceThreadId: activeThread.id,
-              runId: activeLatestRun.runId,
-              destination,
-            });
-          }}
+          canFork={canForkChat}
+          onNewChat={() => void newChatTab()}
+          onForkChat={forkChat}
         />
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -3610,6 +3705,22 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
                         />
+                        {chatTabOrigin ? (
+                          <div className="mt-3 flex justify-center">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isBringingInContext || !canOperateThread}
+                              onClick={() => void bringInChatTabOrigin()}
+                            >
+                              <GitForkIcon aria-hidden />
+                              <span className="truncate">
+                                Bring in context from {chatTabOrigin.title}
+                              </span>
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
