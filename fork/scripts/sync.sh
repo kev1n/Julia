@@ -135,6 +135,11 @@ $autofix_note
 The agent's branch then failed the sync's own rerun: $problem
 The agent's work is kept in $autofix/worktree."
   git worktree remove --force "$autofix/worktree" && git branch -q -D "autofix/$(basename "$autofix")"
+  # The chat's folder is gone, so settle it rather than leave a thread whose
+  # next message fails. Best effort: the release does not depend on it.
+  node fork/scripts/autofix-thread.mjs settle \
+    "$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["threadId"])' "$autofix/thread.json")" ||
+    echo "!! Could not settle the auto-fix chat."
   echo "Auto-fix accepted: $(git rev-parse --short HEAD) passed the same checks and build."
 fi
 

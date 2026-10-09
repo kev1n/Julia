@@ -1,12 +1,15 @@
 // Runs one agent chat on this Mac's T3 Code server and waits for it to finish,
 // so the sync's auto-fix shows up in Owner's app like any other thread.
 //   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
+//   node fork/scripts/autofix-thread.mjs settle <thread-id>
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
 // existing git worktree <worktree> with full access on the account
 // `autofixModelSelection` picks from the "Fork sync auto-fix models" setting,
 // and blocks until its run ends or <limit-seconds> pass;
 // then it stops the chat's turn (as the Stop button does) and reports
 // status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
+// `settle` settles a finished chat once the sync has accepted its branch and
+// removed its worktree, since a follow-up message there could only fail.
 // It speaks the server's WebSocket RPC (Effect RPC JSON) with a short-lived
 // session from `t3 auth session issue`, revoked on exit.
 import { execFileSync } from "node:child_process";
@@ -14,17 +17,15 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
 
-import { autofixModelSelection } from "../../apps/server/src/fork/autofixAccount.ts";
-import { DEFAULT_SERVER_SETTINGS } from "../../packages/contracts/src/settings.ts";
 
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
-if (!limitSeconds)
+const settling = repoRoot === "settle" && worktree !== undefined;
+if (!limitSeconds && !settling)
   throw new Error(
-    "usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>",
+    "usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds> | settle <thread-id>",
   );
 const server = "http://127.0.0.1:3773";
 const t3 = `${process.env.HOME}/.local/bin/t3`;
-const root = realpathSync(repoRoot);
 // A run is over once it reaches one of these and no background work remains.
 const ended = new Set(["idle", "completed", "interrupted", "failed", "cancelled", "rolled_back"]);
 
@@ -100,6 +101,20 @@ async function projects(conn) {
   });
 }
 
+if (settling) {
+  const conn = await connect();
+  await conn.call("orchestration.dispatchCommand", {
+    type: "thread.settle",
+    commandId: randomUUID(),
+    threadId: worktree,
+  });
+  conn.ws.close();
+  process.exit(0);
+}
+
+const { autofixModelSelection } = await import("../../apps/server/src/fork/autofixAccount.ts");
+const { DEFAULT_SERVER_SETTINGS } = await import("../../packages/contracts/src/settings.ts");
+const root = realpathSync(repoRoot);
 const environment = await (await fetch(`${server}/.well-known/t3/environment`)).json();
 let conn = await connect();
 let project = (await projects(conn)).find((p) => p.workspaceRoot === root);
