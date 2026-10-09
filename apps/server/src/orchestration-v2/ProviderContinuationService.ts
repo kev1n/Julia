@@ -1,3 +1,12 @@
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
+import { accountWithLimitLeft } from "../fork/accountWithLimitLeft.ts";
+import {
+  latestExecutedRun,
+  latestRootProviderFailure,
+} from "@t3tools/shared/orchestrationV2ThreadError";
+import * as Option from "effect/Option";
+import * as DateTime from "effect/DateTime";
 import { CommandId, type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -55,6 +64,8 @@ export const layer = Layer.effectDiscard(
     const ids = yield* IdAllocator.IdAllocatorV2;
     const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
     const threads = yield* ThreadManagementService.ThreadManagementService;
+    const providers = yield* Effect.serviceOption(ProviderRegistry);
+    const adapters = yield* Effect.serviceOption(ProviderAdapterRegistry.ProviderAdapterRegistryV2);
     const retryAttempts = yield* Ref.make(new Map<string, number>());
 
     const clearRetryAttempt = (key: string) =>
@@ -77,15 +88,22 @@ export const layer = Layer.effectDiscard(
       function* (request: ProviderContinuationRequests.ProviderContinuationRequest) {
         const projection = yield* threads.getThreadRecords(
           request.threadId,
-          ["messages", "runs", "providerTurns"],
+          ["messages", "runs", "providerTurns", "turnItems"],
           {
+            turnItemTypes: ["error"],
             messageIds:
               request.delegatedCompletion === undefined
                 ? []
                 : [request.delegatedCompletion.messageId],
           },
         );
-        if (projection.thread.archivedAt !== null || projection.thread.deletedAt !== null) {
+        if (
+          projection.thread.archivedAt !== null ||
+          projection.thread.deletedAt !== null ||
+          (projection.thread.limitRecovery?.continuedIn !== undefined &&
+            (request.delegatedCompletion?.parentRunId === projection.thread.limitRecovery.runId ||
+              latestExecutedRun(projection.runs)?.id === projection.thread.limitRecovery.runId))
+        ) {
           yield* Effect.logInfo("orchestration-v2.provider-continuation.thread-archived", {
             threadId: request.threadId,
             providerThreadId: request.providerThreadId,
@@ -116,9 +134,29 @@ export const layer = Layer.effectDiscard(
             fixtureName: "delegated-completion",
             commandName: "dispatch",
           });
+          const latest = latestExecutedRun(projection.runs);
+          const limited =
+            latestRootProviderFailure(latest, projection.turnItems)?.class === "usage_limit";
+          const modelSelection =
+            limited &&
+            latest?.status === "failed" &&
+            Option.isSome(providers) &&
+            Option.isSome(adapters)
+              ? accountWithLimitLeft(
+                  projection.thread.modelSelection,
+                  yield* providers.value.getProviders,
+                  DateTime.toEpochMillis(yield* DateTime.now),
+                  {
+                    force: true,
+                    eligibleInstanceIds: new Set(yield* adapters.value.list()),
+                    excludedInstanceIds: new Set([latest.providerInstanceId]),
+                  },
+                )
+              : undefined;
           yield* threads
             .dispatch({
               type: "message.dispatch",
+              ...(modelSelection === undefined ? {} : { modelSelection }),
               commandId,
               threadId: request.threadId,
               messageId: delivery.messageId,

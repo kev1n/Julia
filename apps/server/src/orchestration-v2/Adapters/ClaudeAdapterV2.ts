@@ -4156,10 +4156,7 @@ function providerFailureFromResult(
       resetAt: gatewayResetAt,
     });
   }
-  const failureClass =
-    (message.subtype === "success" && message.api_error_status === 429) || usageLimited
-      ? "usage_limit"
-      : "provider_error";
+  const failureClass = usageLimited ? "usage_limit" : "provider_error";
   const listedError = resultUserFacingError(message);
   const apiErrorMessage =
     message.subtype === "success" &&
@@ -4211,12 +4208,7 @@ function providerFailureFromApiRetry(message: SDKAPIRetryMessage): Orchestration
       message.error_status === null
         ? message.error
         : `api_error_${Math.trunc(message.error_status)}`,
-    class:
-      message.error_status === 429
-        ? "usage_limit"
-        : message.error_status === null
-          ? "transport_error"
-          : "provider_error",
+    class: message.error_status === null ? "transport_error" : "provider_error",
     retryable: true,
   });
 }

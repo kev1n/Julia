@@ -87,6 +87,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { accountWithLimitLeft } from "../fork/accountWithLimitLeft.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import {
   subagentResultForRun,
@@ -1329,6 +1330,13 @@ const make = Effect.gen(function* () {
     const requestedInstanceId = input.target?.providerInstanceId;
     const requestedDriver = input.target?.driverKind;
     const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
+    const enabledForProject = (candidateInstanceId: ServerProvider["instanceId"]) =>
+      input.skipProjectEnablementFilter === true
+        ? Effect.succeed(true)
+        : threadManagement.isProviderInstanceEnabledForProject({
+            projectId: input.parent.thread.projectId,
+            instanceId: candidateInstanceId,
+          });
     let instanceId = requestedInstanceId;
 
     if (instanceId === undefined && requestedDriver !== undefined) {
@@ -1343,24 +1351,24 @@ const make = Effect.gen(function* () {
           `No V2 provider adapter is registered for driver ${requestedDriver}.`,
         );
       }
+      // Preserve the parent's model/options even when its account cannot run;
+      // compatible account selection below resolves availability. An instance
+      // the project turned off cannot serve the child, so selection skips it
+      // for the next healthy candidate instead of failing the enablement check.
       const healthyCandidates = candidates.filter(
         (candidate) => providerConstraints(candidate, true).length === 0,
       );
-      const inheritedCandidate = healthyCandidates.find(
-        (candidate) => candidate.instanceId === input.parent.thread.modelSelection.instanceId,
+      const inheritedCandidate = input.providers.find(
+        (candidate) =>
+          candidate.instanceId === input.parent.thread.modelSelection.instanceId &&
+          candidate.driver === requestedDriver,
       );
       const orderedCandidates = [
         ...(inheritedCandidate === undefined ? [] : [inheritedCandidate]),
         ...healthyCandidates.filter((candidate) => candidate !== inheritedCandidate),
       ];
       for (const candidate of orderedCandidates) {
-        const enabledForProject =
-          input.skipProjectEnablementFilter === true ||
-          (yield* threadManagement.isProviderInstanceEnabledForProject({
-            projectId: input.parent.thread.projectId,
-            instanceId: candidate.instanceId,
-          }));
-        if (enabledForProject) {
+        if (yield* enabledForProject(candidate.instanceId)) {
           instanceId = candidate.instanceId;
           break;
         }
@@ -1389,15 +1397,16 @@ const make = Effect.gen(function* () {
         `Provider instance ${instanceId} uses driver ${provider.driver}, not ${requestedDriver}.`,
       );
     }
-    const constraints = providerConstraints(
-      provider,
-      orchestrationCapableInstanceIds.has(provider.instanceId),
-    );
-    if (constraints.length > 0) {
-      return yield* failure(
-        "provider_unavailable",
-        `Provider ${instanceId} cannot run a child task: ${constraints.join(" ")}`,
+    if (requestedInstanceId !== undefined) {
+      const constraints = providerConstraints(
+        provider,
+        orchestrationCapableInstanceIds.has(provider.instanceId),
       );
+      if (constraints.length > 0)
+        return yield* failure(
+          "provider_unavailable",
+          `Provider ${instanceId} cannot run a child task: ${constraints.join(" ")}`,
+        );
     }
 
     const inheritedSelection = input.parent.thread.modelSelection;
@@ -1413,29 +1422,11 @@ const make = Effect.gen(function* () {
         `Provider ${instanceId} has no model available for inheritance.`,
       );
     }
-    if (
-      requestedModel !== undefined &&
-      provider.models.length > 0 &&
-      !provider.models.some((candidate) => candidate.slug === requestedModel)
-    ) {
-      return yield* failure(
-        "model_unavailable",
-        `Model ${requestedModel} is not advertised by provider ${instanceId}.`,
-      );
-    }
-
+    // Fork (Owner): model and options are checked against the account the
+    // child resolves to below, which may differ from an unavailable inherited one.
     const descriptors = provider.models.find((candidate) => candidate.slug === model)?.capabilities
       ?.optionDescriptors;
     const requestedOptions = withLegacyUltracodeEffort(descriptors, input.target?.options);
-    if (requestedOptions !== undefined) {
-      const invalid = invalidOptionSelections(requestedOptions, descriptors);
-      if (invalid.length > 0) {
-        return yield* failure(
-          "invalid_request",
-          `Model ${model} on provider ${instanceId} rejected options: ${invalid.join(" ")}`,
-        );
-      }
-    }
 
     const inheritsOptions =
       instanceId === inheritedSelection.instanceId && model === inheritedSelection.model;
@@ -1457,9 +1448,60 @@ const make = Effect.gen(function* () {
       }
       options = [...selections.values()];
     }
+    const modelSelection = { instanceId, model, ...(options === undefined ? {} : { options }) };
+    // Fork (Owner): an explicit account is a pin. Only inherited/Auto targets may move
+    // to a compatible account with limits left.
+    const now = yield* Clock.currentTimeMillis;
+    const movesAccount =
+      requestedInstanceId === undefined &&
+      accountWithLimitLeft(modelSelection, input.providers, now).instanceId !== instanceId;
+    const resolved = movesAccount
+      ? accountWithLimitLeft(modelSelection, input.providers, now, {
+          // Moving to another account must not land on one the project turned off.
+          eligibleInstanceIds: new Set(
+            yield* Effect.filter(orchestrationCapableInstanceIds, enabledForProject),
+          ),
+        })
+      : modelSelection;
+    const finalProvider =
+      input.providers.find((candidate) => candidate.instanceId === resolved.instanceId) ??
+      provider;
+    if (
+      requestedModel !== undefined &&
+      finalProvider.models.length > 0 &&
+      !finalProvider.models.some((candidate) => candidate.slug === requestedModel)
+    ) {
+      return yield* failure(
+        "model_unavailable",
+        `Model ${requestedModel} is not advertised by provider ${resolved.instanceId}.`,
+      );
+    }
+    const constraints = providerConstraints(
+      finalProvider,
+      orchestrationCapableInstanceIds.has(resolved.instanceId),
+    );
+    if (constraints.length > 0) {
+      return yield* failure(
+        "provider_unavailable",
+        `Provider ${resolved.instanceId} cannot run a child task: ${constraints.join(" ")}`,
+      );
+    }
+    if (requestedOptions !== undefined || resolved.instanceId !== instanceId) {
+      const invalid = invalidOptionSelections(
+        resolved.instanceId === instanceId ? (requestedOptions ?? []) : (resolved.options ?? []),
+        finalProvider.models.find((candidate) => candidate.slug === model)?.capabilities
+          ?.optionDescriptors,
+      );
+      if (invalid.length > 0) {
+        return yield* failure(
+          "invalid_request",
+          `Model ${model} on provider ${resolved.instanceId} rejected options: ${invalid.join(" ")}`,
+        );
+      }
+    }
     return {
-      modelSelection: { instanceId, model, ...(options === undefined ? {} : { options }) },
-      supportedRuntimeModes: provider.supportedRuntimeModes,
+      modelSelection: resolved,
+      supportedRuntimeModes: finalProvider.supportedRuntimeModes,
     };
   });
 
@@ -2770,9 +2812,14 @@ const make = Effect.gen(function* () {
           status: cancelled ? "cancelled" : current.status,
         } satisfies OrchestratorMcpTaskCancelResult;
       }
+      // Stop reaches live turns, descendants, and durable recovery reservations.
+      // An unstarted task with none of these keeps its delivery.
       const child = yield* loadThreadRecords(childThreadId, ["runs"]);
       if (
         current.workState !== "waiting_for_children" &&
+        !(yield* threadManagement
+          .delegatedTaskResultPending(current.childThreadId)
+          .pipe(Effect.mapError(threadManagementFailure))) &&
         ThreadManagementService.latestActiveRun(child) === undefined &&
         !child.runs.some(
           (run) =>
