@@ -16,11 +16,12 @@ import {
   usableInstances,
   type AccountChoice,
 } from "@t3tools/shared/accountChoice";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { providerClients } from "../../components/settings/providerDriverMeta";
 import { type ComposerThreadTarget, useComposerDraftStore } from "../../composerDraftStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { accountUsageParts } from "../usageByAccount/accountSummary";
 import { shortPlanLabel } from "./planLabel";
 import { resolveNewChatModelSelection } from "../../modelSelection";
 
@@ -52,19 +53,16 @@ export function useAutoAccount(input: {
   } = input;
   // Minute resolution is enough: a window that resets re-ranks within the minute.
   const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
-  const choice = useMemo(
-    () =>
-      enabled && environmentId
-        ? chooseAutoAccount(
-            usableInstances(providers, driver).filter((provider) =>
-              provider.models.some((candidate) => candidate.slug === model),
-            ),
-            (provider) => provider.usageLimits,
-            now,
-          )
-        : null,
-    [enabled, environmentId, providers, driver, model, now],
-  );
+  const choice =
+    enabled && environmentId
+      ? chooseAutoAccount(
+          usableInstances(providers, driver).filter((provider) =>
+            provider.models.some((candidate) => candidate.slug === model),
+          ),
+          (provider) => provider.usageLimits,
+          now,
+        )
+      : null;
   const appliedRef = useRef<string | null>(null);
   const chosenInstanceId = choice?.account.instanceId ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes Auto's account choice into the draft store once per draft and model
@@ -103,7 +101,7 @@ export function useLimitedAccountSwitch(input: {
 }) {
   const { draftId, providers, settings, currentSelection, explicit, select } = input;
   const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
-  const target = useMemo(() => {
+  const target = (() => {
     if (draftId === null || explicit || currentSelection === null) return null;
     const current = providers.find(
       (provider) => provider.instanceId === currentSelection.instanceId,
@@ -111,7 +109,7 @@ export function useLimitedAccountSwitch(input: {
     if (!current || !accountStanding(current.usageLimits, now).limited) return null;
     const choice = resolveNewChatModelSelection(currentSelection, settings, providers, now);
     return choice !== currentSelection ? choice : null;
-  }, [draftId, providers, settings, currentSelection, explicit, now]);
+  })();
   const appliedRef = useRef<string | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves a draft off a depleted account in the draft store once per draft
   useEffect(() => {
@@ -139,8 +137,9 @@ function accountLogin(provider: ServerProvider): string | null {
 }
 
 /**
- * The composer's Auto chip text (Owner picked this design on 2026-10-06) and its tooltip, which says what Auto chose
- * and why, e.g. "build-mac: most free memory · Claude alice (Pro): 91% week left".
+ * The Auto chip names the machine, account and tightest window ("build-mac · alice · 40% week").
+ * The tooltip has a line for why Auto chose the machine, one for the account and plan, and one per
+ * window with its reset ("72% session · resets 3:40 PM").
  */
 export function autoPlacementLabel(input: {
   readonly placement: {
@@ -153,6 +152,7 @@ export function autoPlacementLabel(input: {
   readonly environments: ReadonlyArray<{ readonly environmentId: string; readonly label: string }>;
   readonly driver: ProviderDriverKind;
   readonly account: AccountChoice<ServerProvider> | null;
+  readonly now: number;
 }): { readonly chip: string; readonly detail: string } {
   const { placement, environmentId } = input;
   const machine =
@@ -169,35 +169,39 @@ export function autoPlacementLabel(input: {
     return { chip, detail: chip };
   }
   const driverLabel = providerClients.get(input.driver)?.label ?? input.driver;
-  // The tightest window is what the account can still spend (a fresh session on a used-up week is not).
-  const standing = input.account?.standing;
-  const left = standing?.tightestLeft;
-  // Which window that is, so "40% week" is not read as the session.
-  const leftLabel =
-    left === null || left === undefined
-      ? null
-      : `${Math.round(left)}%${
-          left === standing?.sessionLeft
-            ? " session"
-            : left === standing?.weeklyLeft
-              ? " week"
-              : left === standing?.monthlyLeft
-                ? " month"
-                : ""
-        }`;
   const machineWhy =
     placement.lastChosen?.environmentId === environmentId
       ? `${machine.label}: ${placement.lastChosen.reason}`
       : machine.label;
-  const accountWhy = input.account
-    ? `${accountName(input.account.account, driverLabel)}${leftLabel ? `: ${leftLabel} left` : ""}`
-    : `no ${driverLabel} account with usage left`;
-  const detail = `Auto chose ${machineWhy} · ${accountWhy}`;
-  const login = input.account ? accountLogin(input.account.account) : null;
-  // The chip names the machine, the account and what its tightest window has left, e.g. "build-mac · alice · 88% week".
-  const chip = input.account
-    ? [machine.label, login ?? driverLabel, leftLabel].filter(Boolean).join(" · ")
-    : `${machine.label} · no ${driverLabel} account`;
+  if (!input.account) {
+    return {
+      chip: `${machine.label} · no ${driverLabel} account`,
+      detail: `Auto chose ${machineWhy} · no ${driverLabel} account with usage left`,
+    };
+  }
+  const { account, standing } = input.account;
+  // The tightest window is what the account can still spend (a fresh session on a used-up week is not).
+  const left = standing.tightestLeft;
+  const window =
+    left === standing.sessionLeft
+      ? " session"
+      : left === standing.weeklyLeft
+        ? " week"
+        : left === standing.monthlyLeft
+          ? " month"
+          : "";
+  const chip = [
+    machine.label,
+    accountLogin(account) ?? driverLabel,
+    standing.limited ? "no limit left" : left === null ? null : `${Math.round(left)}%${window}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const detail = [
+    `Auto chose ${machineWhy}`,
+    accountName(account, driverLabel),
+    ...accountUsageParts(account.usageLimits, input.now, { resets: "all" }),
+  ].join("\n");
   return { chip, detail };
 }
 
@@ -237,16 +241,13 @@ export function useComposerAutoAccount(input: {
     (store) => store.getComposerDraft(composerDraftTarget)?.modelSelectionExplicit === true,
   );
   const autoEnvironmentId = input.automaticEnvironment ? input.autoEnvironmentId : null;
-  const selectAutoAccount = useCallback(
-    (instanceId: ProviderInstanceId) => {
-      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
-      const current =
-        (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
-        threadModelSelection;
-      if (current) selectModel(instanceId, current.model);
-    },
-    [composerDraftTarget, threadModelSelection, selectModel],
-  );
+  const selectAutoAccount = (instanceId: ProviderInstanceId) => {
+    const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+    const current =
+      (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
+      threadModelSelection;
+    if (current) selectModel(instanceId, current.model);
+  };
   const account = useAutoAccount({
     enabled: input.automaticEnvironment,
     environmentId: autoEnvironmentId,
@@ -258,10 +259,8 @@ export function useComposerAutoAccount(input: {
     draftId: input.draftId,
     select: selectAutoAccount,
   });
-  const selectLimitedModel = useCallback(
-    (selection: ModelSelection) => selectModel(selection.instanceId, selection.model),
-    [selectModel],
-  );
+  const selectLimitedModel = (selection: ModelSelection) =>
+    selectModel(selection.instanceId, selection.model);
   useLimitedAccountSwitch({
     draftId:
       !input.limitedSwitchEnabled || (input.automaticEnvironment && !autoEnvironmentId)
@@ -273,6 +272,7 @@ export function useComposerAutoAccount(input: {
     explicit,
     select: selectLimitedModel,
   });
+  const now = Date.parse(`${useNowMinute()}Z`); // the minute is an ISO UTC prefix
   return input.automaticEnvironment
     ? autoPlacementLabel({
         placement: input.placement,
@@ -280,6 +280,7 @@ export function useComposerAutoAccount(input: {
         environments: input.environments,
         driver: input.driver,
         account,
+        now,
       })
     : undefined;
 }
