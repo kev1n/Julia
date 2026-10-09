@@ -283,6 +283,35 @@ describe.each([
     },
   ],
 ])("useNewThreadHandler with a %s draft", (_, draft) => {
+  it("starts a new thread in its own tab strip unless a tab strip is passed", async () => {
+    const projectRef = {
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never;
+    testState.reset(draft);
+    const pendingThread = useNewThreadHandler()(projectRef);
+    testState.completeProjectFileRead(null);
+    const thread = await pendingThread;
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenLastCalledWith(
+      "remote-project",
+      projectRef,
+      thread!.draftId,
+      expect.objectContaining({ chatGroupId: thread!.threadId }),
+    );
+
+    testState.reset(draft);
+    const tab = await useNewThreadHandler()(projectRef, {
+      envMode: "local",
+      chatGroupId: undefined,
+    });
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenLastCalledWith(
+      "remote-project",
+      projectRef,
+      tab!.draftId,
+      expect.objectContaining({ chatGroupId: undefined }),
+    );
+  });
+
   it("opens the draft before the project file is read, then applies its workspace default", async () => {
     testState.reset(draft, { envMode: null, startFromOrigin: false });
     const opened = await useNewThreadHandler()({
