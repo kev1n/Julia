@@ -140,7 +140,7 @@ function accountLogin(provider: ServerProvider): string | null {
 
 /**
  * The composer's Auto chip text (Owner picked this design on 2026-10-06) and its tooltip, which says what Auto chose
- * and why, e.g. "build-mac: most free memory · Claude alice (Pro): 91% left".
+ * and why, e.g. "build-mac: most free memory · Claude alice (Pro): 91% week left".
  */
 export function autoPlacementLabel(input: {
   readonly placement: {
@@ -170,27 +170,33 @@ export function autoPlacementLabel(input: {
   }
   const driverLabel = providerClients.get(input.driver)?.label ?? input.driver;
   // The tightest window is what the account can still spend (a fresh session on a used-up week is not).
-  const left = input.account?.standing.tightestLeft;
+  const standing = input.account?.standing;
+  const left = standing?.tightestLeft;
+  // Which window that is, so "40% week" is not read as the session.
+  const leftLabel =
+    left === null || left === undefined
+      ? null
+      : `${Math.round(left)}%${
+          left === standing?.sessionLeft
+            ? " session"
+            : left === standing?.weeklyLeft
+              ? " week"
+              : left === standing?.monthlyLeft
+                ? " month"
+                : ""
+        }`;
   const machineWhy =
     placement.lastChosen?.environmentId === environmentId
       ? `${machine.label}: ${placement.lastChosen.reason}`
       : machine.label;
   const accountWhy = input.account
-    ? `${accountName(input.account.account, driverLabel)}${
-        left !== null && left !== undefined ? `: ${Math.round(left)}% left` : ""
-      }`
+    ? `${accountName(input.account.account, driverLabel)}${leftLabel ? `: ${leftLabel} left` : ""}`
     : `no ${driverLabel} account with usage left`;
   const detail = `Auto chose ${machineWhy} · ${accountWhy}`;
   const login = input.account ? accountLogin(input.account.account) : null;
-  // The chip names the machine, the account and what its tightest window has left, e.g. "build-mac · alice · 88%".
+  // The chip names the machine, the account and what its tightest window has left, e.g. "build-mac · alice · 88% week".
   const chip = input.account
-    ? [
-        machine.label,
-        login ?? driverLabel,
-        left !== null && left !== undefined ? `${Math.round(left)}%` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
+    ? [machine.label, login ?? driverLabel, leftLabel].filter(Boolean).join(" · ")
     : `${machine.label} · no ${driverLabel} account`;
   return { chip, detail };
 }
