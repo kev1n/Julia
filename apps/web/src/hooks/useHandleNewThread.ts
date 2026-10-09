@@ -55,11 +55,21 @@ interface NewThreadWorkspaceOptions {
   startFromOrigin?: boolean;
 }
 
-function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undefined) {
+// A caller opening a tab passes the strip's `chatGroupId`, even when it is
+// undefined. Every other new thread starts its own tab strip, keyed by its own
+// id, so it never joins unrelated chats that share its checkout.
+function newThreadChatGroupId(options: NewThreadWorkspaceOptions | undefined, threadId: ThreadId) {
+  return options && "chatGroupId" in options ? options.chatGroupId : threadId;
+}
+
+function pickExplicitWorkspaceOptions(
+  options: NewThreadWorkspaceOptions | undefined,
+  threadId: ThreadId,
+) {
   return {
     ...(options?.branch !== undefined ? { branch: options.branch } : {}),
     ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
-    chatGroupId: options?.chatGroupId,
+    chatGroupId: newThreadChatGroupId(options, threadId),
     ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
     ...(options?.startFromOrigin !== undefined ? { startFromOrigin: options.startFromOrigin } : {}),
   };
@@ -251,7 +261,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           hasBranchOption || hasWorktreePathOption || hasEnvModeOption || hasStartFromOriginOption;
         let workspaceContext: NewThreadWorkspaceOptions | null = null;
         if (hasExplicitWorkspaceOption) {
-          workspaceContext = pickExplicitWorkspaceOptions(options);
+          workspaceContext = pickExplicitWorkspaceOptions(options, emptyStoredDraftThread.threadId);
         } else if (!isDraftAlreadyOpen) {
           const defaultEnvMode = await resolveDefaultEnvMode();
           if (abandonedSinceRequest()) {
@@ -276,6 +286,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           workspaceContext = {
             branch: null,
             worktreePath: null,
+            chatGroupId: emptyStoredDraftThread.threadId,
             envMode: defaultEnvMode,
             startFromOrigin: resolveNewDraftStartFromOrigin({
               envMode: defaultEnvMode,
@@ -349,14 +360,17 @@ export function createNewThreadHandler(router: AnyRouter) {
         hasEnvModeOption ||
         hasStartFromOriginOption
       ) {
-        setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
+        setDraftThreadContext(
+          currentRouteTarget.draftId,
+          pickExplicitWorkspaceOptions(options, latestActiveDraftThread.threadId),
+        );
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
         threadId: latestActiveDraftThread.threadId,
         createdAt: latestActiveDraftThread.createdAt,
         runtimeMode: latestActiveDraftThread.runtimeMode,
         interactionMode: latestActiveDraftThread.interactionMode,
-        ...pickExplicitWorkspaceOptions(options),
+        ...pickExplicitWorkspaceOptions(options, latestActiveDraftThread.threadId),
       });
       seedPrompt(currentRouteTarget.draftId);
       return Promise.resolve({
@@ -385,7 +399,7 @@ export function createNewThreadHandler(router: AnyRouter) {
           createdAt: racedDraft.createdAt,
           runtimeMode: racedDraft.runtimeMode,
           interactionMode: racedDraft.interactionMode,
-          ...pickExplicitWorkspaceOptions(options),
+          ...pickExplicitWorkspaceOptions(options, racedDraft.threadId),
         });
         seedPrompt(racedDraft.draftId);
         await router.navigate({
@@ -400,7 +414,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         createdAt,
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
-        chatGroupId: options?.chatGroupId,
+        chatGroupId: newThreadChatGroupId(options, threadId),
         envMode: initialEnvMode,
         startFromOrigin:
           options?.startFromOrigin ??
