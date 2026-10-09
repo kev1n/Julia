@@ -32,6 +32,9 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
+import { continueCapacityLimitedChild } from "./CapacityRecovery.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 
 const isProviderTurnControlError = Schema.is(ProviderTurnControlService.ProviderTurnControlError);
@@ -106,6 +109,7 @@ export const layerExecutor: Layer.Layer<
   | ProjectionStore.ProjectionStoreV2
   | ProjectionMaintenance.ProjectionMaintenanceV2
   | ServerSettings.ServerSettingsService
+  | ProviderAdapterRegistry.ProviderAdapterRegistryV2
 > = Layer.effect(
   OrchestrationEffectExecutorV2,
   Effect.gen(function* () {
@@ -159,10 +163,46 @@ export const layerExecutor: Layer.Layer<
             ),
         ),
       );
+    // Replay-only runtimes have adapters but no machine account catalog.
+    const providers = yield* Effect.serviceOption(ProviderRegistry);
+    const adapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
     return OrchestrationEffectExecutorV2.of({
       execute: Effect.fn("OrchestrationEffectExecutorV2.execute")(function (effect, options) {
         const willRetry = options?.willRetry ?? false;
         switch (effect.request.type) {
+          case "provider-capacity.continue": {
+            const sourceRunId = effect.request.sourceRunId;
+            if (Option.isNone(providers))
+              return threads.recoverDelegatedTask(effect.threadId, { sourceRunId }).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: effect.request.type,
+                      cause,
+                    }),
+                ),
+              );
+            return continueCapacityLimitedChild({ threadId: effect.threadId, sourceRunId }).pipe(
+              Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
+              Effect.provideService(ServerSettings.ServerSettingsService, settings),
+              Effect.provideService(ProviderRegistry, providers.value),
+              Effect.provideService(ProviderAdapterRegistry.ProviderAdapterRegistryV2, adapters),
+              Effect.tapError(() =>
+                willRetry
+                  ? Effect.void
+                  : threads.recoverDelegatedTask(effect.threadId, { sourceRunId }),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
+          }
           case "provider-runtime.continue": {
             const sourceRunId = effect.request.sourceRunId;
             return continueRestartedRun({

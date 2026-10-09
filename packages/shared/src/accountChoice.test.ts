@@ -10,7 +10,7 @@ const inHours = (hours: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW + 
 function limits(
   session: number | null,
   weekly: number | null,
-  extra: ServerProviderUsageWindow[] = [],
+  extra: ReadonlyArray<ServerProviderUsageWindow> = [],
   sessionResetsAt = inHours(2),
 ): ServerProviderUsageLimits {
   const windows: ServerProviderUsageWindow[] = [...extra];
@@ -40,6 +40,18 @@ const pick = (accounts: Account[]) =>
   chooseAutoAccount(accounts, (account) => account.limits, NOW)?.account.name ?? null;
 
 describe("chooseAutoAccount", () => {
+  it("uses only global and matching model-family windows, including older Claude snapshots", () => {
+    const scoped = limits(0, 0, [
+      { id: "seven_day_fable", kind: "weekly", label: "Fable", usedPercent: 100 },
+      { id: "opus", kind: "weekly", label: "Opus", usedPercent: 20, modelScope: "claude-opus" },
+    ]);
+    expect(accountStanding(scoped, NOW, "claude-opus-5-5").tightestLeft).toBe(80);
+    expect(accountStanding(scoped, NOW, "claude-fable-5").limited).toBe(true);
+    expect(accountStanding(scoped, NOW).limited).toBe(true);
+    expect(accountStanding(limits(100, 0, scoped.windows), NOW, "claude-opus-5-5").limited).toBe(
+      true,
+    );
+  });
   it("picks the account with the most session usage left", () => {
     expect(
       pick([

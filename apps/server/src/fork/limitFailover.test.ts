@@ -29,7 +29,14 @@ function account(instanceId: string, driver: string, weeklyUsed: number): Server
     status: "ready",
     auth: { status: "authenticated" },
     checkedAt: iso(NOW),
-    models: [],
+    models: [
+      {
+        slug: driver === "codex" ? "gpt-6.1-sol" : "claude-opus-5-5",
+        name: "Model",
+        isCustom: false,
+        capabilities: null,
+      },
+    ],
     slashCommands: [],
     skills: [],
     usageLimits: {
@@ -106,6 +113,7 @@ describe("continueLimitedThreadElsewhere", () => {
   const run = (
     input: ProjectionStore.ProjectionLimitRecoveryCandidate,
     relationshipToParent: "fork" | "subagent" | null = null,
+    unresolvedDelegate: "running" | "completed" | false = false,
   ) =>
     Effect.gen(function* () {
       yield* TestClock.setTime(NOW);
@@ -119,7 +127,22 @@ describe("continueLimitedThreadElsewhere", () => {
         input,
         SETTING,
         providers,
-        { getThread: () => Effect.succeed(source) },
+        {
+          getThreadRecords: () =>
+            Effect.succeed({
+              thread: source,
+              subagents: unresolvedDelegate
+                ? [
+                    {
+                      origin: "app_owned",
+                      status: unresolvedDelegate,
+                      result: null,
+                      completionDelivery: { state: "pending" },
+                    },
+                  ]
+                : [],
+            } as never),
+        },
         {
           dispatch: (command) =>
             Effect.sync(() => {
@@ -154,6 +177,16 @@ describe("continueLimitedThreadElsewhere", () => {
         continuedIn: fork.targetThreadId,
       });
     }),
+  );
+
+  it.effect.each(["running", "completed"] as const)(
+    "does not fork a parent with an owed delegate result (%s)",
+    (status) =>
+      Effect.gen(function* () {
+        const { continued, dispatched } = yield* run(candidate, null, status);
+        assert.isFalse(continued);
+        assert.isEmpty(dispatched);
+      }),
   );
 
   it.effect("repeats the same commands after a sweep that died halfway", () =>

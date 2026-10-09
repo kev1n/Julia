@@ -21,7 +21,11 @@ import {
   type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
-import { chooseAutoAccount, usableInstances } from "@t3tools/shared/accountChoice";
+import {
+  chooseAutoAccount,
+  providerSupportsSelection,
+  usableInstances,
+} from "@t3tools/shared/accountChoice";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -40,6 +44,7 @@ export function limitFailoverModelSelection(
   providers: ReadonlyArray<ServerProvider>,
   limitedInstanceId: ProviderInstanceId,
   now: number,
+  eligibleInstanceIds?: ReadonlySet<ProviderInstanceId>,
 ): ModelSelection | null {
   for (const selection of selections) {
     const driver = providers.find(
@@ -47,9 +52,17 @@ export function limitFailoverModelSelection(
     )?.driver;
     if (!driver) continue;
     const accounts = usableInstances(providers, driver).filter(
-      (provider) => provider.instanceId !== limitedInstanceId,
+      (provider) =>
+        provider.instanceId !== limitedInstanceId &&
+        (eligibleInstanceIds === undefined || eligibleInstanceIds.has(provider.instanceId)) &&
+        providerSupportsSelection(provider, selection),
     );
-    const choice = chooseAutoAccount(accounts, (provider) => provider.usageLimits, now);
+    const choice = chooseAutoAccount(
+      accounts,
+      (provider) => provider.usageLimits,
+      now,
+      selection.model,
+    );
     if (choice) return { ...selection, instanceId: choice.account.instanceId };
   }
   return null;
@@ -63,8 +76,9 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
   candidate: ProjectionStore.ProjectionLimitRecoveryCandidate,
   selections: ReadonlyArray<ModelSelection>,
   providers: ReadonlyArray<ServerProvider>,
-  projections: Pick<ProjectionStore.ProjectionStoreV2["Service"], "getThread">,
+  projections: Pick<ProjectionStore.ProjectionStoreV2["Service"], "getThreadRecords">,
   threads: Pick<ThreadManagement.ThreadManagementService["Service"], "dispatch">,
+  eligibleInstanceIds?: ReadonlySet<ProviderInstanceId>,
 ) {
   const runId = candidate.latestRunId;
   const resetAt = candidate.usageLimitResetAt;
@@ -78,7 +92,21 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
   // A limit whose reset has passed is over; old stopped threads stay as they are.
   const now = yield* Clock.currentTimeMillis;
   if (Date.parse(resetAt) <= now) return false;
-  const source = yield* projections.getThread(candidate.id);
+  const { thread: source, subagents } = yield* projections.getThreadRecords(candidate.id, [
+    "subagents",
+  ]);
+  // A fork cannot adopt task ownership. Keep the parent here until all owed
+  // results have been consumed; completion can wake it in place on another account.
+  if (
+    subagents.some(
+      (task) =>
+        task.origin === "app_owned" &&
+        task.completionDelivery?.state !== "acknowledged" &&
+        task.completionDelivery?.state !== "delivered" &&
+        task.completionDelivery?.state !== "disposed",
+    )
+  )
+    return false;
   // A subagent's result belongs to its parent's run; a fork would orphan it.
   if (source.lineage.relationshipToParent === "subagent") return false;
   const modelSelection = limitFailoverModelSelection(
@@ -86,6 +114,7 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     providers,
     source.providerInstanceId,
     now,
+    eligibleInstanceIds,
   );
   if (!modelSelection) return false;
 
