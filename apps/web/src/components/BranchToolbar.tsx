@@ -266,7 +266,10 @@ const RunContextSelector = memo(function RunContextSelector({
         )}
       </TooltipTrigger>
       <TooltipPopup>
-        {autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}
+        {/* Auto's detail puts the machine, the account and each usage window on their own lines. */}
+        <span className="whitespace-pre-line">
+          {autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}
+        </span>
       </TooltipPopup>
     </Tooltip>
   );
