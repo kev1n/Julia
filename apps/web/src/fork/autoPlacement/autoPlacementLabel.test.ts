@@ -41,8 +41,8 @@ describe("autoPlacementLabel", () => {
         account,
       }),
     ).toEqual({
-      chip: "build-mac · owner · 40%",
-      detail: "Auto chose build-mac: most free memory · Claude owner (Max 20x): 40% left",
+      chip: "build-mac · owner · 40% week",
+      detail: "Auto chose build-mac: most free memory · Claude owner (Max 20x): 40% week left",
     });
   });
 
