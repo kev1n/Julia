@@ -53,6 +53,8 @@ interface TimelineRewindInput {
   readonly promptRef: { current: string };
   readonly composerRef: ComposerHandleRef;
   readonly composerDraftTarget: ComposerThreadTarget;
+  /** The thread's own draft, not a queued message being edited in its place. */
+  readonly baseComposerDraftTarget: ComposerThreadTarget;
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
 }
 
@@ -78,6 +80,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     promptRef,
     composerRef,
     composerDraftTarget,
+    baseComposerDraftTarget,
     setThreadError,
   } = input;
   const navigate = useNavigate();
@@ -227,6 +230,10 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       );
       return;
     }
+    // The unsent message travels with the fork; it is what the user forked to send.
+    useComposerDraftStore
+      .getState()
+      .moveComposerContent(baseComposerDraftTarget, targetThreadRef);
     await navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(targetThreadRef),
