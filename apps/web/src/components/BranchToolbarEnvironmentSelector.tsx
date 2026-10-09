@@ -156,12 +156,14 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
         }
         label={
           <>
-            {canMove
-              ? (moveThread.disabledReason ?? gt("Move this thread to another machine"))
-              : (autoEnvironmentDetail ??
-                autoEnvironmentLabel ??
-                activeEnvironment?.label ??
-                gt("Run on"))}
+            <span className="whitespace-pre-line">
+              {canMove
+                ? (moveThread.disabledReason ?? gt("Move this thread to another machine"))
+                : (autoEnvironmentDetail ??
+                  autoEnvironmentLabel ??
+                  activeEnvironment?.label ??
+                  gt("Run on"))}
+            </span>
             {shortcutLabel ? ` · ${shortcutLabel}` : null}
           </>
         }

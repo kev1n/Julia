@@ -277,7 +277,10 @@ const RunContextSelector = memo(function RunContextSelector({
     <SharedTooltipTrigger
       render={<span className="inline-flex shrink-0" />}
       label={
-        autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? gt("Run on")
+        // Auto's detail puts the machine, the account and each usage window on their own lines.
+        <span className="whitespace-pre-line">
+          {autoEnvironmentDetail ?? autoEnvironmentLabel ?? activeEnvironment?.label ?? gt("Run on")}
+        </span>
       }
     >
       {autoEnvironmentLabel ? (
