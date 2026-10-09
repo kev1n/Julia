@@ -1,7 +1,7 @@
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountLimitSummary } from "./accountSummary";
+import { accountLimitSummary, accountUsageParts } from "./accountSummary";
 
 const NOW = Date.parse("2026-10-06T12:00:00Z");
 const inHours = (hours: number) => new Date(NOW + hours * 3_600_000).toISOString();
@@ -90,5 +90,17 @@ describe("accountLimitSummary", () => {
 
   it("is null when the instance reports nothing", () => {
     expect(accountLimitSummary(provider({}), NOW)).toBeNull();
+  });
+
+  it("says when every window refills when asked, else only the session", () => {
+    const limits = provider({ session: 28, weekly: 60 }).usageLimits;
+    expect(accountUsageParts(limits, NOW, { resets: "all" })).toEqual([
+      expect.stringMatching(/^72% session · resets /),
+      expect.stringMatching(/^40% week · resets /),
+    ]);
+    expect(accountUsageParts(limits, NOW, { resets: "session" })).toEqual([
+      expect.stringMatching(/^72% session · resets /),
+      "40% week",
+    ]);
   });
 });
