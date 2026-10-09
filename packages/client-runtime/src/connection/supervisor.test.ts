@@ -826,10 +826,10 @@ describe("EnvironmentSupervisor", () => {
         attempt: 1,
         generation: 1,
         lastFailure: { _tag: "ConnectionTransientError", reason: "transport" },
-        retryAt: (yield* Clock.currentTimeMillis) + 300_000,
+        retryAt: (yield* Clock.currentTimeMillis) + 30_000,
       });
 
-      yield* TestClock.adjust("299999 millis");
+      yield* TestClock.adjust("29999 millis");
       expect(yield* Ref.get(harness.sessionCount)).toBe(1);
       yield* TestClock.adjust("1 millis");
       const reconnected = yield* awaitState(
