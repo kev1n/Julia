@@ -15,7 +15,11 @@ import {
   useEnvironmentSupportsServerBrowser,
 } from "~/state/entities";
 
-export function previewRuntimeFor(environmentId: EnvironmentId): PreviewRuntime | undefined {
+export function previewRuntimeFor(
+  environmentId: EnvironmentId,
+  profileId?: string,
+): PreviewRuntime | undefined {
+  if (profileId === ASIDE_BROWSER_PROFILE_ID) return "server";
   if (!readEnvironmentSupportsServerBrowser(environmentId)) return undefined;
   if (
     isPreviewSupportedInRuntime() &&

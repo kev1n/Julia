@@ -1,5 +1,6 @@
 import {
   DEFAULT_CLIENT_SETTINGS,
+  type PreviewOpenInput,
   type PreviewSessionSnapshot,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -29,6 +30,17 @@ import {
 
 import { openPreviewSession } from "./openPreviewSession";
 
+const runtimeState = vi.hoisted(() => ({ desktop: false }));
+vi.mock("~/env", () => ({ isElectron: false }));
+vi.mock("~/previewStateStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/previewStateStore")>()),
+  isPreviewSupportedInRuntime: () => runtimeState.desktop,
+}));
+vi.mock("~/state/entities", () => ({
+  readEnvironmentSupportsServerBrowser: () => runtimeState.desktop,
+  useEnvironmentSupportsServerBrowser: () => runtimeState.desktop,
+}));
+
 const threadRef = {
   environmentId: "local" as ScopedThreadRef["environmentId"],
   threadId: "thread-1" as ScopedThreadRef["threadId"],
@@ -55,9 +67,45 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  runtimeState.desktop = false;
 });
 
 describe("openPreviewSession", () => {
+  it.each(["explicit", "default"] as const)(
+    "opens %s Aside in the remote native browser, including link opens",
+    async (selection) => {
+      runtimeState.desktop = true;
+      if (selection === "default") {
+        __setClientSettingsForTests({
+          ...DEFAULT_CLIENT_SETTINGS,
+          browserDefaultProfileId: "aside",
+        });
+      }
+      const remoteRef = {
+        ...threadRef,
+        environmentId: "remote" as ScopedThreadRef["environmentId"],
+      };
+      const openPreview = vi.fn(async (_request: { input: PreviewOpenInput }) =>
+        AsyncResult.success(snapshot),
+      );
+      const input = {
+        openPreview,
+        threadRef: remoteRef,
+        url: "https://t3.chat/",
+        ...(selection === "explicit" ? { profileId: "aside" } : {}),
+      };
+      await openPreviewSession({ ...input, runtime: "desktop" });
+      await openUrlInPreview(input);
+      expect(openPreview).toHaveBeenCalledTimes(2);
+      for (const [request] of openPreview.mock.calls) {
+        expect(request).toMatchObject({
+          environmentId: "remote",
+          input: { profileId: "aside", runtime: "server" },
+        });
+      }
+    },
+  );
+
   it.each(["session", "link"] as const)(
     "does not open a %s with unread settings and uses the saved profile on retry",
     async (entryPoint) => {
