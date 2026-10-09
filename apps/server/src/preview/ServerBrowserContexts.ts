@@ -1,12 +1,13 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- Owns Playwright resources and their idle timer outside the Effect runtime.
-import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
+import { ASIDE_BROWSER_PROFILE_ID, INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
 import { constVoid } from "effect/Function";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import type { Browser, BrowserContext, CDPSession } from "playwright-core";
+import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
 
+import { openAsideEndpoint } from "../fork/asideBrowser.ts";
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
 
 // Playwright needs its files on disk. createRequire also resolves it from a Node SEA executable.
@@ -29,6 +30,8 @@ interface Options {
   /** Closes the shared browser once it has held no context for this long. */
   readonly idleBrowserMs?: number;
   readonly onContextClose?: (context: BrowserContext) => void;
+  /** Opens a CDP endpoint to Aside's helper; tests replace it. */
+  readonly asideEndpoint?: typeof openAsideEndpoint;
 }
 
 const UA_PLATFORMS: Partial<Record<NodeJS.Platform, string>> = {
@@ -81,6 +84,10 @@ export class ServerBrowserContexts {
   private readonly contexts = new Map<string, Promise<BrowserContext>>();
   private readonly clearing = new Map<string, Promise<void>>();
   private browser: Promise<Browser> | undefined;
+  private aside: Promise<{ browser: Browser; close: () => Promise<void> }> | undefined;
+  private asideDetached = Promise.resolve();
+  private asideOpening = 0;
+  private readonly asidePages = new Set<Page>();
   private closing: Promise<void> | undefined;
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSharedContexts = 0;
@@ -248,8 +255,80 @@ export class ServerBrowserContexts {
     return { browser, page };
   }
 
+  /** One connection to Aside, through its helper, shared by every Aside tab. */
+  private asideBrowser() {
+    if (!this.aside) {
+      const connecting = (async () => {
+        await this.asideDetached;
+        const bridge = await (this.options.asideEndpoint ?? openAsideEndpoint)();
+        try {
+          const { chromium } = loadPlaywright();
+          const browser = await chromium.connectOverCDP(bridge.endpoint, {
+            timeout: 15_000,
+            noDefaults: true,
+          });
+          // A listener prevents Playwright from dismissing native dialogs in human tabs.
+          // Managed pages also register their own dialog handler for T3's controls.
+          browser.contexts()[0]?.on("dialog", constVoid);
+          browser.on("disconnected", () => {
+            if (this.aside === connecting) this.aside = undefined;
+            void bridge.close().catch(constVoid);
+          });
+          return { browser, close: bridge.close };
+        } catch (cause) {
+          await bridge.close().catch(constVoid);
+          throw cause;
+        }
+      })();
+      this.aside = connecting;
+      void connecting.catch(() => {
+        if (this.aside === connecting) this.aside = undefined;
+      });
+    }
+    return this.aside;
+  }
+
+  /** A new tab in Aside, which keeps its own storage, window, and size. */
+  async asidePage() {
+    if (this.closing) throw new Error("The preview browser is closed.");
+    this.asideOpening++;
+    try {
+      const { browser } = await this.asideBrowser();
+      if (this.closing) throw new Error("The preview browser is closed.");
+      const context = browser.contexts()[0];
+      if (!context) throw new Error("Aside has no browser window open.");
+      const page = await context.newPage();
+      this.trackAsidePage(page);
+      return page;
+    } finally {
+      this.asideOpening--;
+      this.detachIdleAside();
+    }
+  }
+
+  /** Only T3-created pages and their popups hold the helper lease, never human tabs. */
+  private trackAsidePage(page: Page) {
+    if (this.asidePages.has(page) || page.isClosed()) return;
+    this.asidePages.add(page);
+    page.on("popup", (popup) => this.trackAsidePage(popup));
+    page.once("close", () => {
+      this.asidePages.delete(page);
+      this.detachIdleAside();
+    });
+  }
+
+  private detachIdleAside() {
+    if (this.asideOpening || this.asidePages.size || !this.aside) return;
+    const connection = this.aside;
+    this.aside = undefined;
+    // New callers wait for the old socket to close before claiming the single-client helper.
+    this.asideDetached = connection.then((aside) => aside.close()).catch(constVoid);
+  }
+
   async clearProfile(profileId: string) {
-    if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return;
+    // Aside's storage is Owner's real browser profile; T3 never clears it.
+    if (profileId === INCOGNITO_BROWSER_PROFILE_ID || profileId === ASIDE_BROWSER_PROFILE_ID)
+      return;
     const key = JSON.stringify([profileId, null]);
     const existing = this.clearing.get(key);
     if (existing) return existing;
@@ -282,6 +361,10 @@ export class ServerBrowserContexts {
     );
     const browser = await this.browser?.catch(() => undefined);
     await browser?.close().catch(constVoid);
+    // Only the connection ends; Aside and its tabs keep running under the helper.
+    const aside = await this.aside?.catch(() => undefined);
+    await aside?.close().catch(constVoid);
+    await this.asideDetached;
     this.contexts.clear();
   }
 }

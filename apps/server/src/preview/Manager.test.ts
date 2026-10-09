@@ -79,6 +79,34 @@ it.layer(layer)("PreviewManager", (it) => {
     }),
   );
 
+  it.effect("keeps Aside layout and storage native while allowing hard reload", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, runtime: "server", profileId: "aside" });
+      const resized = yield* manager.resize({
+        threadId,
+        tabId: opened.tabId,
+        viewport: { _tag: "freeform", width: 400, height: 600 },
+      });
+      expect(resized.viewport).toEqual(opened.viewport);
+      const adjusted = yield* manager.adjust({
+        threadId,
+        tabId: opened.tabId,
+        colorScheme: "dark",
+        zoomFactor: 2,
+        clear: "cache",
+        hardReload: true,
+      });
+      expect(adjusted.colorScheme).toEqual(opened.colorScheme);
+      expect(adjusted.zoomFactor).toEqual(opened.zoomFactor);
+      const events = (yield* collector.drain).filter((event) => event.type === "resized");
+      expect(events.at(-1)).toMatchObject({ request: { hardReload: true } });
+      expect(events.at(-1)).not.toHaveProperty("request.clear");
+    }),
+  );
+
   it.effect("reissues presentation requests without replaying them on navigation", () =>
     Effect.gen(function* () {
       const threadId = freshThreadId();

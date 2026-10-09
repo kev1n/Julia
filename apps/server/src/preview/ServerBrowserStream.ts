@@ -3,6 +3,7 @@ import {
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
   PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE,
+  PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE,
   PreviewStreamHostSetup,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -20,6 +21,7 @@ import {
 } from "effect/http";
 import * as Socket from "effect/socket/Socket";
 
+import { AsideUnavailableError } from "../fork/asideBrowser.ts";
 import { authenticateMediaRequest } from "../auth/http.ts";
 import { assetResponseHeaders } from "../http.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
@@ -97,7 +99,9 @@ const makeHandler = Effect.fnUntraced(function* (browser: ServerBrowser.ServerBr
             ServerBrowserLaunchError: (error) => {
               const setup = hostSetup(error.cause);
               return setup === undefined
-                ? Effect.fail(error)
+                ? Effect.logWarning("browser viewer attachment failed", {
+                    cause: error.cause,
+                  }).pipe(Effect.as({ _tag: "failed" as const }))
                 : Effect.succeed({ _tag: "hostSetup" as const, reason: encodeHostSetup(setup) });
             },
           }),
@@ -120,6 +124,15 @@ const makeHandler = Effect.fnUntraced(function* (browser: ServerBrowser.ServerBr
       if (attached._tag === "hostSetup") {
         yield* writer.write(
           new Socket.CloseEvent(PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE, attached.reason),
+        );
+        return HttpServerResponse.empty();
+      }
+      if (attached._tag === "failed") {
+        yield* writer.write(
+          new Socket.CloseEvent(
+            PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE,
+            "The browser could not connect on this host. Try again.",
+          ),
         );
         return HttpServerResponse.empty();
       }
@@ -200,15 +213,7 @@ const makeHandler = Effect.fnUntraced(function* (browser: ServerBrowser.ServerBr
       );
       return yield* Effect.raceFirst(Effect.forever(sendOutput), Effect.forever(receiveInput));
     }),
-  ).pipe(
-    Effect.catchTags({
-      ServerBrowserLaunchError: (error) =>
-        Effect.logWarning("server preview browser failed to start", { cause: error.cause }).pipe(
-          Effect.as(HttpServerResponse.text("Service Unavailable", { status: 503 })),
-        ),
-    }),
-    Effect.orElseSucceed(() => HttpServerResponse.empty()),
-  );
+  ).pipe(Effect.orElseSucceed(() => HttpServerResponse.empty()));
 });
 
 const hostSetup = (cause: unknown): PreviewStreamHostSetup | undefined =>
@@ -216,7 +221,10 @@ const hostSetup = (cause: unknown): PreviewStreamHostSetup | undefined =>
     ? { need: "sandbox", command: cause.setupCommand }
     : isLibrariesError(cause)
       ? { need: "libraries", command: cause.setupCommand }
-      : undefined;
+      : isAsideUnavailable(cause)
+        ? { need: "aside", command: "bash fork/scripts/install-aside-helper.sh" }
+        : undefined;
+const isAsideUnavailable = Schema.is(AsideUnavailableError);
 const isSandboxError = Schema.is(PreviewBrowserHost.PreviewBrowserSandboxError);
 const isLibrariesError = Schema.is(PreviewBrowserHost.PreviewBrowserLibrariesError);
 const encodeHostSetup = Schema.encodeSync(Schema.fromJsonString(PreviewStreamHostSetup));

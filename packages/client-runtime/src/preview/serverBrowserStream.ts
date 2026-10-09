@@ -2,6 +2,7 @@
 import { type DeviceHubAccess, withDeviceHubQuery } from "../device/hubAccess.ts";
 import {
   PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE,
+  PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE,
   type PreviewStreamHostSetup,
   type PreviewViewportSetting,
 } from "@t3tools/contracts";
@@ -197,6 +198,8 @@ export interface PreviewStreamEvents {
   readonly onUnauthorized: () => void;
   readonly onGone?: () => void;
   readonly onHostSetup?: (setup: PreviewStreamHostSetup) => void;
+  /** A launch failure stops retries until the person reconnects. */
+  readonly onFailure?: (message: string) => void;
 }
 
 export interface PreviewStreamClient {
@@ -366,6 +369,13 @@ export function createPreviewStreamClient(
         events.onHostSetup?.(decodeHostSetup(event.reason));
         return;
       }
+      if (event.code === PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE) {
+        stopped = true;
+        events.onFailure?.(
+          event.reason || "The browser could not connect on this host. Try again.",
+        );
+        return;
+      }
       // Rejected upgrades surface as 1006 before open for both cookies and tickets.
       if (event.code === 1008 || event.code === 4401 || (!opened && event.code === 1006)) {
         stopped = true;
@@ -454,7 +464,7 @@ const decodeHostSetup = (reason: string): PreviewStreamHostSetup => {
   try {
     const value = JSON.parse(reason) as Partial<PreviewStreamHostSetup>;
     if (
-      (value.need === "sandbox" || value.need === "libraries") &&
+      (value.need === "sandbox" || value.need === "libraries" || value.need === "aside") &&
       typeof value.command === "string"
     ) {
       return { need: value.need, command: value.command };
@@ -464,6 +474,8 @@ const decodeHostSetup = (reason: string): PreviewStreamHostSetup => {
 };
 
 export const previewStreamHostSetupMessage = (setup: PreviewStreamHostSetup) =>
-  setup.need === "sandbox"
-    ? "This server's host blocks the sandbox its browser runs in. Run this once on the host, then try again:"
-    : "This server's host is missing libraries its browser needs. Run this once on the host, then try again:";
+  setup.need === "aside"
+    ? "Aside isn't running in T3 mode on this host. Run this from the fork checkout, then try again:"
+    : setup.need === "sandbox"
+      ? "This server's host blocks the sandbox its browser runs in. Run this once on the host, then try again:"
+      : "This server's host is missing libraries its browser needs. Run this once on the host, then try again:";

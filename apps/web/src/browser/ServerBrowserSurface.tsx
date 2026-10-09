@@ -197,6 +197,7 @@ export function ServerBrowserSurface(props: {
   const unauthorizedRef = useRef(0);
   const [accessDenied, setAccessDenied] = useState(false);
   const access = usePreviewStreamAccess(environmentId, { retry: visible && !accessDenied });
+  const [connectionFailure, setConnectionFailure] = useState<string | null>(null);
   const [hostSetup, setHostSetup] = useState<PreviewStreamHostSetup | null>(null);
   const pendingMoveRef = useRef<MouseInput | null>(null);
   const pendingWheelRef = useRef<WheelInput | null>(null);
@@ -430,6 +431,10 @@ export function ServerBrowserSurface(props: {
           clearInput();
         },
         onHostSetup: setHostSetup,
+        onFailure: (message) => {
+          setConnectionFailure(message);
+          setAccessDenied(true);
+        },
         onUnauthorized: () => {
           const refusals = ++unauthorizedRef.current;
           if (refusals >= MAX_UNAUTHORIZED_REFUSALS) {
@@ -912,7 +917,7 @@ export function ServerBrowserSurface(props: {
         // The page can be invisible beneath an empty or unreachable state; reconnect must remain reachable.
         <div className="visible absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-background p-3 text-center">
           <p role="alert" className="text-xs text-muted-foreground">
-            Browser connection was refused.
+            {connectionFailure ?? "Browser connection was refused."}
           </p>
           <Button
             variant="outline"
@@ -920,6 +925,7 @@ export function ServerBrowserSurface(props: {
             onClick={() => {
               unauthorizedRef.current = 0;
               setAccessDenied(false);
+              setConnectionFailure(null);
               refreshPreviewStreamAccess(environmentId);
             }}
           >

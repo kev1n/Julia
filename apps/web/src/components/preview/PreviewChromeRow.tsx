@@ -12,6 +12,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  useEffect,
   useState,
 } from "react";
 
@@ -29,6 +30,7 @@ interface Props {
   inputDisabled?: boolean | undefined;
   /** Owned by the caller so its shortcut handler can focus the address bar directly. */
   urlInputRef: RefObject<HTMLInputElement | null>;
+  focusOnReady?: boolean | undefined;
   onBack: () => void;
   onForward: () => void;
   onRefresh: () => void;
@@ -58,6 +60,7 @@ export function PreviewChromeRow({
   refreshDisabled,
   inputDisabled,
   urlInputRef: inputRef,
+  focusOnReady,
   onBack,
   onForward,
   onRefresh,
@@ -78,6 +81,11 @@ export function PreviewChromeRow({
 }: Props) {
   const [draft, setDraft] = useState(url);
   const [inputFocused, setInputFocused] = useState(false);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the address input once the tab is ready
+  useEffect(() => {
+    if (focusOnReady && !inputDisabled) inputRef.current?.focus();
+  }, [focusOnReady, inputDisabled, inputRef]);
 
   const submit = (event?: FormEvent | KeyboardEvent) => {
     event?.preventDefault();

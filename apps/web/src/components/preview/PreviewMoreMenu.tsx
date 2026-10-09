@@ -43,6 +43,8 @@ export interface PreviewMoreMenuActions {
 
 interface Props {
   enabled: boolean;
+  /** The real browser owns its appearance, layout and site data. */
+  externalBrowser?: boolean;
   actions: PreviewMoreMenuActions;
   zoomFactor: number;
   colorScheme: DesktopPreviewColorScheme;
@@ -71,6 +73,7 @@ const MenuTriggerButton = () => (
 
 export function PreviewMoreMenu({
   enabled,
+  externalBrowser = false,
   actions,
   zoomFactor,
   colorScheme,
@@ -109,77 +112,87 @@ export function PreviewMoreMenu({
           </MenuItem>
         ) : null}
         {move ? <MenuItem onClick={move.onMove}>{move.label}</MenuItem> : null}
-        <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
-          {deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
-        </MenuItem>
-        <MenuSub>
-          <MenuSubTrigger disabled={disabled}>Appearance</MenuSubTrigger>
-          <MenuSubPopup>
-            <MenuRadioGroup
-              value={colorScheme}
-              onValueChange={(value) => actions.setColorScheme(value as DesktopPreviewColorScheme)}
-            >
-              {COLOR_SCHEME_OPTIONS.map((option) => (
-                <MenuRadioItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuSubPopup>
-        </MenuSub>
-        <MenuSeparator />
-        <MenuItem
-          closeOnClick={false}
-          onClick={(event: React.MouseEvent) => event.preventDefault()}
-          className="justify-between"
-          disabled={disabled}
-        >
-          <span>Zoom</span>
-          <span className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon-xs"
-              type="button"
-              onClick={actions.zoomOut}
-              aria-label="Zoom out"
+        {!externalBrowser && (
+          <>
+            <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
+              {deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
+            </MenuItem>
+            <MenuSub>
+              <MenuSubTrigger disabled={disabled}>Appearance</MenuSubTrigger>
+              <MenuSubPopup>
+                <MenuRadioGroup
+                  value={colorScheme}
+                  onValueChange={(value) =>
+                    actions.setColorScheme(value as DesktopPreviewColorScheme)
+                  }
+                >
+                  {COLOR_SCHEME_OPTIONS.map((option) => (
+                    <MenuRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuSubPopup>
+            </MenuSub>
+            <MenuSeparator />
+            <MenuItem
+              closeOnClick={false}
+              onClick={(event: React.MouseEvent) => event.preventDefault()}
+              className="justify-between"
               disabled={disabled}
             >
-              <Minus />
-            </Button>
-            <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">
-              {zoomLabel}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-xs"
-              type="button"
-              onClick={actions.zoomIn}
-              aria-label="Zoom in"
-              disabled={disabled}
-            >
-              <PlusIcon />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              type="button"
-              onClick={actions.resetZoom}
-              aria-label="Reset zoom"
-              disabled={disabled}
-            >
-              <RotateCcw />
-            </Button>
-          </span>
-        </MenuItem>
-        <MenuSeparator />
+              <span>Zoom</span>
+              <span className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.zoomOut}
+                  aria-label="Zoom out"
+                  disabled={disabled}
+                >
+                  <Minus />
+                </Button>
+                <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">
+                  {zoomLabel}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.zoomIn}
+                  aria-label="Zoom in"
+                  disabled={disabled}
+                >
+                  <PlusIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.resetZoom}
+                  aria-label="Reset zoom"
+                  disabled={disabled}
+                >
+                  <RotateCcw />
+                </Button>
+              </span>
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         <MenuGroup>
           {profileName ? (
             <MenuGroupLabel className="max-w-64">
               <span className="block truncate">Profile: {profileName}</span>
             </MenuGroupLabel>
           ) : null}
-          <MenuItem onClick={actions.clearCookies}>Clear cookies</MenuItem>
-          <MenuItem onClick={actions.clearCache}>Clear cache</MenuItem>
+          {!externalBrowser && (
+            <>
+              <MenuItem onClick={actions.clearCookies}>Clear cookies</MenuItem>
+              <MenuItem onClick={actions.clearCache}>Clear cache</MenuItem>
+            </>
+          )}
         </MenuGroup>
       </MenuPopup>
     </Menu>

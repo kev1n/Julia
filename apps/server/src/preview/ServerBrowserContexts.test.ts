@@ -1,7 +1,13 @@
 import * as NodeEvents from "node:events";
 
-import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
-import { chromium, type Browser, type BrowserContext, type BrowserType } from "playwright-core";
+import { ASIDE_BROWSER_PROFILE_ID, INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type BrowserType,
+  type Page,
+} from "playwright-core";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ServerBrowserContexts } from "./ServerBrowserContexts.ts";
@@ -9,10 +15,12 @@ import { ServerBrowserContexts } from "./ServerBrowserContexts.ts";
 const launches = vi.hoisted(() => ({
   launch: vi.fn<BrowserType["launch"]>(),
   persistent: vi.fn<BrowserType["launchPersistentContext"]>(),
+  connect: vi.fn<BrowserType["connectOverCDP"]>(),
   mkdir: vi.fn().mockResolvedValue(undefined),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
 vi.spyOn(chromium, "launch").mockImplementation(launches.launch);
+vi.spyOn(chromium, "connectOverCDP").mockImplementation(launches.connect);
 vi.spyOn(chromium, "launchPersistentContext").mockImplementation(launches.persistent);
 vi.mock("node:fs/promises", () => ({ mkdir: launches.mkdir, rm: launches.rm }));
 
@@ -52,6 +60,21 @@ const makeBrowser = () => {
   };
 };
 
+const makeAsidePage = () => {
+  const events = new NodeEvents.EventEmitter();
+  let closed = false;
+  return {
+    isClosed: () => closed,
+    on: (event: string, listener: (...args: unknown[]) => void) => events.on(event, listener),
+    once: (event: string, listener: () => void) => events.once(event, listener),
+    popup: (page: unknown) => events.emit("popup", page),
+    close: async () => {
+      closed = true;
+      events.emit("close");
+    },
+  };
+};
+
 const options = () => ({
   profilesDir: "/test/profiles",
   executable: vi.fn(async () => "/test/chromium"),
@@ -71,6 +94,7 @@ const withLauncher = () => {
 
 beforeEach(() => {
   launches.launch.mockReset();
+  launches.connect.mockReset();
   launches.persistent.mockReset();
   launches.mkdir.mockClear();
   launches.rm.mockClear();
@@ -126,6 +150,104 @@ describe("ServerBrowserContexts", () => {
     } finally {
       await pool.close();
     }
+  });
+
+  it("shares Aside's real context and disconnects without closing its tabs or storage", async () => {
+    const context = { ...makeContext(), newPage: vi.fn(async () => makeAsidePage()) };
+    const events = new NodeEvents.EventEmitter();
+    const browser = {
+      contexts: () => [context],
+      on: (event: string, listener: () => void) => events.on(event, listener),
+      close: vi.fn(),
+    };
+    launches.connect.mockResolvedValue(browser as unknown as Browser);
+    const close = vi
+      .fn(async () => {})
+      .mockImplementationOnce(async () => {
+        events.emit("disconnected");
+      });
+    const asideEndpoint = vi.fn(async () => ({ endpoint: "ws://aside", close }));
+    const pool = new ServerBrowserContexts({ ...options(), asideEndpoint });
+    await Promise.all([pool.asidePage(), pool.asidePage()]);
+    expect(asideEndpoint).toHaveBeenCalledTimes(1);
+    expect(context.newPage).toHaveBeenCalledTimes(2);
+    expect(launches.connect).toHaveBeenCalledWith("ws://aside", {
+      timeout: 15_000,
+      noDefaults: true,
+    });
+    expect(context.on).toHaveBeenCalledWith("dialog", expect.any(Function));
+    await pool.clearProfile(ASIDE_BROWSER_PROFILE_ID);
+    expect(launches.rm).not.toHaveBeenCalled();
+    await pool.close();
+    expect(close).toHaveBeenCalled();
+    expect(browser.close).not.toHaveBeenCalled();
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("can retry connecting to Aside after setup fails", async () => {
+    const context = { ...makeContext(), newPage: vi.fn(async () => makeAsidePage()) };
+    const close = vi.fn(async () => {});
+    const asideEndpoint = vi.fn(async () => ({ endpoint: "ws://aside", close }));
+    launches.connect.mockRejectedValueOnce(new Error("helper unavailable"));
+    launches.connect.mockResolvedValueOnce({
+      contexts: () => [context],
+      on: vi.fn(),
+    } as unknown as Browser);
+    const pool = new ServerBrowserContexts({ ...options(), asideEndpoint });
+    await expect(pool.asidePage()).rejects.toThrow("helper unavailable");
+    expect(close).toHaveBeenCalledTimes(1);
+    await pool.asidePage();
+    expect(asideEndpoint).toHaveBeenCalledTimes(2);
+    await pool.close();
+  });
+
+  it("holds the helper for managed popups and detaches after the last page closes", async () => {
+    const context = { ...makeContext(), newPage: vi.fn(async () => makeAsidePage()) };
+    const closed = Promise.withResolvers<void>();
+    const close = vi.fn(async () => closed.resolve());
+    launches.connect.mockResolvedValue({
+      contexts: () => [context],
+      on: vi.fn(),
+    } as unknown as Browser);
+    const asideEndpoint = vi.fn(async () => ({ endpoint: "ws://aside", close }));
+    const pool = new ServerBrowserContexts({ ...options(), asideEndpoint });
+    const page = await pool.asidePage();
+    const popup = makeAsidePage();
+    (page as unknown as ReturnType<typeof makeAsidePage>).popup(popup);
+    await page.close();
+    expect(close).not.toHaveBeenCalled();
+    await popup.close();
+    await closed.promise;
+    expect(close).toHaveBeenCalledTimes(1);
+    await pool.asidePage();
+    expect(asideEndpoint).toHaveBeenCalledTimes(2);
+    await pool.close();
+  });
+
+  it("does not detach while another Aside page is opening", async () => {
+    const second = Promise.withResolvers<Page>();
+    const first = makeAsidePage();
+    const context = {
+      ...makeContext(),
+      newPage: vi.fn().mockResolvedValueOnce(first).mockReturnValueOnce(second.promise),
+    };
+    const close = vi.fn(async () => {});
+    launches.connect.mockResolvedValue({
+      contexts: () => [context],
+      on: vi.fn(),
+    } as unknown as Browser);
+    const pool = new ServerBrowserContexts({
+      ...options(),
+      asideEndpoint: async () => ({ endpoint: "ws://aside", close }),
+    });
+    await pool.asidePage();
+    const opening = pool.asidePage();
+    await first.close();
+    expect(close).not.toHaveBeenCalled();
+    second.resolve(makeAsidePage() as unknown as Page);
+    await opening;
+    expect(close).not.toHaveBeenCalled();
+    await pool.close();
   });
 
   it("lazily shares one browser across concurrent isolated sessions and reuses each context", async () => {
