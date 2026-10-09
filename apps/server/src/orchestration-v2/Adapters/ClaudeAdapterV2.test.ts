@@ -7987,6 +7987,122 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("types a background Bash wait as a monitor and a dev server as a command", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        let frameNumber = 0;
+        const nextUuid = () => `00000000-0000-4000-8000-${String(++frameNumber).padStart(12, "0")}`;
+        const backgroundBashFrames = (taskId: string, description: string, command: string) => {
+          const toolUseId = `toolu_${taskId}`;
+          return [
+            claudeSdkFrame({
+              type: "assistant",
+              message: {
+                model: "claude-sonnet-4-6",
+                id: `msg_${taskId}`,
+                type: "message",
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: toolUseId,
+                    name: "Bash",
+                    input: { description, command, run_in_background: true },
+                  },
+                ],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 1, output_tokens: 1 },
+              },
+              parent_tool_use_id: null,
+              uuid: nextUuid(),
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+            claudeSdkFrame({
+              type: "system",
+              subtype: "task_started",
+              task_id: taskId,
+              tool_use_id: toolUseId,
+              description,
+              is_backgrounded: true,
+              task_type: "local_bash",
+              uuid: nextUuid(),
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+            claudeSdkFrame({
+              type: "user",
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: toolUseId,
+                    content: `Command running in background with ID: ${taskId}`,
+                  },
+                ],
+              },
+              parent_tool_use_id: null,
+              uuid: nextUuid(),
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          ];
+        };
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-background-bash-wait"),
+            text: "Start the dev server and watch CI.",
+            attachments: [],
+          }),
+        );
+        for (const frame of [
+          ...backgroundBashFrames("bash-ci", "Watch CI", "gh pr checks 17 --watch --interval 30"),
+          ...backgroundBashFrames("bash-dev", "Dev server", "vp run dev"),
+        ]) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: nextUuid(), result: "Waiting on CI." }),
+        );
+        yield* harness.awaitTerminal(1);
+
+        const roster = providerThreadRosterEvents(harness.events).at(-1)?.providerThread
+          .pendingBackgroundTasks;
+        assert.deepEqual(roster, [
+          { taskId: "bash-ci", kind: "monitor", description: "Watch CI" },
+          { taskId: "bash-dev", kind: "command", description: "Dev server" },
+        ]);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it("recognizes background Bash commands that wait on something finite", () => {
+    const waits = (command: string, runInBackground = true) =>
+      ClaudeAdapterV2.claudeBashCallWaitsForFinish({
+        name: "Bash",
+        input: { command, run_in_background: runInBackground },
+      });
+    assert.isTrue(waits("gh pr checks 17 --watch"));
+    assert.isTrue(waits("gh run watch 123 --exit-status"));
+    assert.isTrue(waits("sleep 300 && gh pr view 17"));
+    assert.isTrue(waits("until gh pr checks 17 >/dev/null; do sleep 30; done"));
+    assert.isTrue(waits("while kill -0 4242; do sleep 5; done"));
+    assert.isFalse(waits("gh pr checks 17 --watch", false));
+    assert.isFalse(waits("vp run dev"));
+    assert.isFalse(waits("while true; do curl localhost:3000; sleep 5; done"));
+    assert.isFalse(waits("tail -f server.log"));
+  });
+
   it.effect("preserves settled background work until an explicit stop", () =>
     Effect.scoped(
       Effect.gen(function* () {
