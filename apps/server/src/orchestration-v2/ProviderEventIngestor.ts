@@ -377,13 +377,19 @@ export const layer: Layer.Layer<
         );
       });
 
+    // A provider turn that ended can no longer answer its open questions. One that was
+    // stopped or failed can no longer answer its approvals either; a completed turn's
+    // background work may still be waiting on them.
     const dismissNativeUserInputs = Effect.fn("ProviderEventIngestor.dismissNativeUserInputs")(
       function* (
         input: ProviderEventIngestInput,
         providerTurnId: ProviderTurnId,
+        status: string,
         threadId = input.threadId,
       ) {
-        const pending = yield* projections.getPendingNativeUserInputs(threadId, providerTurnId);
+        const pending = yield* projections.getPendingNativeUserInputs(threadId, providerTurnId, {
+          includeApprovals: status !== "completed",
+        });
         const now = yield* DateTime.now;
         const events: Array<OrchestrationV2DomainEvent> = [];
         for (const request of pending.runtimeRequests) {
@@ -610,6 +616,7 @@ export const layer: Layer.Layer<
                   ? yield* dismissNativeUserInputs(
                       input,
                       input.event.providerTurn.id,
+                      input.event.providerTurn.status,
                       input.event.threadId,
                     )
                   : []),
@@ -704,7 +711,11 @@ export const layer: Layer.Layer<
               // Live output is routed to the command output hub before ingestion.
               return [];
             case "turn.terminal":
-              const dismissed = yield* dismissNativeUserInputs(input, input.event.providerTurnId);
+              const dismissed = yield* dismissNativeUserInputs(
+                input,
+                input.event.providerTurnId,
+                input.event.status,
+              );
               if (input.event.status !== "failed") {
                 return dismissed;
               }
