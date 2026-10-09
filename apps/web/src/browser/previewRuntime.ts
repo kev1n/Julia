@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, PreviewRuntime, PreviewSessionSnapshot } from "@t3tools/contracts";
+import {
+  ASIDE_BROWSER_PROFILE_ID,
+  type EnvironmentId,
+  type PreviewRuntime,
+  type PreviewSessionSnapshot,
+} from "@t3tools/contracts";
 
 import { isElectron } from "~/env";
 import { isPreviewSupportedInRuntime } from "~/previewStateStore";
@@ -41,15 +46,17 @@ export function usePreviewAvailable(environmentId: EnvironmentId | null): boolea
   return isPreviewSupportedInRuntime() || serverBrowser;
 }
 
+/** Aside tabs (Owner's fork) live in the Aside browser, so they always stream. */
 export function rendersServerTabNatively(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless" | "profileId"> | null | undefined,
 ): boolean {
   return (
     isElectron &&
     snapshot?.runtime === "server" &&
     !snapshot.headless &&
+    snapshot.profileId !== ASIDE_BROWSER_PROFILE_ID &&
     primaryEnvironmentId !== null &&
     environmentId === primaryEnvironmentId
   );
@@ -57,7 +64,7 @@ export function rendersServerTabNatively(
 
 export function useRendersServerTabNatively(
   environmentId: EnvironmentId,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless" | "profileId"> | null | undefined,
 ): boolean {
   return rendersServerTabNatively(environmentId, useAtomValue(primaryEnvironmentIdAtom), snapshot);
 }

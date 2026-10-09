@@ -32,24 +32,16 @@ export function PreviewEmptyState({
   });
   const recents = recentEntries.filter((entry) => URL.canParse(entry.url)).slice(0, 8);
 
-  if (servers.length === 0 && recents.length === 0) {
-    return (
-      <Empty>
-        <EmptyMedia variant="icon">
-          <Globe className="size-4.5 text-muted-foreground" />
-        </EmptyMedia>
-        <EmptyTitle>No preview yet</EmptyTitle>
-        <EmptyDescription>
-          Type a URL above, or run a dev script. Local servers this thread starts will show up here
-          automatically.
-        </EmptyDescription>
-      </Empty>
-    );
-  }
-
   return (
     <div className="scrollbar-gutter-both flex h-full min-h-0 overflow-y-auto px-5 py-8">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+        <Empty size="compact">
+          <EmptyMedia variant="icon">
+            <Globe />
+          </EmptyMedia>
+          <EmptyTitle>New tab</EmptyTitle>
+          <EmptyDescription>Enter a website address above to start browsing.</EmptyDescription>
+        </Empty>
         {recents.length > 0 ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -70,11 +62,16 @@ export function PreviewEmptyState({
           </div>
         ) : null}
         {servers.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <RadioTower className="size-4 shrink-0" />
-              <h2 className="font-medium">Local servers</h2>
-            </div>
+          <details>
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-2">
+                <RadioTower className="size-4 shrink-0" />
+                <span>Developer shortcuts ({servers.length})</span>
+              </span>
+            </summary>
+            <p className="my-3 text-xs text-muted-foreground">
+              Optional shortcuts to apps running on this environment.
+            </p>
             <DiscoveryList>
               {servers.map((server) => (
                 <PreviewLocalServerCard
@@ -85,10 +82,7 @@ export function PreviewEmptyState({
                 />
               ))}
             </DiscoveryList>
-            <p className="px-1 text-xs text-muted-foreground">
-              Select a live local server to open it in this browser tab.
-            </p>
-          </div>
+          </details>
         ) : null}
       </div>
     </div>

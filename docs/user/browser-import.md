@@ -18,3 +18,13 @@ the import wizard afterward. You can revoke Full Disk Access once the import is 
 On Windows, import supports Firefox, Zen, and Helium profiles that use standard profile encryption.
 Other Chromium-based browsers use app-bound encryption and cannot be imported. Partitioned cookies
 are skipped on all platforms.
+
+## Use Aside directly (Owner's fork)
+
+Choose **Aside** from the browser panel's profile picker to open a real Aside tab on the
+connected environment's Mac. Its existing logins and extensions are available without importing
+cookies. The page keeps Aside's window size and scales to fit the panel; change its size and
+appearance in Aside itself.
+
+The environment needs the [Aside helper setup](../operations/aside.md). Disconnecting T3 leaves
+Aside running. Closing a browser tab closes that tab in Aside too.

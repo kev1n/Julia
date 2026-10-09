@@ -142,11 +142,12 @@ export type PreviewRuntime = typeof PreviewRuntime.Type;
 
 /** JSON reason for preview stream close code 4503; must fit the 123-byte close-reason limit. */
 export const PreviewStreamHostSetup = Schema.Struct({
-  need: Schema.Literals(["sandbox", "libraries"]),
+  need: Schema.Literals(["sandbox", "libraries", "aside"]),
   command: Schema.String,
 });
 export type PreviewStreamHostSetup = typeof PreviewStreamHostSetup.Type;
 export const PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE = 4503;
+export const PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE = 4504;
 
 export const PreviewSessionSnapshot = Schema.Struct({
   threadId: TrimmedNonEmptyString,
