@@ -57,7 +57,7 @@ describe("accountLimitSummary", () => {
         }),
         NOW,
       ),
-    ).toBe("owner · Max 20x · 88% session · 61% week");
+    ).toMatch(/^owner · Max 20x · 88% session · resets .+ · 61% week$/);
   });
 
   it("leaves out the login when the instance is already named after it", () => {
@@ -66,13 +66,17 @@ describe("accountLimitSummary", () => {
         provider({ displayName: "Claude owner", email: "owner@gmail.com", session: 50 }),
         NOW,
       ),
-    ).toBe("50% session");
+    ).toMatch(/^50% session · resets /);
   });
 
   it("counts a session whose reset has passed as full", () => {
     expect(accountLimitSummary(provider({ session: 100, sessionResetsAt: inHours(-1) }), NOW)).toBe(
       "100% session",
     );
+  });
+
+  it("leaves out the reset of an untouched session", () => {
+    expect(accountLimitSummary(provider({ session: 0 }), NOW)).toBe("100% session");
   });
 
   it("says when an account with no limit left comes back instead of its percentages", () => {
