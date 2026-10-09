@@ -2,6 +2,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import type { MenuAction } from "@react-native-menu/menu";
 import {
+  ASIDE_BROWSER_PROFILE_ID,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
   type EnvironmentId,
   FILL_PREVIEW_VIEWPORT,
@@ -197,7 +198,13 @@ export function BrowserTabMenu({
       accessible
       accessibilityLabel={gt("Browser tab options")}
       accessibilityRole="button"
-      actions={streaming ? actions : [...openOnDevice, closeAction]}
+      actions={
+        !streaming
+          ? [...openOnDevice, closeAction]
+          : tab.profileId === ASIDE_BROWSER_PROFILE_ID
+            ? actions.filter((action) => action.id === "hard-reload")
+            : actions
+      }
       onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}
     >
       <ControlPill icon="ellipsis" accessibilityLabel={gt("Browser tab options")} />

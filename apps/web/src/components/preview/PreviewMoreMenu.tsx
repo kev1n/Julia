@@ -44,6 +44,8 @@ export interface PreviewMoreMenuActions {
 
 interface Props {
   enabled: boolean;
+  /** The real browser owns its appearance, layout and site data. */
+  externalBrowser?: boolean;
   actions: PreviewMoreMenuActions;
   zoomFactor: number;
   colorScheme: DesktopPreviewColorScheme;
@@ -79,6 +81,7 @@ const MenuTriggerButton = () => {
 
 export function PreviewMoreMenu({
   enabled,
+  externalBrowser = false,
   actions,
   zoomFactor,
   colorScheme,
@@ -119,73 +122,79 @@ export function PreviewMoreMenu({
           </MenuItem>
         ) : null}
         {move ? <MenuItem onClick={move.onMove}>{move.label}</MenuItem> : null}
-        <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
-          {deviceToolbarVisible ? gt("Hide device toolbar") : gt("Show device toolbar")}
-        </MenuItem>
-        <MenuSub>
-          <MenuSubTrigger disabled={disabled}>
-            <T>Appearance</T>
-          </MenuSubTrigger>
-          <MenuSubPopup>
-            <MenuRadioGroup
-              value={colorScheme}
-              onValueChange={(value) => actions.setColorScheme(value as DesktopPreviewColorScheme)}
-            >
-              {COLOR_SCHEME_OPTIONS.map((option) => (
-                <MenuRadioItem key={option.value} value={option.value}>
-                  {m(option.label)}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuSubPopup>
-        </MenuSub>
-        <MenuSeparator />
-        <MenuItem
-          closeOnClick={false}
-          onClick={(event: React.MouseEvent) => event.preventDefault()}
-          className="justify-between"
-          disabled={disabled}
-        >
-          <span>
-            <T>Zoom</T>
-          </span>
-          <span className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon-xs"
-              type="button"
-              onClick={actions.zoomOut}
-              aria-label={gt("Zoom out")}
+        {!externalBrowser && (
+          <>
+            <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
+              {deviceToolbarVisible ? gt("Hide device toolbar") : gt("Show device toolbar")}
+            </MenuItem>
+            <MenuSub>
+              <MenuSubTrigger disabled={disabled}>
+                <T>Appearance</T>
+              </MenuSubTrigger>
+              <MenuSubPopup>
+                <MenuRadioGroup
+                  value={colorScheme}
+                  onValueChange={(value) =>
+                    actions.setColorScheme(value as DesktopPreviewColorScheme)
+                  }
+                >
+                  {COLOR_SCHEME_OPTIONS.map((option) => (
+                    <MenuRadioItem key={option.value} value={option.value}>
+                      {m(option.label)}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuSubPopup>
+            </MenuSub>
+            <MenuSeparator />
+            <MenuItem
+              closeOnClick={false}
+              onClick={(event: React.MouseEvent) => event.preventDefault()}
+              className="justify-between"
               disabled={disabled}
             >
-              <Minus />
-            </Button>
-            <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">
-              {zoomLabel}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-xs"
-              type="button"
-              onClick={actions.zoomIn}
-              aria-label={gt("Zoom in")}
-              disabled={disabled}
-            >
-              <PlusIcon />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              type="button"
-              onClick={actions.resetZoom}
-              aria-label={gt("Reset zoom")}
-              disabled={disabled}
-            >
-              <RotateCcw />
-            </Button>
-          </span>
-        </MenuItem>
-        <MenuSeparator />
+              <span>
+                <T>Zoom</T>
+              </span>
+              <span className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.zoomOut}
+                  aria-label={gt("Zoom out")}
+                  disabled={disabled}
+                >
+                  <Minus />
+                </Button>
+                <span className="min-w-12 text-center text-xs tabular-nums text-muted-foreground">
+                  {zoomLabel}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.zoomIn}
+                  aria-label={gt("Zoom in")}
+                  disabled={disabled}
+                >
+                  <PlusIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  type="button"
+                  onClick={actions.resetZoom}
+                  aria-label={gt("Reset zoom")}
+                  disabled={disabled}
+                >
+                  <RotateCcw />
+                </Button>
+              </span>
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         <MenuGroup>
           {profileName ? (
             <MenuGroupLabel className="max-w-64">
@@ -196,12 +205,16 @@ export function PreviewMoreMenu({
               </span>
             </MenuGroupLabel>
           ) : null}
-          <MenuItem onClick={actions.clearCookies}>
-            <T>Clear cookies</T>
-          </MenuItem>
-          <MenuItem onClick={actions.clearCache}>
-            <T>Clear cache</T>
-          </MenuItem>
+          {!externalBrowser && (
+            <>
+              <MenuItem onClick={actions.clearCookies}>
+                <T>Clear cookies</T>
+              </MenuItem>
+              <MenuItem onClick={actions.clearCache}>
+                <T>Clear cache</T>
+              </MenuItem>
+            </>
+          )}
         </MenuGroup>
       </MenuPopup>
     </Menu>

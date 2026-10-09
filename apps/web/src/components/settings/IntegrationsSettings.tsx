@@ -5,6 +5,7 @@ import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings"
 import { ScopedSwitch } from "./ScopedSwitch";
 import { DeviceSourcesSettings } from "./DeviceSourcesSettings";
 import {
+  ASIDE_BROWSER_PROFILE_ID,
   AuthSettingsWriteScope,
   BrowserImportFailureReason,
   BROWSER_PROFILE_MAX_COUNT,
@@ -1532,16 +1533,19 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                   >
                     <T>Set as default</T>
                   </MenuItem>
-                  <MenuItem
-                    disabled={!settingsHydrated || !removalAvailable}
-                    onClick={() => {
-                      if (serverProfileData.environmentIds.length > 0) {
-                        setProfilePendingClear(profile);
-                      } else clearProfileData(profile.id, profile.name);
-                    }}
-                  >
-                    <T>Clear cookies and cache</T>
-                  </MenuItem>
+                  {profile.id !== ASIDE_BROWSER_PROFILE_ID ? (
+                    <MenuItem
+                      disabled={!settingsHydrated || !removalAvailable}
+                      onClick={() => {
+                        // Clearing a server copy closes its open tabs, so it asks first.
+                        if (serverProfileData.environmentIds.length > 0) {
+                          setProfilePendingClear(profile);
+                        } else clearProfileData(profile.id, profile.name);
+                      }}
+                    >
+                      <T>Clear cookies and cache</T>
+                    </MenuItem>
+                  ) : null}
                   {builtIn ? null : (
                     <MenuItem
                       variant="destructive"
@@ -1553,7 +1557,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                       <T>Remove profile and data</T>
                     </MenuItem>
                   )}
-                  {!removalAvailable ? (
+                  {profile.id !== ASIDE_BROWSER_PROFILE_ID && !removalAvailable ? (
                     <>
                       <MenuSeparator />
                       <MenuItem disabled>

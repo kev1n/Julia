@@ -7,6 +7,7 @@ import {
   BUILT_IN_BROWSER_PROFILES,
   DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_BROWSER_RECORDING_FRAME_RATE,
+  ASIDE_BROWSER_PROFILE_ID,
   FILL_PREVIEW_VIEWPORT,
   findBrowserProfile,
   INCOGNITO_BROWSER_PROFILE_ID,
@@ -486,6 +487,10 @@ interface ServerTab {
   readonly isolatedContext: boolean;
 
   readonly desktop: { readonly close: () => Promise<void> } | null;
+  /** Fork: a tab in Owner's Aside browser, which owns its size, look, and storage. */
+  readonly aside: boolean;
+  /** An Aside page's CSS size, as its window lays it out; Playwright does not know it. */
+  asideSize: { width: number; height: number } | null;
   readonly profileId: string | undefined;
   readonly openerTabId: string | undefined;
 
@@ -833,23 +838,23 @@ const make = Effect.gen(function* () {
     else tab.page.off("filechooser", tab.onFileChooser);
   };
 
+  const controlMessage = (tab: ServerTab, viewer: ViewerState): ServerBrowserViewerOutput => ({
+    _tag: "control",
+    canOperate: viewer.canOperate,
+    controller:
+      tab.control.controller === viewer.id
+        ? "you"
+        : tab.control.controller !== null
+          ? "another-viewer"
+          : tab.control.agentId !== null
+            ? "agent"
+            : "unclaimed",
+    generation: tab.control.generation,
+    dialog: dialogStatus(tab),
+  });
   const broadcastControl = (tab: ServerTab) => {
     updateFileChooserInterception(tab);
-    for (const viewer of tab.viewers)
-      viewer.push({
-        _tag: "control",
-        canOperate: viewer.canOperate,
-        controller:
-          tab.control.controller === viewer.id
-            ? "you"
-            : tab.control.controller !== null
-              ? "another-viewer"
-              : tab.control.agentId !== null
-                ? "agent"
-                : "unclaimed",
-        generation: tab.control.generation,
-        dialog: dialogStatus(tab),
-      });
+    for (const viewer of tab.viewers) viewer.push(controlMessage(tab, viewer));
   };
 
   const resolveDialog = async (tab: ServerTab, input: DialogResponse) => {
@@ -1067,7 +1072,11 @@ const make = Effect.gen(function* () {
       return (tab.desktopViewportRead = readDesktopViewport(tab));
     }));
 
+  /** Desktop and Aside pages keep the size, zoom, and look their own window gives them. */
+  const ownsLayout = (tab: ServerTab) => tab.desktop !== null || tab.aside;
+
   const layoutSize = async (tab: ServerTab) => {
+    if (tab.aside) return tab.asideSize;
     // A dialog blocks page script; its close measures again.
     if (tab.desktop) {
       return tab.dialog
@@ -1092,7 +1101,7 @@ const make = Effect.gen(function* () {
   };
 
   const applyZoom = async (tab: ServerTab) => {
-    if (tab.desktop) return;
+    if (ownsLayout(tab)) return;
     const size = tab.page.viewportSize();
     if (!size) return;
     if (tab.zoomFactor === 1) {
@@ -1116,8 +1125,7 @@ const make = Effect.gen(function* () {
 
   const applySetting = async (tab: ServerTab, setting: PreviewViewportSetting) => {
     tab.setting = setting;
-
-    if (tab.desktop) return;
+    if (ownsLayout(tab)) return;
     const size =
       fixedViewportSize(setting) ??
       [...tab.viewers]
@@ -1132,12 +1140,12 @@ const make = Effect.gen(function* () {
 
   const applyRendering = async (tab: ServerTab, snapshot: PreviewSessionSnapshot) => {
     const colorScheme = snapshot.colorScheme ?? "system";
-    if (colorScheme !== tab.colorScheme) {
+    if (colorScheme !== tab.colorScheme && !tab.aside) {
       tab.colorScheme = colorScheme;
       await tab.page.emulateMedia({ colorScheme: colorScheme === "system" ? null : colorScheme });
     }
     const zoomFactor = snapshot.zoomFactor ?? 1;
-    if (zoomFactor !== tab.zoomFactor && !tab.desktop) {
+    if (zoomFactor !== tab.zoomFactor && !ownsLayout(tab)) {
       tab.zoomFactor = zoomFactor;
       await applyZoom(tab);
       await broadcastViewport(tab);
@@ -1296,8 +1304,9 @@ const make = Effect.gen(function* () {
   ): Promise<ServerTab> => {
     const adopted = adoptedPages.get(tabKey(snapshot.threadId, snapshot.tabId));
     adoptedPages.delete(tabKey(snapshot.threadId, snapshot.tabId));
+    const aside = snapshot.profileId === ASIDE_BROWSER_PROFILE_ID;
     const desktop =
-      adopted === undefined && (await desktopRenders(snapshot))
+      !aside && adopted === undefined && (await desktopRenders(snapshot))
         ? await connectDesktop(snapshot)
         : null;
     if (desktop) opened.push(desktop.close);
@@ -1311,7 +1320,10 @@ const make = Effect.gen(function* () {
           .pipe(Effect.ignore),
       );
     }
+    // An Aside tab is a new tab in Aside; its popups are Aside pages already.
+    const asidePage = aside && adopted === undefined ? await contexts.asidePage() : undefined;
     const isolatedContext =
+      !aside &&
       adopted === undefined &&
       desktop === null &&
       ((snapshot.automationOwner !== undefined && snapshot.profileId === undefined) ||
@@ -1319,14 +1331,16 @@ const make = Effect.gen(function* () {
     const context =
       adopted?.page.context() ??
       desktop?.page.context() ??
+      asidePage?.context() ??
       (await contexts.contextFor(
         snapshot.profileId ?? "default",
         isolatedContext ? tabKey(snapshot.threadId, snapshot.tabId) : undefined,
       ));
     if (isolatedContext) opened.push(() => context.close());
     if (adopted?.page.isClosed()) throw new Error("The popup closed before it opened.");
-    if (!desktop) await prepareContext(context);
-    const page = adopted?.page ?? desktop?.page ?? (await context.newPage());
+    // Native browsers already have their own clipboard.
+    if (!desktop && !aside) await prepareContext(context);
+    const page = adopted?.page ?? desktop?.page ?? asidePage ?? (await context.newPage());
     if (!desktop) opened.push(() => page.close());
     const cdp = await context.newCDPSession(page);
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
@@ -1360,6 +1374,8 @@ const make = Effect.gen(function* () {
       },
       isolatedContext,
       desktop: desktop === null ? null : { close: desktop.close },
+      aside,
+      asideSize: aside ? await ServerBrowserPage.nativeViewport(cdp).catch(() => null) : null,
       profileId: snapshot.profileId,
       openerTabId: adopted?.openerTabId,
       downloads: [],
@@ -1401,17 +1417,18 @@ const make = Effect.gen(function* () {
       captureLock: Promise.resolve(),
       capturing: 0,
     };
-    if (!desktop)
+    const nativeBrowser = desktop !== null || aside;
+    if (!nativeBrowser)
       cdp.on("Fetch.authRequired", (event) =>
         requestAuth(tab, event.requestId, event.authChallenge),
       );
-    // Desktop tabs keep the desktop shell's own handling of HTTP auth.
-    await installPdfDocumentNavigation(cdp, { handleAuthRequests: !desktop });
+    // Desktop and Aside tabs keep their own browser's handling of HTTP auth.
+    await installPdfDocumentNavigation(cdp, { handleAuthRequests: !nativeBrowser });
     // The desktop's page is already a normal browser. A popup's first request
     // precedes this override, so its Sec-CH-UA brands still name HeadlessChrome.
-    if (!desktop) await presentAsChrome(cdp, host);
-    if (!desktop) await recordCopies(cdp);
-    if (!desktop) {
+    if (!nativeBrowser) await presentAsChrome(cdp, host);
+    if (!nativeBrowser) await recordCopies(cdp);
+    if (!ownsLayout(tab)) {
       await page.setViewportSize(fixedViewportSize(tab.setting) ?? UNATTACHED_FILL_VIEWPORT);
     }
     await applyRendering(tab, snapshot);
@@ -1511,10 +1528,10 @@ const make = Effect.gen(function* () {
       }
       // Same-document navigations (SPA routes) fire no load event.
       if (frame === page.mainFrame() && !tab.loading) void reportLoaded(tab);
-      if (!desktop) void recordFrameCopies(tab, frame);
+      if (!desktop && !aside) void recordFrameCopies(tab, frame);
     });
     // An adopted popup's frames may have loaded before the tab listened.
-    if (adopted) for (const frame of page.frames()) void recordFrameCopies(tab, frame);
+    if (adopted && !aside) for (const frame of page.frames()) void recordFrameCopies(tab, frame);
     page.on("requestfailed", (request) => {
       const errorText = request.failure()?.errorText ?? "";
       pushBounded(tab.networkEntries, {
@@ -2346,9 +2363,11 @@ const make = Effect.gen(function* () {
     const statusUrl = loadError?.url ?? (url === "about:blank" ? null : url);
     const [viewport, title] = await Promise.all([
       // A late measurement still lands in desktopViewport for the next status.
-      tab.desktop
-        ? withinStatusDeadline(desktopStatusViewport(tab), () => tab.desktopViewport)
-        : tab.page.viewportSize(),
+      tab.aside
+        ? layoutSize(tab)
+        : tab.desktop
+          ? withinStatusDeadline(desktopStatusViewport(tab), () => tab.desktopViewport)
+          : tab.page.viewportSize(),
       statusUrl === null || tab.dialog
         ? null
         : withinStatusDeadline(
@@ -2487,7 +2506,7 @@ const make = Effect.gen(function* () {
         await encoder.evaluate(
           ([data, width]) =>
             (globalThis as unknown as EncoderWindow).__t3Recorder.frame(data, width),
-          [firstFrame, tab.page.viewportSize()?.width ?? UNATTACHED_FILL_VIEWPORT.width] as const,
+          [firstFrame, (await layoutSize(tab))?.width ?? UNATTACHED_FILL_VIEWPORT.width] as const,
         );
         const opened = await tab.page.context().newCDPSession(tab.page);
         session = opened;
@@ -3052,6 +3071,7 @@ const make = Effect.gen(function* () {
         return statusWithTitle(tab, request.agentSessionId);
       }
       case "resize": {
+        if (tab.aside) throw new Error("Resize Aside's native window instead.");
         const setting = resolvePreviewViewport(input as PreviewAutomationResizeInput);
         const from = fixedViewportSize(tab.setting);
         const to = fixedViewportSize(setting);
@@ -3122,6 +3142,7 @@ const make = Effect.gen(function* () {
         };
       }
       case "setColorScheme": {
+        if (tab.aside) throw new Error("Change appearance in Aside itself.");
         const { colorScheme } = input as PreviewAutomationSetColorSchemeInput;
         const snapshot = await runPromise(
           manager.adjust({ threadId: tab.threadId, tabId: tab.tabId, colorScheme }),
@@ -3133,7 +3154,7 @@ const make = Effect.gen(function* () {
         const snapshotInput = input as PreviewAutomationSnapshotInput | undefined;
         const rendering = {
           ...tab,
-          renderScale: tab.desktop ? "display" : RENDER_SCALE,
+          renderScale: ownsLayout(tab) ? "display" : RENDER_SCALE,
           fullScreenshot: snapshotInput?.fullScreenshot,
         } as const;
         const snapshot = await withScreencastsPaused(tab, () =>
@@ -3262,8 +3283,11 @@ const make = Effect.gen(function* () {
             }
             await applyRendering(tab, event.snapshot);
             const request = event.request;
-            if (request?.clear === "cookies") await tab.cdp.send("Network.clearBrowserCookies");
-            if (request?.clear === "cache") await tab.cdp.send("Network.clearBrowserCache");
+            // Clearing reaches the whole browser, which for Aside is every login Owner has.
+            if (request?.clear === "cookies" && !tab.aside)
+              await tab.cdp.send("Network.clearBrowserCookies");
+            if (request?.clear === "cache" && !tab.aside)
+              await tab.cdp.send("Network.clearBrowserCache");
             if (request?.hardReload) {
               tab.pendingInitialRequestUrl = null;
               await leaveBusyPage(tab, tab.cdp);
@@ -3429,7 +3453,9 @@ const make = Effect.gen(function* () {
         }
         const command = editingCommand(key, modifiers);
         const copying =
-          !tab.desktop && (command?.commands[0] === "copy" || command?.commands[0] === "cut");
+          !tab.desktop &&
+          !tab.aside &&
+          (command?.commands[0] === "copy" || command?.commands[0] === "cut");
 
         // Copy keys get disjoint millisecond windows so each frame's copy belongs to one key.
         if (copying)
@@ -3469,7 +3495,7 @@ const make = Effect.gen(function* () {
         const height = Math.min(Math.round(num(message.height)), 2160);
         if (width < 100 || height < 100) return;
         viewer.requestedSize = { width, height, order: ++viewerResizeOrder };
-        if (tab.setting._tag !== "fill" || tab.desktop) return;
+        if (tab.setting._tag !== "fill" || ownsLayout(tab)) return;
         const current = tab.page.viewportSize();
         if (current?.width === width && current.height === height) return;
         await tab.page.setViewportSize({ width, height });
@@ -3565,6 +3591,8 @@ const make = Effect.gen(function* () {
     "ServerBrowser.attachViewer",
   )(function* (input) {
     const tab = yield* findTab(input.threadId, input.tabId);
+    // Native Chrome only reliably screencasts its active tab.
+    if (tab.aside) yield* Effect.promise(() => tab.page.bringToFront().catch(constVoid));
     const output = yield* Queue.make<ServerBrowserViewerOutput>({
       capacity: VIEWER_OUTPUT_LIMIT,
       strategy: "dropping",
@@ -3700,50 +3728,71 @@ const make = Effect.gen(function* () {
       }),
     );
     let screencastStarted = false;
+    let nativeSizePending: Promise<void> | null = null;
+    const refreshNativeSize = () => {
+      if (!tab.aside) return Promise.resolve();
+      return (nativeSizePending ??= ServerBrowserPage.nativeViewport(session)
+        .then((size) => {
+          if (tab.asideSize?.width !== size.width || tab.asideSize.height !== size.height) {
+            tab.asideSize = size;
+            void broadcastViewport(tab).catch(constVoid);
+          }
+        })
+        .catch(constVoid)
+        .finally(() => {
+          nativeSizePending = null;
+        }));
+    };
     session.on("Page.screencastFrame", (frame) => {
       screencastStarted = true;
-      if (framesInFlight > 0) mayHaveDropped = true;
-      framesInFlight += 1;
-      const arrivedAt = Date.now();
-      recentFrames.push(arrivedAt);
-      while (recentFrames[0]! < arrivedAt - SCREENCAST_MOTION_WINDOW_MS) recentFrames.shift();
-      if (
-        !motion &&
-        recentFrames.length >= SCREENCAST_MOTION_FRAMES &&
-        arrivedAt - viewer.scrolledAt < SCREENCAST_MOTION_WINDOW_MS
-      ) {
-        motion = true;
-        void startScreencast(0.5);
-      } else if (motion && arrivedAt - viewer.scrolledAt > SCREENCAST_SETTLE_MS) {
-        motion = false;
-        recentFrames.length = 0;
-        void startScreencast(1);
-      }
-      if (settleTimer !== null) clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        settleTimer = null;
-        if (!motion && !mayHaveDropped) return;
-        mayHaveDropped = false;
-        if (motion) {
+      // CDP frame dimensions are DIP, but pointer input is CSS pixels. Measure before
+      // publishing the frame, so native zoom/resize updates its coordinate mapping first.
+      void refreshNativeSize().then(() => {
+        if (framesInFlight > 0) mayHaveDropped = true;
+        framesInFlight += 1;
+        const arrivedAt = Date.now();
+        recentFrames.push(arrivedAt);
+        while (recentFrames[0]! < arrivedAt - SCREENCAST_MOTION_WINDOW_MS) recentFrames.shift();
+        if (
+          !motion &&
+          recentFrames.length >= SCREENCAST_MOTION_FRAMES &&
+          arrivedAt - viewer.scrolledAt < SCREENCAST_MOTION_WINDOW_MS
+        ) {
+          motion = true;
+          void startScreencast(0.5);
+        } else if (motion && arrivedAt - viewer.scrolledAt > SCREENCAST_SETTLE_MS) {
+          // The page keeps animating after the scroll; its own frames are sharp again.
           motion = false;
           recentFrames.length = 0;
           void startScreencast(1);
         }
-        void pushStill();
-      }, SCREENCAST_SETTLE_MS);
-      viewer.push({
-        _tag: "frame",
-        data: Buffer.from(frame.data, "base64"),
-        ack: Effect.promise(() =>
-          sleepUntil(arrivedAt + SCREENCAST_ACK_PACE_MS).then(() => {
-            framesInFlight -= 1;
-            return session
-              .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
-              .catch(constVoid);
-          }),
-        ),
+        if (settleTimer !== null) clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+          settleTimer = null;
+          if (!motion && !mayHaveDropped) return;
+          mayHaveDropped = false;
+          if (motion) {
+            motion = false;
+            recentFrames.length = 0;
+            void startScreencast(1);
+          }
+          void pushStill();
+        }, SCREENCAST_SETTLE_MS);
+        viewer.push({
+          _tag: "frame",
+          data: Buffer.from(frame.data, "base64"),
+          ack: Effect.promise(() =>
+            sleepUntil(arrivedAt + SCREENCAST_ACK_PACE_MS).then(() => {
+              framesInFlight -= 1;
+              return session
+                .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
+                .catch(constVoid);
+            }),
+          ),
+        });
       });
     });
+    yield* Effect.promise(refreshNativeSize);
     void broadcastViewport(tab).catch(constVoid);
     yield* Effect.promise(() => startScreencast(1));
     // An idle page does not repaint for a new screencast, so the viewer
@@ -3761,6 +3810,7 @@ const make = Effect.gen(function* () {
               const taking = tab.control.take(viewer.id);
               broadcastControl(tab);
               await taking;
+              if (tab.aside) await tab.page.bringToFront();
               pushFileChooser(tab);
             } else if (message.type === "releaseControl") {
               const releasing = tab.control.release(viewer.id, () =>

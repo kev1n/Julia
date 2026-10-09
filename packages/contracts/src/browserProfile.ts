@@ -27,10 +27,12 @@ export type BrowserProfile = typeof BrowserProfile.Type;
 
 export const DEFAULT_BROWSER_PROFILE_ID: BrowserProfileId = "default";
 export const INCOGNITO_BROWSER_PROFILE_ID: BrowserProfileId = "incognito";
+export const ASIDE_BROWSER_PROFILE_ID: BrowserProfileId = "aside";
 
 export const BUILT_IN_BROWSER_PROFILES: ReadonlyArray<BrowserProfile> = [
   { id: DEFAULT_BROWSER_PROFILE_ID, name: "Default", kind: "persistent" },
   { id: INCOGNITO_BROWSER_PROFILE_ID, name: "Incognito", kind: "incognito" },
+  { id: ASIDE_BROWSER_PROFILE_ID, name: "Aside", kind: "persistent" },
 ];
 
 export function isBuiltInBrowserProfileId(id: string): boolean {
