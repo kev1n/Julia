@@ -5,6 +5,7 @@
  */
 import {
   isProviderAvailable,
+  type ModelSelection,
   type ServerProvider,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
@@ -36,8 +37,19 @@ export interface AccountStanding {
 export function accountStanding(
   limits: ServerProviderUsageLimits | undefined,
   now: number,
+  model?: string,
 ): AccountStanding {
-  const windows = limits?.windows ?? [];
+  const windows = (limits?.windows ?? []).filter((window) => {
+    if (model === undefined) return true;
+    // Older Claude snapshots predate modelScope. Never count their scoped
+    // weekly bucket as a global quota while those snapshots are being refreshed.
+    const scope =
+      window.modelScope ??
+      (window.id.startsWith("seven_day_")
+        ? `claude-${window.id.slice(10).replaceAll("_", "-")}`
+        : undefined);
+    return scope === undefined || model === scope || model.startsWith(`${scope}-`);
+  });
   const session = windows.find((window) => window.kind === "session");
   const tightest = (kind?: ServerProviderUsageWindow["kind"]) => {
     const left = windows
@@ -76,12 +88,13 @@ export function chooseAutoAccount<T>(
   accounts: ReadonlyArray<T>,
   limitsOf: (account: T) => ServerProviderUsageLimits | undefined,
   now: number,
+  model?: string,
 ): AccountChoice<T> | null {
   const ranked = accounts
     .map((account, index) => ({
       account,
       index,
-      standing: accountStanding(limitsOf(account), now),
+      standing: accountStanding(limitsOf(account), now, model),
     }))
     .filter((entry) => !entry.standing.limited)
     .sort(
@@ -115,12 +128,33 @@ export function chooseAutoInstance(
   providers: ReadonlyArray<ServerProvider>,
   driver: string,
   now: number,
+  model?: string,
 ): AccountChoice<ServerProvider> | null {
   return chooseAutoAccount(
     usableInstances(providers, driver),
     (provider) => provider.usageLimits,
     now,
+    model,
   );
+}
+
+/** A replacement must explicitly advertise the same model and selected options. */
+export function providerSupportsSelection(
+  provider: ServerProvider,
+  selection: ModelSelection,
+): boolean {
+  const model = provider.models.find((model) => model.slug === selection.model);
+  if (!model) return false;
+  const seen = new Set<string>();
+  return (selection.options ?? []).every((option) => {
+    if (seen.has(option.id)) return false;
+    seen.add(option.id);
+    const descriptor = model.capabilities?.optionDescriptors?.find((item) => item.id === option.id);
+    return descriptor?.type === "boolean"
+      ? typeof option.value === "boolean"
+      : descriptor?.type === "select" &&
+          descriptor.options.some((item) => item.id === option.value);
+  });
 }
 
 /**

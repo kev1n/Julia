@@ -1,8 +1,12 @@
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
   MessageId,
   ProjectId,
+  NodeId,
+  type ServerProvider,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
@@ -11,6 +15,7 @@ import {
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2Notification,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -35,6 +40,8 @@ const delegatedMessageId = MessageId.make("message-provider-continuation-delegat
 const projection = {
   thread: { archivedAt: null, deletedAt: null },
   messages: [],
+  runs: [],
+  turnItems: [],
 } as unknown as OrchestrationV2ThreadProjection;
 
 const request = (
@@ -94,6 +101,7 @@ const makeGuard = Effect.fnUntraced(function* (completed?: Deferred.Deferred<voi
 
 function layerTest(input: {
   readonly dispatched: Queue.Queue<unknown>;
+  readonly providers?: ReadonlyArray<ServerProvider>;
   readonly getThreadRecords: () => Effect.Effect<OrchestrationV2ThreadProjection>;
 }) {
   const layerThreads = Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -102,13 +110,60 @@ function layerTest(input: {
   });
   const layerWorker = ProviderContinuationService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(IdAllocator.layer, ProviderContinuationRequests.layer, layerThreads),
+      Layer.mergeAll(
+        IdAllocator.layer,
+        ProviderContinuationRequests.layer,
+        layerThreads,
+        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed(input.providers ?? []) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () =>
+            Effect.succeed((input.providers ?? []).map((provider) => provider.instanceId)),
+        }),
+      ),
     ),
   );
   return Layer.merge(ProviderContinuationRequests.layer, layerWorker);
 }
 
 describe("ProviderContinuationService", () => {
+  it.effect("drops an old parent's result wake after that run continued in another thread", () =>
+    Effect.gen(function* () {
+      const dispatched = yield* Queue.unbounded<unknown>();
+      const cleared = yield* Deferred.make<void>();
+      const original = delegatedProjection();
+      yield* Effect.gen(function* () {
+        const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+        yield* requests.offer({
+          ...request(),
+          delivery: "message_text",
+          delegatedCompletion: { parentRunId, generation: 1, messageId: delegatedMessageId },
+          clearIfCurrent: () => Deferred.succeed(cleared, undefined),
+        });
+        yield* Deferred.await(cleared);
+        assert.isTrue(Option.isNone(yield* Queue.poll(dispatched)));
+      }).pipe(
+        Effect.provide(
+          layerTest({
+            dispatched,
+            getThreadRecords: () =>
+              Effect.succeed({
+                ...original,
+                thread: {
+                  ...original.thread,
+                  limitRecovery: {
+                    runId: parentRunId,
+                    resetAt: "2099-01-01T00:00:00Z",
+                    autoResume: false,
+                    continuedIn: ThreadId.make("replacement-parent"),
+                  },
+                },
+              }),
+          }),
+        ),
+        Effect.scoped,
+      );
+    }),
+  );
   it.effect("recovers an unaccepted persisted steer using the same delivery identity", () =>
     Effect.gen(function* () {
       const dispatched = yield* Queue.unbounded<unknown>();
@@ -278,7 +333,15 @@ describe("ProviderContinuationService", () => {
         });
         const layerWorker = ProviderContinuationService.layer.pipe(
           Layer.provide(
-            Layer.mergeAll(IdAllocator.layer, ProviderContinuationRequests.layer, layerThreads),
+            Layer.mergeAll(
+              IdAllocator.layer,
+              ProviderContinuationRequests.layer,
+              layerThreads,
+              Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+              Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+                list: () => Effect.succeed([]),
+              }),
+            ),
           ),
         );
 
@@ -342,7 +405,15 @@ describe("ProviderContinuationService", () => {
         });
         const layerWorker = ProviderContinuationService.layer.pipe(
           Layer.provide(
-            Layer.mergeAll(IdAllocator.layer, ProviderContinuationRequests.layer, layerThreads),
+            Layer.mergeAll(
+              IdAllocator.layer,
+              ProviderContinuationRequests.layer,
+              layerThreads,
+              Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+              Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+                list: () => Effect.succeed([]),
+              }),
+            ),
           ),
         );
 
@@ -391,7 +462,15 @@ describe("ProviderContinuationService", () => {
         });
         const layerWorker = ProviderContinuationService.layer.pipe(
           Layer.provide(
-            Layer.mergeAll(IdAllocator.layer, ProviderContinuationRequests.layer, layerThreads),
+            Layer.mergeAll(
+              IdAllocator.layer,
+              ProviderContinuationRequests.layer,
+              layerThreads,
+              Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+              Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+                list: () => Effect.succeed([]),
+              }),
+            ),
           ),
         );
 
@@ -619,3 +698,79 @@ describe("ProviderContinuationService", () => {
     });
   });
 });
+
+it.effect(
+  "a limited parent receives its task result in the same thread on a compatible account",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const instanceA = ProviderInstanceId.make("limited-parent");
+      const instanceB = ProviderInstanceId.make("healthy-parent");
+      const selection = { instanceId: instanceA, model: "gpt-6-astra" };
+      const original = delegatedProjection();
+      const parent = {
+        ...original,
+        thread: { ...original.thread, id: threadId, modelSelection: selection },
+        runs: [
+          {
+            ...original.runs[0]!,
+            status: "failed",
+            ordinal: 1,
+            rootNodeId: NodeId.make("parent-root"),
+            startedAt: now,
+            completedAt: now,
+            providerInstanceId: instanceA,
+            modelSelection: selection,
+          },
+        ],
+        turnItems: [
+          {
+            type: "error",
+            nodeId: NodeId.make("parent-root"),
+            runId: parentRunId,
+            status: "failed",
+            updatedAt: now,
+            failure: { class: "usage_limit", message: "Session exhausted", code: "blocking_limit" },
+          },
+        ],
+      } as unknown as OrchestrationV2ThreadProjection;
+      const providers: ServerProvider[] = [instanceA, instanceB].map((instanceId) => ({
+        instanceId,
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: DateTime.formatIso(now),
+        models: [
+          { slug: selection.model, name: selection.model, isCustom: false, capabilities: null },
+        ],
+        slashCommands: [],
+        skills: [],
+      }));
+      const dispatched = yield* Queue.unbounded<unknown>();
+      yield* Effect.gen(function* () {
+        const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+        yield* requests.offer({
+          threadId,
+          providerThreadId,
+          driver,
+          detail: null,
+          delivery: "message_text",
+          delegatedCompletion: { parentRunId, generation: 1, messageId: delegatedMessageId },
+        });
+        const command = (yield* Queue.take(dispatched)) as {
+          threadId: ThreadId;
+          modelSelection: typeof selection;
+        };
+        assert.equal(command.threadId, threadId);
+        assert.deepEqual(command.modelSelection, { ...selection, instanceId: instanceB });
+      }).pipe(
+        Effect.provide(
+          layerTest({ dispatched, providers, getThreadRecords: () => Effect.succeed(parent) }),
+        ),
+        Effect.scoped,
+      );
+    }),
+);

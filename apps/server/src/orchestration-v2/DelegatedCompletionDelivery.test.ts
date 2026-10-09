@@ -1,6 +1,11 @@
 import * as Exit from "effect/Exit";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EffectWorker from "./EffectWorker.ts";
+import {
+  makeProviderFailure,
+  makeProviderFailureTurnItem,
+} from "@t3tools/provider-core/server/failure";
+import { ProviderTurnId } from "@t3tools/contracts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -1404,8 +1409,9 @@ const seedRestartCancelledChild = (input: {
   readonly name: string;
   readonly completionWake: "always" | "settled_only";
   readonly continuationPending: boolean;
-  readonly runStatus?: "cancelled" | "completed";
+  readonly runStatus?: "cancelled" | "completed" | "failed";
   readonly lostWork?: OrchestrationV2Run["restartCancelledBackgroundWork"];
+  readonly capacityRecovery?: boolean;
   readonly now: DateTime.Utc;
 }) =>
   Effect.gen(function* () {
@@ -1503,10 +1509,15 @@ const seedRestartCancelledChild = (input: {
       effects: input.continuationPending
         ? [
             {
-              id: `effect:restart-continuation:${childRunId}`,
+              id: `effect:${input.capacityRecovery ? "capacity" : "restart"}-continuation:${childRunId}`,
               commandId: reconcileCommandId(input.name),
               threadId: childThreadId,
-              request: { type: "provider-runtime.continue", sourceRunId: childRunId },
+              request: {
+                type: input.capacityRecovery
+                  ? "provider-capacity.continue"
+                  : "provider-runtime.continue",
+                sourceRunId: childRunId,
+              },
             },
           ]
         : [],
@@ -4850,3 +4861,208 @@ it.layer(layerTest)("delegated tasks across a server restart", (it) => {
       }),
   );
 });
+
+it.layer(layerTest.pipe(Layer.provideMerge(IdAllocator.layer)))(
+  "delegated capacity recovery publication and Stop",
+  (it) => {
+    const seed = (name: string) =>
+      Effect.gen(function* () {
+        const now = yield* DateTime.now;
+        const parentThreadId = ThreadId.make(`${name}:parent`);
+        const parentRunId = RunId.make(`${name}:parent-run`);
+        const projectId = ProjectId.make(`${name}:project`);
+        const rootNodeId = NodeId.make(`${name}:parent-root`);
+        yield* seedParentWithTerminalTask({
+          threadId: parentThreadId,
+          projectId,
+          runId: parentRunId,
+          rootNodeId,
+          taskId: NodeId.make(`${name}:settled`),
+          deliveryState: "delivered",
+          now,
+        });
+        const child = yield* seedRestartCancelledChild({
+          parentThreadId,
+          parentRunId,
+          projectId,
+          rootNodeId,
+          name,
+          now,
+          completionWake: "always",
+          continuationPending: true,
+          capacityRecovery: true,
+          runStatus: "failed",
+        });
+        const sink = yield* EventSink.EventSinkV2;
+        const run = runEvent({
+          threadId: child.childThreadId,
+          runId: child.childRunId,
+          ordinal: 1,
+          status: "failed",
+          now,
+        });
+        const providerThreadId = ProviderThreadId.make(`${name}:provider-thread`);
+        const childRootId = NodeId.make(`${name}:child-root`);
+        yield* sink.write({
+          commandId: reconcileCommandId(`${name}:failure`),
+          events: [
+            {
+              ...run,
+              id: EventId.make(`${name}:failed-run`),
+              payload: { ...run.payload, rootNodeId: childRootId, providerThreadId },
+            },
+            {
+              id: EventId.make(`${name}:error`),
+              type: "turn-item.updated",
+              threadId: child.childThreadId,
+              occurredAt: now,
+              payload: makeProviderFailureTurnItem({
+                driver,
+                threadId: child.childThreadId,
+                runId: child.childRunId,
+                nodeId: childRootId,
+                providerThreadId,
+                providerTurnId: ProviderTurnId.make(`${name}:turn`),
+                itemOrdinal: 1,
+                occurredAt: now,
+                failure: makeProviderFailure({
+                  class: "usage_limit",
+                  message: "Session exhausted",
+                  code: "blocking_limit",
+                }),
+              }),
+            },
+          ],
+        });
+        return { ...child, parentThreadId, now };
+      });
+
+    it.effect(
+      "holds the failure across reconciliation and publishes exactly one result when recovery declines",
+      () =>
+        Effect.gen(function* () {
+          const child = yield* seed("capacity-publication");
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          yield* orchestrator.recoverDelegatedTasks;
+          assert.isTrue(yield* orchestrator.delegatedTaskResultPending(child.childThreadId));
+          const pending = yield* orchestrator.getThreadProjection(child.parentThreadId);
+          assert.isNull(pending.subagents.find((task) => task.id === child.taskId)?.result);
+          // The recovery effect has declined; its own running reservation is excluded.
+          yield* orchestrator.recoverDelegatedTask(child.childThreadId, { sourceRunId: child.childRunId });
+          yield* orchestrator.recoverDelegatedTask(child.childThreadId, { sourceRunId: child.childRunId });
+          const settled = yield* orchestrator.getThreadProjection(child.parentThreadId);
+          assert.equal(
+            settled.subagents.find((task) => task.id === child.taskId)?.status,
+            "failed",
+          );
+          assert.equal(
+            settled.contextTransfers.filter(
+              (transfer) =>
+                transfer.type === "subagent_result" &&
+                transfer.sourceThreadId === child.childThreadId,
+            ).length,
+            1,
+          );
+        }),
+    );
+
+    it.effect("Stop cancels the pending retry and a stale continuation cannot start work", () =>
+      Effect.gen(function* () {
+        const child = yield* seed("capacity-stop");
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        yield* orchestrator.dispatch({
+          type: "thread.stop",
+          commandId: CommandId.make("capacity-stop"),
+          threadId: child.childThreadId,
+          reason: "Cancelled by parent",
+        });
+        assert.isFalse(yield* orchestrator.delegatedTaskResultPending(child.childThreadId));
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("capacity-stale-retry"),
+          threadId: child.childThreadId,
+          messageId: MessageId.make("capacity-stale-retry"),
+          text: "Continue",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "agent",
+          creationSource: "server",
+          capacityContinuationOfRunId: child.childRunId,
+        });
+        const stopped = yield* orchestrator.getThreadProjection(child.childThreadId);
+        assert.equal(stopped.runs.length, 1);
+        assert.isTrue(
+          stopped.turnItems.some(
+            (item) => item.type === "run_interrupt_request" && item.runId === child.childRunId,
+          ),
+        );
+      }),
+    );
+
+    it.effect(
+      "an admitted continuation persists its source link without changing the child or task ID",
+      () =>
+        Effect.gen(function* () {
+          const child = yield* seed("capacity-linked-run");
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("capacity-linked-retry"),
+            threadId: child.childThreadId,
+            messageId: MessageId.make("capacity-linked-retry"),
+            text: "Continue",
+            attachments: [],
+            modelSelection,
+            dispatchMode: { type: "start_immediately" },
+            createdBy: "agent",
+            creationSource: "server",
+            capacityContinuationOfRunId: child.childRunId,
+          });
+          const resumed = yield* orchestrator.getThreadProjection(child.childThreadId);
+          assert.equal(resumed.runs.length, 2);
+          assert.equal(resumed.runs[1]?.capacityContinuationOfRunId, child.childRunId);
+          assert.equal(resumed.runs[1]?.providerInstanceId, modelSelection.instanceId);
+          assert.equal(resumed.thread.lineage.parentThreadId, child.parentThreadId);
+          yield* orchestrator.recoverDelegatedTasks;
+          const parent = yield* orchestrator.getThreadProjection(child.parentThreadId);
+          assert.isNull(parent.subagents.find((task) => task.id === child.taskId)?.result);
+          const sink = yield* EventSink.EventSinkV2;
+          const continued = resumed.runs[1]!;
+          yield* sink.write({
+            commandId: reconcileCommandId("capacity-linked-completion"),
+            events: [
+              {
+                id: EventId.make("capacity-linked-completion"),
+                type: "run.updated",
+                threadId: child.childThreadId,
+                occurredAt: child.now,
+                payload: {
+                  ...continued,
+                  status: "completed",
+                  startedAt: child.now,
+                  completedAt: child.now,
+                },
+              },
+            ],
+          });
+          yield* orchestrator.recoverDelegatedTasks;
+          yield* orchestrator.recoverDelegatedTasks;
+          const completed = yield* orchestrator.getThreadProjection(child.parentThreadId);
+          assert.equal(
+            completed.subagents.find((task) => task.id === child.taskId)?.status,
+            "completed",
+          );
+          const results = completed.contextTransfers.filter(
+            (transfer) =>
+              transfer.type === "subagent_result" &&
+              transfer.sourceThreadId === child.childThreadId,
+          );
+          assert.equal(results.length, 1);
+          assert.equal(results[0]?.sourcePoint.runId, continued.id);
+          const history = yield* orchestrator.getThreadProjection(child.childThreadId);
+          assert.equal(history.runs.find((run) => run.id === child.childRunId)?.status, "failed");
+        }),
+    );
+  },
+);

@@ -34,6 +34,28 @@ function subscription(
 }
 
 describe("groupModelSubscriptions", () => {
+  it("does not exhaust Opus recommendations because another model's weekly limit is exhausted", () => {
+    const account = {
+      ...subscription("scoped", 0),
+      model: "claude-opus-5-5",
+      usageLimits: {
+        checkedAt: "2026-10-07T12:00:00Z",
+        windows: [
+          {
+            id: "seven_day_fable",
+            kind: "weekly" as const,
+            label: "Fable",
+            usedPercent: 100,
+            modelScope: "claude-fable",
+          },
+        ],
+      },
+    };
+    expect(groupModelSubscriptions([account], now)[0]?.recommended?.value).toBe("scoped");
+    expect(
+      groupModelSubscriptions([{ ...account, model: "claude-fable-5" }], now)[0]?.recommended,
+    ).toBeNull();
+  });
   it("lists each model once and recommends capacity across every compatible account", () => {
     const groups = groupModelSubscriptions(
       [

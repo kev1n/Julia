@@ -1,3 +1,4 @@
+import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import {
   CommandId,
   MessageId,
@@ -53,7 +54,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Metrics from "../observability/Metrics.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import { scheduledRunModelSelection } from "../fork/scheduledRunAccount.ts";
+import { accountWithLimitLeft } from "../fork/accountWithLimitLeft.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
@@ -487,6 +488,9 @@ export const layer = Layer.effect(
         : task;
     // Fork (Owner): optional so the task tests need no registry; the server always has one.
     const providerRegistry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
+    const orchestrationAdapters = yield* Effect.serviceOption(
+      ProviderAdapterRegistry.ProviderAdapterRegistryV2,
+    );
     const webhookPermits = yield* Ref.make<ReadonlyMap<ScheduledTaskId, Semaphore.Semaphore>>(
       new Map(),
     );
@@ -1063,10 +1067,17 @@ export const layer = Layer.effect(
         // Fork (Owner): a new thread moves off a saved account with no limit
         // left. A bound thread keeps its account, since its session lives there.
         const launchModelSelection = Option.isSome(providerRegistry)
-          ? scheduledRunModelSelection(
+          ? accountWithLimitLeft(
               active.modelSelection,
               yield* providerRegistry.value.getProviders,
               DateTime.toEpochMillis(startedAt),
+              {
+                eligibleInstanceIds: new Set(
+                  Option.isSome(orchestrationAdapters)
+                    ? yield* orchestrationAdapters.value.list()
+                    : [],
+                ),
+              },
             )
           : active.modelSelection;
 

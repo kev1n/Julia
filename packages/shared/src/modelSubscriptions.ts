@@ -40,6 +40,7 @@ export function groupModelSubscriptions<T>(
         group.filter((subscription) => subscription.available),
         (subscription) => subscription.usageLimits,
         now,
+        group[0]?.model,
       )?.account ?? null;
     return {
       key,

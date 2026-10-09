@@ -1954,6 +1954,146 @@ it.effect("keeps ingesting a child thread's late background item completion", ()
   }),
 );
 
+it.effect(
+  "reserves child capacity recovery atomically with the terminal run, before result listeners can publish it",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("atomic-capacity-child");
+      const runId = RunId.make("atomic-capacity-run");
+      const rootNodeId = NodeId.make("atomic-capacity-root");
+      const attemptId = RunAttemptId.make("atomic-capacity-attempt");
+      const providerThreadId = ProviderThreadId.make("atomic-capacity-provider-thread");
+      const providerTurnId = ProviderTurnId.make("atomic-capacity-provider-turn");
+      const instanceId = ProviderInstanceId.make("codex");
+      const sessionId = ProviderSessionId.make("atomic-capacity-session");
+      const committed = yield* Deferred.make<{
+        events: ReadonlyArray<OrchestrationV2DomainEvent>;
+        effects: ReadonlyArray<PendingOrchestrationEffectV2>;
+      }>();
+      const terminal: ProviderAdapter.ProviderAdapterV2Event = {
+        type: "turn.terminal",
+        driver,
+        providerThreadId,
+        providerTurnId,
+        runOrdinal: 1,
+        status: "failed",
+        failureItemOrdinal: 1,
+        failure: {
+          class: "usage_limit",
+          code: "subscription_exhausted",
+          message: "Session exhausted",
+          retryable: true,
+        },
+        threadDisposition: "reusable",
+      };
+      const layer = RunExecutionService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            McpAppModelContext.layerEmpty,
+            PreviewAgentActivity.layer,
+            Layer.mock(CheckpointService.CheckpointServiceV2)({
+              captureBaseline: () => Effect.void,
+            }),
+            mockEventSink({
+              writeWithEffects: (input) =>
+                (input.events.some(
+                  (event) => event.type === "run.updated" && event.payload.status === "failed",
+                )
+                  ? Deferred.succeed(committed, { events: input.events, effects: input.effects })
+                  : Effect.void
+                ).pipe(Effect.as([])),
+            }),
+            IdAllocator.layer,
+            ThreadCommandExecutor.layer,
+            Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
+              ingestNormalized: () => Effect.succeed([]),
+            }),
+            ServerSettings.layerTest({ continueLimitedThreadsElsewhere: true }),
+            layerTurnItemPositionsTest,
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const execution = yield* RunExecutionService.RunExecutionServiceV2;
+        yield* execution.startRootRun({
+          commandId: CommandId.make("atomic-capacity"),
+          appThread: {
+            id: threadId,
+            lineage: { relationshipToParent: "subagent" },
+          } as OrchestrationV2AppThread,
+          providerSessionId: sessionId,
+          session: {
+            startTurn: () => Effect.void,
+            events: Stream.make(
+              {
+                type: "provider_turn.updated",
+                driver,
+                providerTurn: {
+                  id: providerTurnId,
+                  providerThreadId,
+                  nodeId: rootNodeId,
+                  runAttemptId: attemptId,
+                  nativeTurnRef: null,
+                  ordinal: 1,
+                  status: "failed",
+                  startedAt: now,
+                  completedAt: now,
+                },
+              } as ProviderAdapter.ProviderAdapterV2Event,
+              terminal,
+            ),
+          } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime,
+          run: {
+            id: runId,
+            threadId,
+            ordinal: 1,
+            providerInstanceId: instanceId,
+            status: "running",
+          } as OrchestrationV2Run,
+          rootNode: { id: rootNodeId } as OrchestrationV2ExecutionNode,
+          checkpointScope: {
+            id: CheckpointScopeId.make("atomic-capacity-scope"),
+          } as OrchestrationV2CheckpointScope,
+          providerThread: { id: providerThreadId, driver } as OrchestrationV2ProviderThread,
+          attempt: { id: attemptId, providerTurnId } as OrchestrationV2RunAttempt,
+          attemptId,
+          providerTurnOrdinal: 1,
+          message: {
+            messageId: MessageId.make("atomic-capacity-message"),
+            text: "Work",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+          },
+          modelSelection: { instanceId, model: "gpt-6-astra" },
+          runtimePolicy: {
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            cwd: process.cwd(),
+            approvalPolicy: "never",
+            sandboxPolicy: {
+              type: "readOnly",
+              access: { type: "fullAccess" },
+              networkAccess: false,
+            },
+          },
+        });
+        const transaction = yield* Deferred.await(committed);
+        assert.isTrue(
+          transaction.events.some(
+            (event) => event.type === "run.updated" && event.payload.id === runId,
+          ),
+        );
+        assert.deepEqual(
+          transaction.effects.map((effect) => effect.request),
+          [{ type: "provider-capacity.continue", sourceRunId: runId }],
+        );
+        assert.equal(transaction.effects[0]?.id, `effect:capacity-continuation:${runId}`);
+      }).pipe(Effect.provide(layer));
+    }),
+);
+
 it.effect.each([null, "run:nested-sdk"] as const)(
   "releases a settled run when its live child transfers to another run (%s)",
   (nestedRunId) =>

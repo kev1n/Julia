@@ -7472,10 +7472,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       if (terminal.status !== "failed") return;
       assert.equal(terminal.failure.message, input.expected);
       assert.equal(terminal.failure.code, `api_error_${apiErrorStatus}`);
-      assert.equal(
-        terminal.failure.class,
-        apiErrorStatus === 429 ? "usage_limit" : "provider_error",
-      );
+      // Fork (Owner): without the CLI's rate-limit evidence, even a 429 is a provider error.
+      assert.equal(terminal.failure.class, "provider_error");
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -7486,6 +7484,66 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         ),
       ),
     ),
+  );
+
+  it.effect.each([
+    { apiErrorStatus: 429, rateLimitEvidence: true },
+    { apiErrorStatus: 429, rateLimitEvidence: false },
+    { apiErrorStatus: 401, rateLimitEvidence: true },
+    { apiErrorStatus: 503, rateLimitEvidence: true },
+    { apiErrorStatus: 529, rateLimitEvidence: true },
+  ])(
+    "classifies Claude API status $apiErrorStatus with quota evidence $rateLimitEvidence",
+    ({ apiErrorStatus, rateLimitEvidence }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make(`attempt-status-${apiErrorStatus}`),
+            text: "Continue.",
+            attachments: [],
+          }),
+        );
+        if (rateLimitEvidence)
+          yield* Queue.offer(
+            harness.sdkMessages,
+            makeAssistantErrorFrame({
+              uuid: "00000000-0000-4000-8000-000000000650",
+              error: "rate_limit",
+            }),
+          );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000651",
+            result: "API Error",
+            terminalReason: "api_error",
+            isError: true,
+            apiErrorStatus,
+          }),
+        );
+        const terminal = yield* Queue.take(harness.terminalReceipts);
+        assert.equal(terminal.status, "failed");
+        if (terminal.status !== "failed") return;
+        assert.equal(
+          terminal.failure.class,
+          apiErrorStatus === 429 && rateLimitEvidence ? "usage_limit" : "provider_error",
+        );
+        if (apiErrorStatus !== 429)
+          assert.notInclude(terminal.failure.message.toLowerCase(), "usage limit");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
   );
 
   it.effect("names an expired Claude login instead of the terminal API error", () =>

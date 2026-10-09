@@ -1,3 +1,4 @@
+import { ProviderRegistry } from "../../provider/ProviderRegistry.ts";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -531,6 +532,8 @@ export function layerWithRegistry<Error>(
           Layer.provide(
             Layer.mergeAll(
               layerContinuationRequests,
+              layerProvidedRegistry,
+              Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
               layerThreadManagementProvided,
               IdAllocator.layer,
             ),
@@ -548,6 +551,8 @@ export function layerWithRegistry<Error>(
         layerRuntimeRequestServiceProvided,
         layerThreadTitleRegenerationTest,
         layerServerSettings,
+        layerProvidedRegistry,
+        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
         layerThreadManagementProvided,
       ),
     ),
