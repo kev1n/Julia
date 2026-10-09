@@ -1,3 +1,4 @@
+import { ASIDE_BROWSER_PROFILE_ID } from "@t3tools/contracts";
 import type {
   EnvironmentId,
   PreviewOpenInput,
@@ -37,14 +38,18 @@ export async function openPreviewSession<E>(
   if (defaults instanceof BrowserSettingsReadError) {
     return AsyncResult.failure(Cause.fail(defaults));
   }
-  const runtime = input.runtime ?? previewRuntimeFor(input.threadRef.environmentId);
+  const profileId = input.profileId ?? defaults.profileId;
+  const runtime =
+    profileId === ASIDE_BROWSER_PROFILE_ID
+      ? "server"
+      : (input.runtime ?? previewRuntimeFor(input.threadRef.environmentId, profileId));
   const result = await input.openPreview({
     environmentId: input.threadRef.environmentId,
     input: {
       threadId: input.threadRef.threadId,
       ...(input.url === undefined ? {} : { url: input.url }),
       viewport: input.viewport ?? defaults.viewport,
-      profileId: input.profileId ?? defaults.profileId,
+      profileId,
       ...(runtime === undefined || runtime === "desktop" ? {} : { runtime }),
     },
   });

@@ -63,7 +63,8 @@ export async function openUrlInPreview<E>(input: {
   if (defaults instanceof BrowserSettingsReadError) {
     return AsyncResult.failure(Cause.fail(defaults));
   }
-  const runtime = previewRuntimeFor(input.threadRef.environmentId);
+  const profileId = input.profileId ?? defaults.profileId;
+  const runtime = previewRuntimeFor(input.threadRef.environmentId, profileId);
   const previousActiveTabId = readThreadPreviewState(input.threadRef).activeTabId;
   // The server changes the active tab, not panel selection; selection changes come from the user.
   const selectedSurface = () =>
@@ -76,7 +77,7 @@ export async function openUrlInPreview<E>(input: {
       threadId: input.threadRef.threadId,
       url: input.url,
       viewport: defaults.viewport,
-      profileId: input.profileId ?? defaults.profileId,
+      profileId,
       ...(runtime === undefined ? {} : { runtime }),
     },
   });
