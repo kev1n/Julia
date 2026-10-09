@@ -19,6 +19,7 @@ import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { UsageBars } from "../../fork/usageByAccount/UsageBars";
 import { useNowMinute } from "../../hooks/useNowMinute";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
@@ -171,10 +172,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     : undefined;
   // Fork (Owner): the subscription the selected model runs on and what it has left.
   const nowMinute = useNowMinute();
-  const accountSummary =
-    activeEntry && !selectedEntries && props.triggerLabel === undefined
-      ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
-      : null;
+  const showsAccount = activeEntry && !selectedEntries && props.triggerLabel === undefined;
+  const accountSummary = showsAccount
+    ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
+    : null;
   const triggerTooltipBase = props.triggerLabel ?? allModelNames ?? triggerLabel;
   const triggerTooltipText = accountSummary
     ? `${triggerTooltipBase} · ${activeEntry?.displayName} · ${accountSummary}`
@@ -274,6 +275,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
+          {showsAccount && !props.compact ? (
+            <UsageBars
+              limits={activeEntry.snapshot.usageLimits}
+              now={Date.parse(`${nowMinute}Z`)}
+            />
+          ) : null}
           {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
             <Badge variant="outline" size="sm">
               Unavailable
