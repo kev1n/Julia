@@ -2522,6 +2522,35 @@ export default function ChatView(props: ChatViewProps) {
           },
         })
       : null;
+  // Fork (Owner): follow limit failover into the new tab when it happens while this
+  // thread is open. Reopening a thread that already moved on stays put.
+  const continuedInShellLoaded = activeThreadShell?.id === routeThreadRef.threadId;
+  const continuedInThreadId = activeThreadShell?.limitRecovery?.continuedIn;
+  const continuedInObservedRef = useRef<{ threadKey: string; continuedIn: unknown } | null>(null);
+  useEffect(() => {
+    if (!continuedInShellLoaded) return;
+    const observed = continuedInObservedRef.current;
+    continuedInObservedRef.current = {
+      threadKey: routeThreadKey,
+      continuedIn: continuedInThreadId,
+    };
+    if (
+      continuedInThreadId === undefined ||
+      observed?.threadKey !== routeThreadKey ||
+      observed.continuedIn !== undefined
+    )
+      return;
+    const targetThreadRef = scopeThreadRef(routeThreadRef.environmentId, continuedInThreadId);
+    void (async () => {
+      if (!(await waitForThreadShell(targetThreadRef))) return;
+      if (continuedInObservedRef.current?.threadKey !== routeThreadKey) return;
+      useComposerDraftStore.getState().moveComposerPromptAndImages(routeThreadRef, targetThreadRef);
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(targetThreadRef),
+      });
+    })();
+  }, [continuedInShellLoaded, continuedInThreadId, navigate, routeThreadKey, routeThreadRef]);
   const composerBannerItems = (() => {
     const fallbackSelection = draftFallback?.selection;
     const defaultSelection =
