@@ -193,6 +193,8 @@ export function BranchToolbarBranchSelector({
           branch,
           worktreePath,
           ...(automatic ? { expectedEmpty: true } : {}),
+          // A stale view of the thread must not move it out of its workspace.
+          expectedWorktreePath: activeWorktreePath,
         },
       });
     }
@@ -482,12 +484,12 @@ export function BranchToolbarBranchSelector({
     ? null
     : (defaultBranchName ?? currentGitBranch);
 
-  // The server sets started threads' branches; defaulting here would detach the agent from its worktree.
-  const threadStarted = serverSession !== null;
+  // Only drafts pick a base branch here. A started thread's workspace is set by
+  // the server, and this update would detach its live provider session.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes a default base branch to the server thread or draft once branches load for a new worktree thread
   useEffect(() => {
     if (
-      threadStarted ||
+      hasServerThread ||
       effectiveEnvMode !== "worktree" ||
       activeWorktreePath ||
       activeThreadBranch ||
@@ -500,8 +502,8 @@ export function BranchToolbarBranchSelector({
     activeThreadBranch,
     activeWorktreePath,
     effectiveEnvMode,
+    hasServerThread,
     setThreadBranch,
-    threadStarted,
     worktreeBaseBranchCandidate,
   ]);
 
