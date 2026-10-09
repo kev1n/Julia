@@ -6,6 +6,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  ASIDE_BROWSER_PROFILE_ID,
   AuthOrchestrationOperateScope,
   DEFAULT_BROWSER_PROFILE_ID,
   FILL_PREVIEW_VIEWPORT,
@@ -299,6 +300,7 @@ export function PreviewView({
 
   const serverZoomFactor = snapshot?.zoomFactor ?? DEFAULT_PREVIEW_ZOOM_FACTOR;
   const stepServerZoom = (direction: -1 | 0 | 1) => {
+    if (activeProfileId === ASIDE_BROWSER_PROFILE_ID) return;
     const index = PREVIEW_ZOOM_LEVELS.indexOf(serverZoomFactor);
     const next =
       direction === 0
@@ -855,6 +857,7 @@ export function PreviewView({
         refreshDisabled={refreshDisabled || serverInputDisabled}
         inputDisabled={serverInputDisabled}
         urlInputRef={urlInputRef}
+        focusOnReady={visible && showEmptyState}
         onBack={handleBack}
         onForward={handleForward}
         onRefresh={handleRefresh}
@@ -889,6 +892,7 @@ export function PreviewView({
         trailingActions={
           moreMenuActions ? (
             <PreviewMoreMenu
+              externalBrowser={activeProfileId === ASIDE_BROWSER_PROFILE_ID}
               enabled={
                 runtimeTabId !== null &&
                 (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
@@ -934,7 +938,10 @@ export function PreviewView({
               </div>
             ) : null}
             <div
-              className="absolute inset-x-0 bottom-0"
+              className={cn(
+                "absolute inset-x-0 bottom-0",
+                (showEmptyState || isUnreachable) && "invisible",
+              )}
               style={{ top: viewport._tag !== "fill" ? BROWSER_DEVICE_TOOLBAR_HEIGHT : 0 }}
             >
               <ServerBrowserSurface

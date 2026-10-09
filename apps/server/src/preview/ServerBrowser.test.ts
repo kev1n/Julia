@@ -54,6 +54,11 @@ vi.mock("./ServerBrowserContexts.ts", () => ({
     async scratchPage() {
       return makeEncoderPage() as unknown as Page;
     }
+    async asidePage() {
+      const context = makeContext(undefined, true);
+      contexts.push(context);
+      return context.page as unknown as Page;
+    }
     async connectDesktopPage(endpoint: string) {
       const context = makeContext();
       desktopConnections.push({ endpoint, context });
@@ -91,7 +96,15 @@ function makeSession(frame?: ReturnType<typeof makeFrame>) {
     detach: vi.fn(async () => {}),
     send: vi.fn(async (method: string, input?: unknown): Promise<Record<string, unknown>> => {
       if (method === "Page.getNavigationHistory") return { currentIndex: 0, entries: [{}] };
-      if (method === "Page.getLayoutMetrics") return { cssVisualViewport: { pageX: 0, pageY: 0 } };
+      if (method === "Page.getLayoutMetrics")
+        return {
+          cssVisualViewport: {
+            pageX: 0,
+            pageY: 0,
+            clientWidth: nativeSize.width,
+            clientHeight: nativeSize.height,
+          },
+        };
       if (method === "Page.captureScreenshot") {
         // A snapshot sizes its screenshot from the PNG header; viewers get JPEG frames as-is.
         return { data: (input as { format: string }).format === "png" ? PNG_HEADER : "ZnJhbWU=" };
@@ -123,13 +136,15 @@ function makeSession(frame?: ReturnType<typeof makeFrame>) {
   };
 }
 
-function makeContext(onClose?: (context: BrowserContext) => void) {
+function makeContext(onClose?: (context: BrowserContext) => void, native = false) {
   const events = new NodeEvents.EventEmitter();
   const nativeFileChooser = vi.fn();
   const setChooserFiles = vi.fn(async (_files: unknown) => {});
   const sessions: ReturnType<typeof makeSession>[] = [];
   let url = "about:blank";
-  let viewport = { width: 1280, height: 800 };
+  let viewport: { width: number; height: number } | null = native
+    ? null
+    : { width: 1280, height: 800 };
   let closed = false;
   let contextClosed = false;
   const page = {
@@ -171,6 +186,7 @@ function makeContext(onClose?: (context: BrowserContext) => void) {
       await pending?.();
     }),
     goBack: vi.fn(async () => {}),
+    bringToFront: vi.fn(async () => {}),
     goForward: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
     emulateMedia: vi.fn(async () => {}),
@@ -359,6 +375,13 @@ const ready = Effect.gen(function* () {
   const tabId = PreviewTabId.make(opened.tabId!);
   return { browser, broker, tabId };
 });
+const stallViewer = (
+  viewer: ServerBrowser.ServerBrowserViewer,
+  item: ServerBrowser.ServerBrowserViewerOutput,
+) => {
+  const output = viewer.output as unknown as Queue.Queue<ServerBrowser.ServerBrowserViewerOutput>;
+  while (Queue.offerUnsafe(output, item));
+};
 const viewerInput = (tabId: string, canOperate: boolean) => ({
   threadId: scope.thread.threadId,
   tabId,
@@ -368,7 +391,9 @@ const viewerInput = (tabId: string, canOperate: boolean) => ({
   quality: 70,
 });
 
+let nativeSize = { width: 640, height: 400 };
 beforeEach(() => {
+  nativeSize = { width: 640, height: 400 };
   contexts.length = 0;
   encoderStreams.length = 0;
   contextRequests.length = 0;
@@ -492,6 +517,120 @@ it.effect("a tab the desktop does not draw is marked headless, so the desktop st
       expect(headlessOf(desktopTab.tabId)).toBeUndefined();
     }),
   ).pipe(Effect.provide(layer)),
+);
+
+it.live.each([false, true])(
+  "Aside frames retain CSS coordinates at native zoom with backlog=%s",
+  (stalled) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const browser = yield* ServerBrowser.ServerBrowser;
+        const manager = yield* Manager.PreviewManager;
+        const opened = yield* manager.open({
+          threadId: scope.thread.threadId,
+          runtime: "server",
+          profileId: "aside",
+        });
+        const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, true));
+        yield* Queue.clear(viewer.output);
+        if (stalled)
+          stallViewer(viewer, { _tag: "frame", data: Buffer.from("old"), ack: Effect.void });
+        const session = contexts[0]!.sessions.at(-1)!;
+        const frameListener = session.on.mock.calls.find(
+          ([name]) => name === "Page.screencastFrame",
+        )?.[1] as (frame: unknown) => void;
+        nativeSize = { width: 400, height: 300 };
+        const delivered = Promise.withResolvers<void>();
+        frameListener({
+          get data() {
+            delivered.resolve();
+            return "ZnJhbWU=";
+          },
+          sessionId: 1,
+          metadata: { deviceWidth: 800, deviceHeight: 600 },
+        });
+        yield* Effect.promise(() => delivered.promise);
+        expect(yield* Queue.take(viewer.output)).toEqual({
+          _tag: "viewport",
+          width: 400,
+          height: 300,
+        });
+        if (stalled)
+          expect(yield* Queue.take(viewer.output)).toMatchObject({
+            _tag: "control",
+            controller: "you",
+          });
+        expect((yield* Queue.take(viewer.output))._tag).toBe("frame");
+        stallViewer(viewer, { _tag: "frame", data: Buffer.from("old"), ack: Effect.void });
+        yield* viewer.input({ type: "releaseControl" });
+        expect(yield* Queue.take(viewer.output)).toEqual({
+          _tag: "viewport",
+          width: 400,
+          height: 300,
+        });
+        expect((yield* Queue.take(viewer.output))._tag).toBe("control");
+        yield* viewer.input({ type: "takeControl" });
+        yield* viewer.input({ type: "mouse", action: "down", x: 200, y: 150, button: "left" });
+        expect(session.send).toHaveBeenCalledWith(
+          "Input.dispatchMouseEvent",
+          expect.objectContaining({ x: 200, y: 150 }),
+        );
+      }),
+    ).pipe(Effect.provide(layer)),
+);
+
+it.live(
+  "a native viewport backlog replacement retains undelivered ownership and picker state",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const browser = yield* ServerBrowser.ServerBrowser;
+        const manager = yield* Manager.PreviewManager;
+        const opened = yield* manager.open({
+          threadId: scope.thread.threadId,
+          runtime: "server",
+          profileId: "aside",
+        });
+        const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, true));
+        yield* Queue.clear(viewer.output);
+        yield* viewer.input({ type: "takeControl" });
+        const pickerReady = Promise.withResolvers<void>();
+        contexts[0]!.page.emit("filechooser", {
+          isMultiple: () => {
+            pickerReady.resolve();
+            return false;
+          },
+          element: () => ({ getAttribute: async () => ".csv" }),
+          setFiles: async () => {},
+        });
+        yield* Effect.promise(() => pickerReady.promise);
+        stallViewer(viewer, { _tag: "frame", data: Buffer.from("old"), ack: Effect.void });
+        nativeSize = { width: 400, height: 300 };
+        const delivered = Promise.withResolvers<void>();
+        const session = contexts[0]!.sessions.at(-1)!;
+        const frameListener = session.on.mock.calls.find(
+          ([name]) => name === "Page.screencastFrame",
+        )?.[1] as (frame: unknown) => void;
+        frameListener({
+          get data() {
+            delivered.resolve();
+            return "ZnJhbWU=";
+          },
+          sessionId: 1,
+          metadata: { deviceWidth: 800, deviceHeight: 600 },
+        });
+        yield* Effect.promise(() => delivered.promise);
+        const messages = yield* Queue.clear(viewer.output);
+        expect(messages.map((x) => x._tag)).toEqual([
+          "viewport",
+          "control",
+          "fileChooser",
+          "frame",
+        ]);
+        expect(messages[1]).toMatchObject({ controller: "you", dialog: null });
+        expect(messages[2]).toMatchObject({ multiple: false, accept: ".csv" });
+      }),
+    ).pipe(Effect.provide(layer)),
 );
 
 it.live.each([
@@ -1289,6 +1428,7 @@ it.live(
           profiles: [
             { id: "default", name: "Default" },
             { id: "incognito", name: "Incognito", incognito: true },
+            { id: "aside", name: "Aside" },
             { id: "profile-work", name: "Work" },
           ],
         });
@@ -1296,7 +1436,7 @@ it.live(
         expect(unknown).toMatchObject({
           _tag: "PreviewAutomationExecutionError",
           reason:
-            'No browser profile is named "Personal". Use one of: Default (id default), Incognito (id incognito), Work (id profile-work).',
+            'No browser profile is named "Personal". Use one of: Default (id default), Incognito (id incognito), Aside (id aside), Work (id profile-work).',
         });
       }),
     ).pipe(Effect.provide(layer)),

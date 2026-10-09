@@ -1,4 +1,5 @@
 import {
+  ASIDE_BROWSER_PROFILE_ID,
   type PreviewCloseInput,
   type PreviewEvent,
   type PreviewError,
@@ -304,6 +305,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
         input.threadId,
         input.tabId,
         Effect.fn("PreviewManager.resizeSession")(function* (session) {
+          if (session.snapshot.profileId === ASIDE_BROWSER_PROFILE_ID)
+            return { next: session, emit: null, result: session.snapshot };
           const updatedAt = yield* currentIsoTimestamp;
           const snapshot: PreviewSessionSnapshot = {
             ...session.snapshot,
@@ -335,8 +338,14 @@ export const make = Effect.gen(function* PreviewManagerMake() {
           const updatedAt = yield* currentIsoTimestamp;
           const snapshot: PreviewSessionSnapshot = {
             ...session.snapshot,
-            ...(input.colorScheme === undefined ? {} : { colorScheme: input.colorScheme }),
-            ...(input.zoomFactor === undefined ? {} : { zoomFactor: input.zoomFactor }),
+            ...(session.snapshot.profileId === ASIDE_BROWSER_PROFILE_ID ||
+            input.colorScheme === undefined
+              ? {}
+              : { colorScheme: input.colorScheme }),
+            ...(session.snapshot.profileId === ASIDE_BROWSER_PROFILE_ID ||
+            input.zoomFactor === undefined
+              ? {}
+              : { zoomFactor: input.zoomFactor }),
             updatedAt,
           };
           const request =
@@ -344,7 +353,9 @@ export const make = Effect.gen(function* PreviewManagerMake() {
               ? {
                   request: {
                     ...(input.hardReload ? { hardReload: true } : {}),
-                    ...(input.clear ? { clear: input.clear } : {}),
+                    ...(input.clear && session.snapshot.profileId !== ASIDE_BROWSER_PROFILE_ID
+                      ? { clear: input.clear }
+                      : {}),
                   },
                 }
               : {};

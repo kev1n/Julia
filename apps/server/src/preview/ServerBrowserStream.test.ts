@@ -8,6 +8,7 @@ import {
   AuthPreviewOperateScope,
   AuthSessionId,
   PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE,
+  PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE,
   PreviewStreamHostSetup,
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
@@ -20,6 +21,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServer } from "effect/http";
 
+import { AsideUnavailableError } from "../fork/asideBrowser.ts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
 import * as ServerBrowser from "./ServerBrowser.ts";
@@ -375,11 +377,16 @@ it.effect("passes uploaded files to the page's open picker and needs operate sco
 const decodeHostSetup = Schema.decodeUnknownEffect(Schema.fromJsonString(PreviewStreamHostSetup));
 
 it.effect.each([
+  { error: new Error("Timeout 15000ms exceeded"), need: null },
   {
     error: new PreviewBrowserHost.PreviewBrowserSandboxError({
       setupCommand: "sudo t3 browser setup",
     }),
     need: "sandbox",
+  },
+  {
+    error: new AsideUnavailableError({ cause: new Error("missing helper") }),
+    need: "aside",
   },
   {
     error: new PreviewBrowserHost.PreviewBrowserLibrariesError({
@@ -425,10 +432,16 @@ it.effect.each([
       (socket) => Effect.sync(() => socket.close()),
     );
     const { code, reason } = yield* Effect.promise(() => closed.promise);
+    if (need === null) {
+      expect(code).toBe(PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE);
+      expect(reason).toBe("The browser could not connect on this host. Try again.");
+      return;
+    }
     expect(code).toBe(PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE);
     expect(yield* decodeHostSetup(reason)).toEqual({
       need,
-      command: "sudo t3 browser setup",
+      command:
+        need === "aside" ? "bash fork/scripts/install-aside-helper.sh" : "sudo t3 browser setup",
     });
   }).pipe(Effect.scoped),
 );

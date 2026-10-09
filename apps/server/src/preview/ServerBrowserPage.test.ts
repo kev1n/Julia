@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Isolated Playwright fixtures own their temporary browser profiles.
 import {
   chromium,
   type Browser,
@@ -5,6 +6,9 @@ import {
   type CDPSession,
   type Page,
 } from "playwright-core";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
@@ -39,6 +43,121 @@ describe("server browser element refs", () => {
       networkEntries: [],
       actionTimeline: [],
     });
+
+  it("keeps all viewport corners after actual browser zoom and document scrolling", async () => {
+    const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-native-zoom-"));
+    const extension = NodePath.join(directory, "extension");
+    await NodeFSP.mkdir(extension);
+    await NodeFSP.writeFile(
+      NodePath.join(extension, "manifest.json"),
+      JSON.stringify({
+        manifest_version: 3,
+        name: "Native zoom test",
+        version: "1.0",
+        permissions: ["tabs"],
+        background: { service_worker: "worker.js" },
+      }),
+    );
+    await NodeFSP.writeFile(
+      NodePath.join(extension, "worker.js"),
+      "chrome.runtime.onInstalled.addListener(() => {});",
+    );
+    const nativeContext = await chromium.launchPersistentContext(
+      NodePath.join(directory, "profile"),
+      {
+        executablePath: chromium.executablePath(),
+        headless: true,
+        viewport: null,
+        args: [
+          `--disable-extensions-except=${extension}`,
+          `--load-extension=${extension}`,
+          "--window-size=1600,1000",
+        ],
+      },
+    );
+    try {
+      const worker =
+        nativeContext.serviceWorkers()[0] ?? (await nativeContext.waitForEvent("serviceworker"));
+      const nativePage = nativeContext.pages()[0]!;
+      await nativePage.route("http://native.test/**", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: '<style>body{margin:0;width:4000px;height:4000px}::-webkit-scrollbar{display:none}.corner{position:fixed;width:40px;height:40px}</style><div class="corner" style="top:0;left:0;background:red"></div><div class="corner" style="bottom:0;right:0;background:blue"></div>',
+        }),
+      );
+      await nativePage.goto("http://native.test/");
+      const density = await nativePage.evaluate<number>("devicePixelRatio");
+      await worker.evaluate(
+        "(async () => { const tabs = await chrome.tabs.query({}); await chrome.tabs.setZoom(tabs.find(t => t.url === 'http://native.test/').id, 2); })()",
+      );
+      await nativePage.waitForFunction(`devicePixelRatio === ${density * 2}`);
+      const nativeCdp = await nativeContext.newCDPSession(nativePage);
+      const zoom = await nativeCdp.send("Page.getLayoutMetrics");
+      expect(zoom.visualViewport.clientWidth / zoom.cssVisualViewport.clientWidth).toBe(2);
+      const scrolled = await nativePage.evaluate<{ x: number; y: number }>(
+        "(async () => { scrollTo(123,234); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); return {x:scrollX,y:scrollY}; })()",
+      );
+      expect(scrolled).toEqual({ x: 123, y: 234 });
+      const result = await ServerBrowserPage.snapshot({
+        page: nativePage,
+        cdp: nativeCdp,
+        // A native page is drawn at its display's density, as the server asks for Aside tabs.
+        renderScale: "display",
+        consoleEntries: [],
+        networkEntries: [],
+        actionTimeline: [],
+      });
+      const corners = await nativePage.evaluate<number[][]>(
+        `(async () => {
+        const data = ${JSON.stringify(result.screenshot!.data)};
+        const image = await createImageBitmap(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], {type:'image/png'}));
+        const canvas = document.createElement('canvas'); canvas.width=image.width; canvas.height=image.height;
+        const ctx=canvas.getContext('2d'); ctx.drawImage(image,0,0);
+        return [Array.from(ctx.getImageData(8,8,1,1).data), Array.from(ctx.getImageData(image.width-8,image.height-8,1,1).data)];
+      })()`,
+      );
+      expect(result.screenshot!.width).toBe(1280);
+      expect(corners).toEqual([
+        [255, 0, 0, 255],
+        [0, 0, 255, 255],
+      ]);
+    } finally {
+      await nativeContext.close();
+      await NodeFSP.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("captures an unmanaged native viewport at its actual display density", async () => {
+    const nativeContext = await browser.newContext({ viewport: null });
+    try {
+      const nativePage = await nativeContext.newPage();
+      const nativeCdp = await nativeContext.newCDPSession(nativePage);
+      await nativeCdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 2000,
+        height: 1000,
+        deviceScaleFactor: 1.5,
+        mobile: false,
+      });
+      await nativePage.setContent(
+        '<div style="position:fixed;right:0;bottom:0">Bottom right</div>',
+      );
+      const result = await ServerBrowserPage.snapshot({
+        page: nativePage,
+        cdp: nativeCdp,
+        // A native page is drawn at its display's density, as the server asks for Aside tabs.
+        renderScale: "display",
+        consoleEntries: [],
+        networkEntries: [],
+        actionTimeline: [],
+      });
+      const png = Buffer.from(result.screenshot!.data!, "base64");
+      expect(result.screenshot).toMatchObject({ width: 1280, height: 640 });
+      expect(png.readUInt32BE(16)).toBe(result.screenshot!.width);
+      expect(png.readUInt32BE(20)).toBe(result.screenshot!.height);
+    } finally {
+      await nativeContext.close();
+    }
+  });
   const locators = (tree: unknown) => {
     expect(typeof tree).toBe("string");
     return Array.from(

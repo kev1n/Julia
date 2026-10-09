@@ -444,6 +444,11 @@ const readPageMetrics = async (cdp: CDPSession) => {
   );
 };
 
+export const nativeViewport = async (cdp: CDPSession) => {
+  const { cssVisualViewport } = await cdp.send("Page.getLayoutMetrics");
+  return { width: cssVisualViewport.clientWidth, height: cssVisualViewport.clientHeight };
+};
+
 // Never pass a clip scale: Chromium mirrors the top-left of the page into a `backdrop-filter`
 // in any capture it shrinks.
 export const captureViewport = async (

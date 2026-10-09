@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE } from "@t3tools/contracts";
+
 import { createPreviewStreamClient, type PreviewStreamControl } from "./serverBrowserStream.ts";
 
 class FakeSocket extends EventTarget {
@@ -62,6 +64,35 @@ describe("preview stream control", () => {
     generation: 1,
     dialog: null,
   };
+
+  it("reports a launch failure and stops reconnecting until explicitly retried", () => {
+    vi.useFakeTimers();
+    const onFailure = vi.fn();
+    const onUnauthorized = vi.fn();
+    const client = createPreviewStreamClient(target, {
+      onFrame: vi.fn(),
+      onViewport: vi.fn(),
+      onConnectedChange: vi.fn(),
+      onUnauthorized,
+      onFailure,
+    });
+    const socket = FakeSocket.current;
+    try {
+      socket.dispatchEvent(
+        Object.assign(new Event("close"), {
+          code: PREVIEW_STREAM_LAUNCH_FAILED_CLOSE_CODE,
+          reason: "Browser connection failed.",
+        }),
+      );
+      expect(onFailure).toHaveBeenCalledWith("Browser connection failed.");
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(30_000);
+      expect(FakeSocket.current).toBe(socket);
+    } finally {
+      client.stop();
+      vi.useRealTimers();
+    }
+  });
 
   it("does not grant control from malformed dialog metadata", () => {
     const { client, socket, onControl } = connect();
