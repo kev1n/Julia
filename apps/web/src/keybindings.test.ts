@@ -248,6 +248,34 @@ describe("settle thread shortcut", () => {
   });
 });
 
+describe("new chat tab shortcut", () => {
+  it("opens a chat tab while the right panel is closed", () => {
+    assert.equal(
+      resolveShortcutCommand(event({ key: "t", metaKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: false, rightPanelOpen: false },
+      }),
+      "chat.newTab",
+    );
+  });
+
+  it("leaves Mod+T to the open right panel and the terminal", () => {
+    assert.equal(
+      resolveShortcutCommand(event({ key: "t", metaKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: false, rightPanelOpen: true },
+      }),
+      "rightPanel.new",
+    );
+    assert.isNull(
+      resolveShortcutCommand(event({ key: "t", metaKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: true, rightPanelOpen: false },
+      }),
+    );
+  });
+});
+
 describe("thread undo shortcut", () => {
   it("leaves native undo alone inside text fields and terminals", () => {
     assert.isNull(
