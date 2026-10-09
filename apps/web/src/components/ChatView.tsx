@@ -2845,6 +2845,7 @@ export default function ChatView(props: ChatViewProps) {
       promptRef,
       composerRef,
       composerDraftTarget,
+      baseComposerDraftTarget,
       setThreadError,
     });
   const onCompactContext = () => {
