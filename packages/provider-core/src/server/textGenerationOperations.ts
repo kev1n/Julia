@@ -5,6 +5,7 @@ import { type ChatAttachment, type ModelSelection, TextGenerationError } from "@
 import { formatGeneratedBranchName, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
+import { buildFleetRelationsPrompt } from "./fleetRelationsPrompt.ts";
 import type { ProviderTextGeneration } from "./textGeneration.ts";
 import {
   buildBranchNamePrompt,
@@ -181,6 +182,13 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
   });
 
   return {
+    generateFleetRelations: (input) =>
+      run({
+        operation: "generateFleetRelations",
+        cwd: input.cwd,
+        modelSelection: input.modelSelection,
+        ...buildFleetRelationsPrompt(input.context),
+      }),
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
