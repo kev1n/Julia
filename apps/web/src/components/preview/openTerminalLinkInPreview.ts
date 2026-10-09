@@ -56,14 +56,15 @@ export async function openTerminalLinkInPreview<E>(
   };
 
   const defaults = await resolveBrowserDefaults();
-  const runtime = previewRuntimeFor(input.threadRef.environmentId);
+  const profileId = defaults.profileId;
+  const runtime = previewRuntimeFor(input.threadRef.environmentId, profileId);
   const result = await input.openPreview({
     environmentId: input.threadRef.environmentId,
     input: {
       threadId: input.threadRef.threadId,
       url: input.url,
       viewport: defaults.viewport,
-      profileId: defaults.profileId,
+      profileId,
       ...(runtime === undefined ? {} : { runtime }),
     },
   });
