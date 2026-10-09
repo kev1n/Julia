@@ -32,6 +32,7 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { accountLimitSummary } from "../../fork/usageByAccount/accountSummary";
+import { UsageBars } from "../../fork/usageByAccount/UsageBars";
 import { useNowMinute } from "../../hooks/useNowMinute";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
@@ -260,10 +261,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     : undefined;
   // Fork (Owner): the subscription the selected model runs on and what it has left.
   const nowMinute = useNowMinute();
-  const accountSummary =
-    activeEntry && !selectedEntries && props.triggerLabel === undefined
-      ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
-      : null;
+  const showsAccount = activeEntry && !selectedEntries && props.triggerLabel === undefined;
+  const accountSummary = showsAccount
+    ? accountLimitSummary(activeEntry.snapshot, Date.parse(`${nowMinute}Z`))
+    : null;
   const triggerTooltipContent = [
     props.triggerLabel ?? allModelNames ?? triggerLabel,
     accountSummary ? `${activeEntry?.displayName} · ${accountSummary}` : null,
@@ -424,7 +425,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               />
             </span>
           ) : null}
-          {props.isComposerOwned ? (
+          {/* Fork: the composer chip keeps a tooltip while it can name the account's limits. */}
+          {props.isComposerOwned && !accountSummary ? (
             <span {...triggerTextProps}>{triggerText}</span>
           ) : (
             <Tooltip>
@@ -433,6 +435,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </Tooltip>
           )}
           {props.triggerSuffix}
+          {showsAccount && !props.compact ? (
+            <UsageBars
+              limits={activeEntry.snapshot.usageLimits}
+              now={Date.parse(`${nowMinute}Z`)}
+            />
+          ) : null}
           {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
             <Badge variant="outline" size="sm">
               Unavailable
