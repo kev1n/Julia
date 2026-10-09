@@ -20,6 +20,8 @@ import {
   ThreadId,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadProjection,
+  type OrchestratorMcpRuntimeMode,
+  type RuntimeMode,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
@@ -2625,6 +2627,29 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
   });
+});
+
+describe("delegated task runtime modes", () => {
+  const code = (parent: RuntimeMode, requested?: OrchestratorMcpRuntimeMode) =>
+    OrchestratorMcpService.resolveDelegatedRuntimeMode(parent, requested).pipe(
+      Effect.match({ onFailure: (error) => error.code, onSuccess: (mode) => mode }),
+    );
+
+  it.effect("never start in a mode that stops for approval", () =>
+    Effect.gen(function* () {
+      assert.equal(yield* code("full-access"), "full-access");
+      assert.equal(yield* code("full-access", "auto"), "auto");
+      assert.equal(yield* code("auto", "inherit"), "auto");
+      // Inheriting an approval mode is refused rather than escalated past the parent.
+      assert.equal(yield* code("approval-required"), "runtime_mode_requires_approval");
+      assert.equal(yield* code("auto-accept-edits"), "runtime_mode_requires_approval");
+      assert.equal(
+        yield* code("full-access", "approval-required"),
+        "runtime_mode_requires_approval",
+      );
+      assert.equal(yield* code("auto", "full-access"), "runtime_mode_escalation_denied");
+    }),
+  );
 });
 
 describe("OrchestratorMcpService thread lookup", () => {

@@ -58,7 +58,7 @@ import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
 import { readCaller } from "../../mcp/threadAccess.ts";
 import * as Orchestrator from "../../orchestration-v2/Orchestrator.ts";
 import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
-import { subagentResultForRun } from "../../orchestration-v2/SubagentProjection.ts";
+import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
 import * as ThreadLaunch from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
@@ -280,7 +280,7 @@ const waitRemote = (
 export const delegate = (target: FleetSnapshot, input: OrchestratorMcpDelegateTaskInput) =>
   Effect.gen(function* () {
     const { caller, source } = yield* callingThread;
-    const runtimeMode = yield* OrchestratorMcpService.resolveRuntimeMode(
+    const runtimeMode = yield* OrchestratorMcpService.resolveDelegatedRuntimeMode(
       caller.runtimeMode,
       input.runtimeMode,
     );
