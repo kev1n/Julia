@@ -130,6 +130,7 @@ export async function openServerPictureInPicture(input: {
           retryTimer = setTimeout(() => void connect(true), 1_000 * 2 ** refusals++);
         },
         onGone: onLeave,
+        onFailure: onLeave,
       },
     );
   };
