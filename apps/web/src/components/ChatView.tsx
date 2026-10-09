@@ -41,11 +41,7 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
-import {
-  autoPlacementLabel,
-  useAutoAccount,
-  useLimitedAccountSwitch,
-} from "../fork/autoPlacement/useAutoAccount";
+import { useComposerAutoAccount } from "../fork/autoPlacement/useAutoAccount";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -136,7 +132,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { GitForkIcon } from "lucide-react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -213,7 +208,7 @@ import { isModelPickerOpen } from "../modelPickerVisibility";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
-import { newMessageId, newThreadId } from "~/lib/utils";
+import { newMessageId } from "~/lib/utils";
 import { isInSideChatPane, type SideChatParentPanel } from "~/lib/sideChatPane";
 import {
   NO_PROVIDER_MODEL_SELECTION,
@@ -230,9 +225,8 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { WorkspaceChatTabs } from "./chat/WorkspaceChatTabs";
-import { setChatTabOrigin, useChatTabOriginStore } from "./chat/chatTabOrigins";
-import { Button } from "./ui/button";
-import { buildThreadRouteParams } from "../threadRoutes";
+import { useChatTabs } from "../fork/chatTabs/useChatTabs";
+import { useFollowLimitFailover } from "../fork/limitFailover/useFollowLimitFailover";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { focusTerminalOnThreadEnter, getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -284,7 +278,6 @@ import {
   useThreadHistory,
   useQuietThreadShell,
   useThreadCheckpointSummaries,
-  waitForThreadShell,
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
@@ -614,9 +607,6 @@ export default function ChatView(props: ChatViewProps) {
       ? (draft.modelSelectionByProvider[draft.activeProvider] ?? null)
       : null;
   });
-  const composerModelSelectionExplicit = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.modelSelectionExplicit === true,
-  );
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
@@ -2586,35 +2576,7 @@ export default function ChatView(props: ChatViewProps) {
           },
         })
       : null;
-  // Fork (Owner): follow limit failover into the new tab when it happens while this
-  // thread is open. Reopening a thread that already moved on stays put.
-  const continuedInShellLoaded = activeThreadShell?.id === routeThreadRef.threadId;
-  const continuedInThreadId = activeThreadShell?.limitRecovery?.continuedIn;
-  const continuedInObservedRef = useRef<{ threadKey: string; continuedIn: unknown } | null>(null);
-  useEffect(() => {
-    if (!continuedInShellLoaded) return;
-    const observed = continuedInObservedRef.current;
-    continuedInObservedRef.current = {
-      threadKey: routeThreadKey,
-      continuedIn: continuedInThreadId,
-    };
-    if (
-      continuedInThreadId === undefined ||
-      observed?.threadKey !== routeThreadKey ||
-      observed.continuedIn !== undefined
-    )
-      return;
-    const targetThreadRef = scopeThreadRef(routeThreadRef.environmentId, continuedInThreadId);
-    void (async () => {
-      if (!(await waitForThreadShell(targetThreadRef))) return;
-      if (continuedInObservedRef.current?.threadKey !== routeThreadKey) return;
-      useComposerDraftStore.getState().moveComposerPromptAndImages(routeThreadRef, targetThreadRef);
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(targetThreadRef),
-      });
-    })();
-  }, [continuedInShellLoaded, continuedInThreadId, navigate, routeThreadKey, routeThreadRef]);
+  useFollowLimitFailover(routeThreadRef, activeThreadShell);
   const composerBannerItems = (() => {
     const fallbackSelection = draftFallback?.selection;
     const defaultSelection =
@@ -2894,9 +2856,6 @@ export default function ChatView(props: ChatViewProps) {
       baseComposerDraftTarget,
       setThreadError,
     });
-  const forkThreadFromRun = useAtomCommand(threadEnvironment.forkFromRun, {
-    reportFailure: false,
-  });
   const canForkChat =
     isServerThread &&
     !activeEnvironmentUnavailable &&
@@ -2907,96 +2866,18 @@ export default function ChatView(props: ChatViewProps) {
       activeLatestRun.status,
     ) &&
     canOperateThread;
-  const newChatTab = async () => {
-    if (!activeThread || !activeProjectRef) return;
-    const created = await handleNewThread(activeProjectRef, {
-      branch: activeThread.branch,
-      worktreePath: activeThread.worktreePath,
-      chatGroupId: activeThread.chatGroupId,
-      envMode: activeThread.worktreePath ? "worktree" : "local",
-    });
-    // A tab opened from a draft keeps whatever origin that draft already had.
-    if (!created || !isServerThread) return;
-    setChatTabOrigin(
-      created.draftId,
-      canForkChat && activeLatestRun
-        ? {
-            threadRef: scopeThreadRef(environmentId, activeThread.id),
-            runId: activeLatestRun.runId,
-            title: activeThread.title,
-            chatGroupId: activeThread.chatGroupId ?? null,
-          }
-        : null,
-    );
-  };
-  const forkChat = async (destination: "tab" | "thread") => {
-    if (!activeThread || !activeLatestRun) return;
-    await onForkFromRunStable({
-      sourceThreadId: activeThread.id,
-      runId: activeLatestRun.runId,
-      destination,
-    });
-  };
+  const chatTabs = useChatTabs({
+    activeThread,
+    activeProjectRef,
+    isServerThread,
+    draftId,
+    forkRunId: canForkChat ? (activeLatestRun?.runId ?? null) : null,
+    onForkFromRun: onForkFromRunStable,
+  });
   const openNewChatTab = useEffectEvent(() => {
     if (!canOperateThread || activeEnvironmentUnavailable) return;
-    void newChatTab();
+    void chatTabs.newChatTab();
   });
-  const chatTabOrigin = useChatTabOriginStore((state) =>
-    draftId === null ? null : (state.byDraftId[draftId] ?? null),
-  );
-  const [isBringingInContext, setIsBringingInContext] = useState(false);
-  // Swaps this new-tab draft for a fork of the chat it was opened from, keeping
-  // whatever the user has already typed.
-  const bringInChatTabOrigin = async () => {
-    if (!chatTabOrigin || draftId === null || isBringingInContext) return;
-    const origin = chatTabOrigin;
-    setIsBringingInContext(true);
-    try {
-      const targetThreadRef = scopeThreadRef(origin.threadRef.environmentId, newThreadId());
-      const result = await forkThreadFromRun({
-        environmentId: origin.threadRef.environmentId,
-        input: {
-          sourceThreadId: origin.threadRef.threadId,
-          targetThreadId: targetThreadRef.threadId,
-          runId: origin.runId,
-          title: `${origin.title} fork`,
-          contextMode: "without_tool_results",
-          destination: "tab",
-          chatGroupId: origin.chatGroupId,
-        },
-      });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: "Could not bring in that chat's context",
-            ...(error instanceof Error ? { description: error.message } : {}),
-          });
-        }
-        return;
-      }
-      if (!(await waitForThreadShell(targetThreadRef))) {
-        toastManager.add({
-          type: "error",
-          title: "The fork was created, but its thread did not reach this client",
-          description: "Reconnect and open it from the sidebar.",
-        });
-        return;
-      }
-      const draftStore = useComposerDraftStore.getState();
-      draftStore.moveComposerPromptAndImages(draftId, targetThreadRef);
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(targetThreadRef),
-        replace: true,
-      });
-      draftStore.clearDraftThread(draftId);
-      setChatTabOrigin(draftId, null);
-    } finally {
-      setIsBringingInContext(false);
-    }
-  };
   const onCompactContext = () => {
     if (compactDisabled) return;
     void sendStandaloneCommand("/compact", "Failed to compact context.");
@@ -3029,59 +2910,27 @@ export default function ChatView(props: ChatViewProps) {
     scheduleComposerFocus,
   });
   // Fork (Owner): Auto picks the account too; see fork/autoPlacement.
-  const autoEnvironmentId = automaticEnvironment
-    ? (draftThread?.loadBalancedEnvironmentId ?? null)
-    : null;
-  const onAutoAccountSelect = (instanceId: ProviderInstanceId) => {
-    const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
-    const current =
-      (draft?.activeProvider ? draft.modelSelectionByProvider[draft.activeProvider] : null) ??
-      activeThread?.modelSelection;
-    if (current)
-      onProviderModelSelectStable(instanceId, current.model, {
-        focusComposer: false,
-        automatic: true,
-      });
-  };
-  const onAutoAccountSelectStable = useStableCallback(onAutoAccountSelect);
-  const autoAccount = useAutoAccount({
-    enabled: automaticEnvironment,
-    environmentId: autoEnvironmentId,
-    providers:
-      (autoEnvironmentId && providersByEnvironment.get(autoEnvironmentId)) || EMPTY_PROVIDERS,
+  const selectAutomaticModel = (instanceId: ProviderInstanceId, model: string) =>
+    onProviderModelSelectStable(instanceId, model, { focusComposer: false, automatic: true });
+  const selectAutomaticModelStable = useStableCallback(selectAutomaticModel);
+  const autoPlacement = useComposerAutoAccount({
+    composerDraftTarget,
+    draftId,
+    threadModelSelection: activeThread?.modelSelection,
+    automaticEnvironment,
+    autoEnvironmentId: draftThread?.loadBalancedEnvironmentId ?? null,
+    autoEnvironmentProviders: draftThread?.loadBalancedEnvironmentId
+      ? providersByEnvironment.get(draftThread.loadBalancedEnvironmentId)
+      : undefined,
+    environments: logicalProjectEnvironments,
+    placement: loadBalancing,
     driver: selectedProvider,
     currentInstanceId: activeProviderInstanceId,
-    model: composerSelectedModelSelection?.model ?? activeThread?.modelSelection.model,
-    explicit: composerModelSelectionExplicit,
-    draftId,
-    select: onAutoAccountSelectStable,
-  });
-  const onLimitedModelSelect = (selection: ModelSelection) =>
-    onProviderModelSelectStable(selection.instanceId, selection.model, {
-      focusComposer: false,
-      automatic: true,
-    });
-  const onLimitedModelSelectStable = useStableCallback(onLimitedModelSelect);
-  useLimitedAccountSwitch({
-    draftId:
-      envLocked || !clientSettingsHydrated || (automaticEnvironment && !autoEnvironmentId)
-        ? null
-        : draftId,
+    limitedSwitchEnabled: !envLocked && clientSettingsHydrated,
     providers: providerStatuses,
     settings,
-    currentSelection: composerSelectedModelSelection ?? activeThread?.modelSelection ?? null,
-    explicit: composerModelSelectionExplicit,
-    select: onLimitedModelSelectStable,
+    selectModel: selectAutomaticModelStable,
   });
-  const autoPlacement = automaticEnvironment
-    ? autoPlacementLabel({
-        placement: loadBalancing,
-        environmentId: autoEnvironmentId,
-        environments: logicalProjectEnvironments,
-        driver: selectedProvider,
-        account: autoAccount,
-      })
-    : undefined;
   const autoEnvironmentLabel = autoPlacement?.chip;
   const { onResume, isResuming } = useComposerResume({
     environmentId,
@@ -3566,8 +3415,8 @@ export default function ChatView(props: ChatViewProps) {
           isServerThread={isServerThread}
           canCreate={!activeEnvironmentUnavailable && canOperateThread}
           canFork={canForkChat}
-          onNewChat={() => void newChatTab()}
-          onForkChat={forkChat}
+          onNewChat={() => void chatTabs.newChatTab()}
+          onForkChat={chatTabs.forkChat}
         />
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -3758,22 +3607,7 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
                         />
-                        {chatTabOrigin ? (
-                          <div className="mt-3 flex justify-center">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={isBringingInContext || !canOperateThread}
-                              onClick={() => void bringInChatTabOrigin()}
-                            >
-                              <GitForkIcon aria-hidden />
-                              <span className="truncate">
-                                Bring in context from {chatTabOrigin.title}
-                              </span>
-                            </Button>
-                          </div>
-                        ) : null}
+                        {chatTabs.bringInContextButton(!canOperateThread)}
                       </div>
                     </div>
                   ) : null}
