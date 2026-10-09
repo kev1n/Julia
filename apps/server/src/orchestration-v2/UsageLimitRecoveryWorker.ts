@@ -1,3 +1,4 @@
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import { CommandId, MessageId, type OrchestrationV2Command } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -79,6 +80,7 @@ const makeSweep = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const settings = yield* ServerSettings.ServerSettingsService;
   const providers = yield* ProviderRegistry;
+  const adapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
   return Effect.fn("UsageLimitRecoveryWorker.sweep")(function* () {
     const preferences = yield* settings.getSettings;
     const now = yield* DateTime.now;
@@ -91,7 +93,12 @@ const makeSweep = Effect.gen(function* () {
     });
     const nowMs = DateTime.toEpochMillis(now);
     const providerList = failover && candidates.length > 0 ? yield* providers.getProviders : [];
+    const eligibleInstanceIds = new Set(yield* adapters.list());
     for (const thread of candidates) {
+      // Delegates recover through their terminal transaction's bounded effect.
+      // A reset-time retry after publication cannot deliver another task result.
+      if ((yield* projections.getThread(thread.id)).lineage.relationshipToParent === "subagent")
+        continue;
       if (
         failover &&
         (yield* LimitFailover.continueLimitedThreadElsewhere(
@@ -100,6 +107,7 @@ const makeSweep = Effect.gen(function* () {
           providerList,
           projections,
           threads,
+          eligibleInstanceIds,
         ).pipe(
           Effect.catchCause((cause) =>
             Effect.as(

@@ -60,6 +60,10 @@ function scopedWindow(
     id: scopedWindowId(displayName),
     kind: "weekly",
     label: `Weekly · ${displayName}`,
+    modelScope: `claude-${displayName
+      .toLowerCase()
+      .replace(/^claude\s+/, "")
+      .replace(/[^a-z0-9]+/g, "-")}`,
     windowDurationMins: WEEK_MINS,
     usedPercent: clampPercent(usedPercent),
     ...(resetsAt ? { resetsAt } : {}),

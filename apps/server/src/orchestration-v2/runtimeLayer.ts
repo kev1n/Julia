@@ -287,6 +287,7 @@ const layerScheduledTaskProvided = ScheduledTaskService.layer.pipe(
       layerThreadManagementProvided,
       layerManagedProjectFoldersProvided,
       layerSecretRequestsProvided,
+      layerProviderAdapterRegistryProvided,
     ),
   ),
 );
@@ -294,6 +295,7 @@ const layerProviderContinuationWorkerProvided = ProviderContinuationService.laye
   Layer.provide(
     Layer.mergeAll(
       ProviderContinuationRequests.layer,
+      layerProviderAdapterRegistryProvided,
       layerThreadManagementProvided,
       IdAllocator.layer,
     ),
@@ -315,6 +317,7 @@ const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
       layerRuntimeRequestServiceProvided,
       layerThreadTitleRegenerationProvided,
       layerThreadManagementProvided,
+      layerProviderAdapterRegistryProvided,
     ),
   ),
 );
@@ -373,6 +376,7 @@ export const layerProduction = Layer.mergeAll(
         ProjectionStore.layer,
         layerThreadManagementProvided,
         layerOrchestratorProvided,
+        layerProviderAdapterRegistryProvided,
       ),
     ),
   ),
