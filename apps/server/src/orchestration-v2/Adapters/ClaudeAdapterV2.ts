@@ -3409,6 +3409,35 @@ const CLAUDE_GOAL_DEFERRING_TASK_TYPES: ReadonlySet<string> = new Set([
   "local_workflow",
 ]);
 
+// Background commands that block until something outside finishes: a CI
+// watch, a sleep timer, a loop polling for a condition. Claude wakes the agent
+// when one exits, so it counts as a monitor rather than a command the agent
+// left running, such as a dev server. `while true` loops never exit.
+const CLAUDE_FINITE_WAIT_COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bgh\s+pr\s+checks\b[^\n;|&]*--watch\b/u,
+  /\bgh\s+run\s+watch\b/u,
+  /\bkubectl\s+(?:wait|rollout\s+status)\b/u,
+  /^\s*sleep\s+\d/u,
+  /\buntil\b[\s\S]*\bdo\b[\s\S]*\bsleep\b/u,
+  /\bwhile\s+(?!true\b|:\s*;)[\s\S]*\bdo\b[\s\S]*\bsleep\b/u,
+];
+
+/** True for a background Bash call that waits on something finite and wakes the agent. */
+export function claudeBashCallWaitsForFinish(toolUse: {
+  readonly name: string;
+  readonly input: unknown;
+}): boolean {
+  if (toolUse.name !== "Bash" || toolUse.input === null || typeof toolUse.input !== "object") {
+    return false;
+  }
+  const command = Reflect.get(toolUse.input, "command");
+  return (
+    Reflect.get(toolUse.input, "run_in_background") === true &&
+    typeof command === "string" &&
+    CLAUDE_FINITE_WAIT_COMMAND_PATTERNS.some((pattern) => pattern.test(command))
+  );
+}
+
 function isClaudeOpaqueBackgroundTaskType(taskType: string | null | undefined): boolean {
   return typeof taskType === "string" && CLAUDE_OPAQUE_BACKGROUND_TASK_KINDS.has(taskType);
 }
@@ -5669,6 +5698,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const lastKnownOpaqueTasks = yield* Ref.make(
           new Map<string, OrchestrationV2PendingBackgroundTask>(),
         );
+        // Live Claude monitors, including background Bash calls that wait on
+        // something finite (claudeBashCallWaitsForFinish). A call waits in `calls` until its
         const claudeMonitors = yield* Ref.make<{
           readonly calls: ReadonlySet<string>;
           readonly tasks: ReadonlyMap<
@@ -5678,7 +5709,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         }>({ calls: new Set(), tasks: new Map() });
         const trackClaudeMonitorCalls = (message: SDKMessage) => {
           const started = claudeToolUseBlocksFromAssistantMessage(message).flatMap((toolUse) =>
-            toolUse.name === "Monitor" ? [toolUse.id] : [],
+            toolUse.name === "Monitor" || claudeBashCallWaitsForFinish(toolUse) ? [toolUse.id] : [],
           );
           const returned = [
             ...claudeToolResultBlocksFromAssistantMessage(message),
