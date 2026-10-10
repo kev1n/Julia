@@ -141,6 +141,15 @@ const EDITABLE_AT_POINT_SCRIPT = `(x, y) => {
   const nonText = ["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"];
   return !nonText.includes(element.type) && !element.disabled && !element.readOnly;
 }`;
+/**
+ * Native Chrome only screencasts a visible tab. Raising one also brings Aside in front of
+ * the person's other apps, so do it only when Chrome has hidden the tab.
+ */
+const revealAsideTab = async (page: Page) => {
+  const state = await page.evaluate("document.visibilityState").catch(() => "visible");
+  if (state === "hidden") await page.bringToFront();
+};
+
 const UNATTACHED_FILL_VIEWPORT = { width: 1280, height: 800 } as const;
 const NAVIGATION_TIMEOUT_MS = 15_000;
 const VIEWER_NAVIGATION_OPTIONS = { waitUntil: "commit", timeout: NAVIGATION_TIMEOUT_MS } as const;
@@ -2700,8 +2709,7 @@ const make = Effect.gen(function* () {
     "ServerBrowser.attachViewer",
   )(function* (input) {
     const tab = yield* findTab(input.threadId, input.tabId);
-    // Native Chrome only reliably screencasts its active tab.
-    if (tab.aside) yield* Effect.promise(() => tab.page.bringToFront().catch(constVoid));
+    if (tab.aside) yield* Effect.promise(() => revealAsideTab(tab.page).catch(constVoid));
     const output = yield* Queue.make<ServerBrowserViewerOutput>({
       capacity: VIEWER_OUTPUT_LIMIT,
       strategy: "dropping",
@@ -2897,7 +2905,7 @@ const make = Effect.gen(function* () {
               const taking = tab.control.take(viewer.id);
               broadcastControl(tab);
               await taking;
-              if (tab.aside) await tab.page.bringToFront();
+              if (tab.aside) await revealAsideTab(tab.page);
               pushFileChooser(tab);
             } else if (message.type === "releaseControl") {
               const releasing = tab.control.release(viewer.id, () =>
