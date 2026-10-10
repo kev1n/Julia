@@ -16,6 +16,10 @@ import { m } from "../../i18n/messages";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
 import { pinOrderKeyBetween } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  workspaceChatKey,
+  workspaceChatTabs,
+} from "@t3tools/client-runtime/state/workspace-chat-sessions";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { connectedEnvironmentIdsAtom } from "../../state/presentation";
@@ -72,6 +76,35 @@ function actionFailureMessage(action: ThreadListAction, cause: Cause.Cause<unkno
     return error.message;
   }
   return m(ACTION_FAILURES[action]);
+}
+
+/** `thread` plus the other tabs in its workspace that `include` accepts. Settle
+    and snooze move a tabbed thread as one, as on web, or its row lingers until
+    every tab is parked separately. */
+function withOtherTabs(
+  thread: EnvironmentThreadShell,
+  include: (chat: EnvironmentThreadShell) => boolean,
+): EnvironmentThreadShell[] {
+  return [
+    thread,
+    ...workspaceChatTabs(
+      appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
+      workspaceChatKey(thread),
+    ).filter((chat) => chat.id !== thread.id && include(chat)),
+  ];
+}
+
+/** Runs `action` on every tab and reports the target's result. */
+async function actOnTabs(
+  tabs: readonly EnvironmentThreadShell[],
+  action: (thread: EnvironmentThreadShell) => Promise<boolean>,
+): Promise<boolean> {
+  const [result] = await Promise.all(tabs.map(action));
+  return result === true;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
 function selectionHaptic(): void {
@@ -331,7 +364,7 @@ export function useThreadListActions(): {
         }
       },
     });
-  const settleThread = async (thread: EnvironmentThreadShell) => {
+  const settleChat = async (thread: EnvironmentThreadShell) => {
     const key = scopedThreadKey(thread.environmentId, thread.id);
     const plan = ThreadUndo.planThreadUndo("settle", thread);
     let claim: ReturnType<typeof ThreadUndo.begin> | undefined;
@@ -346,7 +379,12 @@ export function useThreadListActions(): {
     }
     return succeeded;
   };
-  const snoozeThread = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
+  const settleThread = (thread: EnvironmentThreadShell) =>
+    actOnTabs(
+      withOtherTabs(thread, (chat) => chat.settledOverride !== "settled"),
+      settleChat,
+    );
+  const snoozeChat = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
     if (!checkThreadOperationPermission(thread, m(msg("Could not snooze thread")))) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
     if (snoozeInFlightThreadKeys.current.has(key)) {
@@ -410,7 +448,21 @@ export function useThreadListActions(): {
     snoozeInFlightThreadKeys.current.delete(key);
     return succeeded;
   };
-  const unsnoozeThread = async (thread: EnvironmentThreadShell) => {
+  const snoozeThread = (thread: EnvironmentThreadShell, snoozedUntil: string) => {
+    const now = nowIso();
+    // Blocked-on-you work and starting turns stay out, matching web.
+    return actOnTabs(
+      withOtherTabs(
+        thread,
+        (chat) =>
+          chat.settledOverride !== "settled" &&
+          !effectiveSnoozed(chat, { now }) &&
+          canSnooze(chat, { now }),
+      ),
+      (chat) => snoozeChat(chat, snoozedUntil),
+    );
+  };
+  const unsnoozeChat = async (thread: EnvironmentThreadShell) => {
     if (!checkThreadOperationPermission(thread, m(msg("Could not wake thread")))) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
     if (snoozeInFlightThreadKeys.current.has(key)) {
@@ -456,10 +508,25 @@ export function useThreadListActions(): {
     snoozeInFlightThreadKeys.current.delete(key);
     return succeeded;
   };
-  const unsettleThread = async (
-    thread: EnvironmentThreadShell,
-    restoreUnsettledAt?: string | null,
-  ) => (await executeAction("unsettle", thread, undefined, restoreUnsettledAt)) === true;
+  const unsnoozeThread = (thread: EnvironmentThreadShell) => {
+    const now = nowIso();
+    return actOnTabs(
+      withOtherTabs(thread, (chat) => effectiveSnoozed(chat, { now })),
+      unsnoozeChat,
+    );
+  };
+  const unsettleThread = (thread: EnvironmentThreadShell, restoreUnsettledAt?: string | null) =>
+    actOnTabs(
+      withOtherTabs(thread, (chat) => chat.settledOverride === "settled"),
+      async (chat) =>
+        // Only the target's own earlier state is known to the undo step.
+        (await executeAction(
+          "unsettle",
+          chat,
+          undefined,
+          chat === thread ? restoreUnsettledAt : undefined,
+        )) === true,
+    );
   const pinThread = async (thread: EnvironmentThreadShell, restoreOrderKey?: string) => {
     if (!checkThreadOperationPermission(thread, m(msg("Could not pin thread")))) return false;
     if (!environmentConfigLoaded(thread.environmentId)) {

@@ -46,7 +46,7 @@ const items = buildThreadListV2ListItems({
   settledShelfHeaderIndex: null,
 });
 
-it("keeps pins first under a single heading per project", () => {
+it("keeps pins on one shelf above the project groups, as on web", () => {
   const grouped = groupThreadSidebarItems({
     items,
     scopes,
@@ -61,20 +61,20 @@ it("keeps pins first under a single heading per project", () => {
           ? row.item.thread.id
           : row.type,
     ),
-  ).toEqual(["p", "pin-p", "active-p", "q", "pin-q", "active-q"]);
+  ).toEqual(["pin-p", "pin-q", "p", "active-p", "q", "active-q"]);
 });
 
-it("collapses pins and active rows together, retaining the selected thread", () => {
+it("collapses a project's rows in one section, retaining the selected thread", () => {
   const grouped = groupThreadSidebarItems({
     items,
     scopes,
-    collapsedKeys: new Set([scopes[0]!.key]),
-    selectedThreadKey: "local:active-p",
+    collapsedKeys: new Set([`active:${scopes[0]!.key}`]),
+    selectedThreadKey: "local:pin-p",
   });
   expect(
     grouped.filter((row) => row.type === "v2-thread").map((row) => row.item.thread.id),
-  ).toEqual(["active-p", "pin-q", "active-q"]);
+  ).toEqual(["pin-p", "pin-q", "active-q"]);
   expect(grouped.filter((row) => row.type === "project-header").map((row) => row.count)).toEqual([
-    2, 2,
+    1, 1,
   ]);
 });
