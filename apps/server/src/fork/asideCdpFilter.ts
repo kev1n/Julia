@@ -9,6 +9,8 @@ interface CdpMessage {
     sessionId?: string;
     targetId?: string;
     waitingForDebugger?: boolean;
+    newWindow?: boolean;
+    background?: boolean;
     targetInfo?: { targetId: string; type: string; subtype?: string; openerId?: string };
   };
   result?: { targetId?: string; sessionId?: string };
@@ -92,7 +94,16 @@ export const asideCdpFilter = (send: (raw: string) => void, deliver: (raw: strin
         send(raw);
         return;
       }
-      if (!message.sessionId && message.method === "Target.createTarget") creating++;
+      if (!message.sessionId && message.method === "Target.createTarget") {
+        creating++;
+        // A tab alone in an inactive window stays visible, so it streams without
+        // activating Aside; a plain new tab brings Aside to the front.
+        write(
+          { ...message, params: { newWindow: true, background: true, ...message.params } },
+          message,
+        );
+        return;
+      }
       write(message, message);
     },
     fromHelper(raw: string) {

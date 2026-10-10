@@ -229,13 +229,17 @@ function makeContext(
     reload: vi.fn(async () => {}),
     emulateMedia: vi.fn(async () => {}),
     waitForLoadState: vi.fn(async () => {}),
-    evaluate: vi.fn(async () => ({
-      url,
-      title: "test page",
-      loading: false,
-      visibleText: "delete",
-      interactiveElements: [],
-    })),
+    evaluate: vi.fn(async (script?: unknown) =>
+      script === "document.visibilityState"
+        ? pageVisibility
+        : {
+            url,
+            title: "test page",
+            loading: false,
+            visibleText: "delete",
+            interactiveElements: [],
+          },
+    ),
     ariaSnapshot: vi.fn(async () => '- button "delete" [ref=e1]'),
     locator: vi.fn(() => {
       throw new Error("Unexpected locator action");
@@ -499,7 +503,9 @@ const openDesktopViewer = Effect.gen(function* () {
 });
 
 let nativeSize = { width: 640, height: 400 };
+let pageVisibility = "visible";
 beforeEach(() => {
+  pageVisibility = "visible";
   nativeSize = { width: 640, height: 400 };
   contexts.length = 0;
   encoderStreams.length = 0;
@@ -818,6 +824,28 @@ it.live.each([false, true])(
         );
       }),
     ).pipe(Effect.provide(layer)),
+);
+
+it.live.each([
+  ["visible", 0],
+  ["hidden", 2],
+] as const)("viewing a %s Aside tab raises it %s times", ([visibility, raises]) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const manager = yield* Manager.PreviewManager;
+      const opened = yield* manager.open({
+        threadId: scope.thread.threadId,
+        runtime: "server",
+        profileId: "aside",
+      });
+      pageVisibility = visibility;
+      const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, true));
+      yield* viewer.input({ type: "takeControl" });
+      // Raising activates Aside over the person's other apps.
+      expect(contexts[0]!.page.bringToFront).toHaveBeenCalledTimes(raises);
+    }),
+  ).pipe(Effect.provide(layer)),
 );
 
 it.live(
