@@ -1719,3 +1719,46 @@ describe("Working section beta", () => {
     ]);
   });
 });
+
+describe("buildThreadListV2Items chat tabs", () => {
+  const tab = (id: string, input: Partial<EnvironmentThreadShell> = {}) =>
+    makeThread({
+      id: ThreadId.make(id),
+      title: id,
+      chatGroupId: ThreadId.make("group"),
+      createdAt: `2026-06-01T00:00:0${id.length}.000Z`,
+      ...input,
+    });
+
+  it("shows a workspace's tabs as one row in their highest-priority section", () => {
+    const first = tab("a", { settledOverride: "settled", settledAt: NOW });
+    const second = tab("bb", { latestUserMessageAt: "2026-06-01T12:00:00.000Z" });
+    const layout = buildThreadListV2Items({
+      threads: [first, second, makeThread({ id: ThreadId.make("solo"), title: "solo" })],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+    });
+
+    expect(layout.settledCount).toBe(0);
+    expect(layout.items.map((item) => [item.thread.id, item.tabs.map((chat) => chat.id)])).toEqual(
+      expect.arrayContaining([
+        ["bb", ["a", "bb"]],
+        ["solo", ["solo"]],
+      ]),
+    );
+    expect(layout.items).toHaveLength(2);
+  });
+
+  it("shows the selected tab on the session row", () => {
+    const layout = buildThreadListV2Items({
+      threads: [tab("a"), tab("bb", { latestUserMessageAt: "2026-06-01T12:00:00.000Z" })],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      selectedThreadKey: `${environmentId}:a`,
+    });
+
+    expect(layout.items.map((item) => item.thread.id)).toEqual(["a"]);
+  });
+});

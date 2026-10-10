@@ -29,6 +29,8 @@ export function makeRawThreadShell(
     interactionMode: "default",
     branch: null,
     worktreePath: null,
+    // New threads start their own tab group; omit it to model older threads.
+    chatGroupId: id,
     activeProviderThreadId: null,
     lineage: { rootThreadId: id, parentThreadId: null, relationshipToParent: null },
     forkedFrom: null,

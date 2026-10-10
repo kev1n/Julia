@@ -17,10 +17,10 @@ import type { MenuAction } from "@react-native-menu/menu";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useRef, useState } from "react";
 import type { LayoutChangeEvent, TextInputInstance } from "react-native";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { ProjectFavicon } from "../../components/ProjectFavicon";
+import { Platform, StyleSheet, TextInput, View } from "react-native";
 import {
   groupThreadSidebarItems,
+  useCollapsedProjectKeys,
   type GroupedSidebarRow,
   type SidebarRow,
 } from "./threadSidebarGroups";
@@ -73,6 +73,7 @@ import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
+  ThreadListV2ProjectHeader,
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
@@ -146,7 +147,7 @@ function ThreadNavigationSidebarPane(
   const floatingTabs = floatingTabsMetrics(enabledTabs.length + 1, scale, fabSize, props.width);
   const projects = useProjects();
   const threads = useNavigationThreadShells();
-  const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<ReadonlySet<string>>(new Set());
+  const [collapsedProjectKeys, toggleProjectCollapsed] = useCollapsedProjectKeys();
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const searchInputRef = useRef<TextInputInstance>(null);
@@ -476,7 +477,9 @@ function ThreadNavigationSidebarPane(
     onScrollBeginDrag: handleScrollBeginDrag,
   });
   // Recycle equality needs project/search data for titles and favicons; keep the minute clock on items to limit updates.
+  const groupedByProject = props.searchQuery.trim().length === 0;
   const listExtraData = {
+    groupedByProject,
     activeNewTask,
     selectedThreadKey: props.selectedThreadKey ?? "",
     projectByKey,
@@ -519,62 +522,18 @@ function ThreadNavigationSidebarPane(
   useHardwareKeyboardCommand("focusSearch", focusSearch);
   const renderListItem = ({ item }: { readonly item: SidebarListItem }) => {
     switch (item.type) {
-      case "project-header": {
-        const project = item.scope.representative;
+      case "project-header":
         return (
-          <View className="mt-2 flex-row items-center px-2">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${item.scope.title}, ${item.count} threads`}
-              accessibilityState={{ expanded: item.expanded }}
-              onPress={() =>
-                setCollapsedProjectKeys((keys) => {
-                  const next = new Set(keys);
-                  if (item.expanded) next.add(item.scope.key);
-                  else next.delete(item.scope.key);
-                  return next;
-                })
-              }
-              className="min-h-[44px] min-w-0 flex-1 flex-row items-center gap-2 px-2"
-            >
-              <SymbolView
-                name={item.expanded ? "chevron.down" : "chevron.right"}
-                size={12}
-                tintColor={materialTheme["--color-drawer-foreground-muted"]}
-              />
-              <ProjectFavicon
-                environmentId={project.environmentId}
-                faviconPath={project.faviconPath}
-                projectIcon={project.projectIcon}
-                projectTitle={project.title}
-                workspaceRoot={project.workspaceRoot}
-                size={16}
-              />
-              <Text
-                className="min-w-0 flex-1 text-sm font-t3-medium text-drawer-foreground"
-                numberOfLines={1}
-              >
-                {item.scope.title}
-              </Text>
-              <Text className="text-xs tabular-nums text-drawer-foreground-muted">
-                {item.count}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`New thread in ${item.scope.title}`}
-              onPress={() => props.onNewThreadInProject(project)}
-              className="size-11 items-center justify-center"
-            >
-              <SymbolView
-                name="plus"
-                size={16}
-                tintColor={materialTheme["--color-drawer-foreground-muted"]}
-              />
-            </Pressable>
-          </View>
+          <ThreadListV2ProjectHeader
+            pane="sidebar"
+            project={item.scope.representative}
+            title={item.scope.title}
+            count={item.count}
+            expanded={item.expanded}
+            onToggle={() => toggleProjectCollapsed(item.collapseKey)}
+            onNewThread={props.onNewThreadInProject}
+          />
         );
-      }
       case "v2-pending": {
         const pendingScopeKey = scopedProjectKey(
           item.pendingTask.environmentId,
@@ -624,10 +583,14 @@ function ThreadNavigationSidebarPane(
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}
             wokeAt={item.item.wokeAt}
+            tabs={item.item.tabs}
             snoozePresetMinute={item.snoozePresetMinute ?? ""}
             snoozeWakeLabelText={item.snoozeWakeLabelText}
             timeLabel={item.timeLabel}
-            project={projectByKey.get(scopeKey) ?? null}
+            // A project header already names grouped rows; pins sit outside the groups.
+            project={
+              groupedByProject && !item.item.pinned ? null : (projectByKey.get(scopeKey) ?? null)
+            }
             providerInstance={resolveProviderInstance(thread)}
             providers={providersByEnvironmentId.get(thread.environmentId)}
             environmentLabel={
