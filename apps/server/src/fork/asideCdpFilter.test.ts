@@ -73,6 +73,15 @@ describe("Aside CDP target ownership", () => {
     expect(f.delivered).toHaveLength(1);
   });
 
+  it("opens T3's tabs alone in an inactive window, so streaming them never activates Aside", () => {
+    const f = fixture();
+    f.create(12);
+    expect(f.sent.at(-1)).toMatchObject({
+      method: "Target.createTarget",
+      params: { url: "about:blank", newWindow: true, background: true },
+    });
+  });
+
   it("admits only the confirmed createTarget, before its reply, even with a concurrent human tab", () => {
     const f = fixture();
     const create = f.create(12);
