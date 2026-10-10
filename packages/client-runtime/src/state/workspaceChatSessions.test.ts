@@ -1,12 +1,12 @@
 import { expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "../environment/scoped.ts";
 import {
   groupWorkspaceChatSessions,
   workspaceChatKey,
   workspaceChatTabs,
   type WorkspaceChatSection,
-} from "./workspaceChatTabs.logic";
+} from "./workspaceChatSessions.ts";
 
 it("shares tabs only within the same environment, project and checkout", () => {
   const root = {
