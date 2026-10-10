@@ -259,6 +259,15 @@ const CHOOSE_SELECT_OPTION_SCRIPT = `function (index) {
   select.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }`;
+/**
+ * Native Chrome only screencasts a visible tab. Raising one also brings Aside in front of
+ * the person's other apps, so do it only when Chrome has hidden the tab.
+ */
+const revealAsideTab = async (page: Page) => {
+  const state = await page.evaluate("document.visibilityState").catch(() => "visible");
+  if (state === "hidden") await page.bringToFront();
+};
+
 const UNATTACHED_FILL_VIEWPORT = { width: 1280, height: 800 } as const;
 const NAVIGATION_TIMEOUT_MS = 15_000;
 // Status reads run in the renderer; a busy page must not hold a status past the broker's grace.
@@ -3591,8 +3600,7 @@ const make = Effect.gen(function* () {
     "ServerBrowser.attachViewer",
   )(function* (input) {
     const tab = yield* findTab(input.threadId, input.tabId);
-    // Native Chrome only reliably screencasts its active tab.
-    if (tab.aside) yield* Effect.promise(() => tab.page.bringToFront().catch(constVoid));
+    if (tab.aside) yield* Effect.promise(() => revealAsideTab(tab.page).catch(constVoid));
     const output = yield* Queue.make<ServerBrowserViewerOutput>({
       capacity: VIEWER_OUTPUT_LIMIT,
       strategy: "dropping",
@@ -3810,7 +3818,7 @@ const make = Effect.gen(function* () {
               const taking = tab.control.take(viewer.id);
               broadcastControl(tab);
               await taking;
-              if (tab.aside) await tab.page.bringToFront();
+              if (tab.aside) await revealAsideTab(tab.page);
               pushFileChooser(tab);
             } else if (message.type === "releaseControl") {
               const releasing = tab.control.release(viewer.id, () =>
