@@ -28,7 +28,10 @@ import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
-import { workspaceChatKey, workspaceChatTabs } from "../components/chat/workspaceChatTabs.logic";
+import {
+  workspaceChatKey,
+  workspaceChatTabs,
+} from "@t3tools/client-runtime/state/workspace-chat-sessions";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";

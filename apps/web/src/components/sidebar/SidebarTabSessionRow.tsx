@@ -4,7 +4,7 @@ import {
   useSidebarSubagents,
 } from "./SidebarSubagentRows";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AlarmClockOffIcon, CheckIcon, PinIcon, Undo2Icon } from "lucide-react";
@@ -23,7 +23,7 @@ import { ThreadBranchIndicator, useLinkedThreadPullRequest } from "../ThreadStat
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 import { Spinner } from "../ui/spinner";
 import { useUiStateStore } from "../../uiStateStore";
-import type { WorkspaceChatSession } from "../chat/workspaceChatTabs.logic";
+import type { WorkspaceChatSession } from "@t3tools/client-runtime/state/workspace-chat-sessions";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useEnvironmentScope } from "../../state/session";
@@ -72,13 +72,10 @@ export function SidebarTabSessionRow(props: {
     animateLayoutChanges: animateSidebarLayoutChanges,
     transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" },
   });
-  const attachRow = useCallback(
-    (node: HTMLLIElement | null) => {
-      setNodeRef(node);
-      rowRef(node);
-    },
-    [setNodeRef, rowRef],
-  );
+  const attachRow = (node: HTMLLIElement | null) => {
+    setNodeRef(node);
+    rowRef(node);
+  };
   const pr = useLinkedThreadPullRequest(
     session.thread.environmentId,
     session.thread.linkedPullRequest,

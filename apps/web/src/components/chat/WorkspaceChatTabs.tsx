@@ -20,7 +20,10 @@ import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "../Sidebar.logi
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ForkChatMenu } from "./ForkChatMenu";
-import { workspaceChatKey, workspaceChatTabs } from "./workspaceChatTabs.logic";
+import {
+  workspaceChatKey,
+  workspaceChatTabs,
+} from "@t3tools/client-runtime/state/workspace-chat-sessions";
 
 const CLOSED_TABS = Schema.Array(Schema.String);
 const EMPTY_TABS: readonly string[] = [];

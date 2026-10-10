@@ -1,4 +1,4 @@
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type { EnvironmentThreadShell } from "./shell.ts";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 /** Tabs share a checkout and, when explicitly separated by a fork, a chat group. */
@@ -31,7 +31,7 @@ export function workspaceChatTabs<
         chat.lineage.relationshipToParent !== "subagent" &&
         workspaceChatKey(chat) === key,
     )
-    .toSorted(
+    .sort(
       (left, right) =>
         left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
     );
@@ -74,7 +74,7 @@ export function groupWorkspaceChatSessions<T extends WorkspaceChat>(
   }
   return [...buckets]
     .map(([key, members]) => {
-      const chats = members.toSorted(
+      const chats = [...members].sort(
         (left, right) =>
           left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
       );
@@ -103,7 +103,7 @@ export function groupWorkspaceChatSessions<T extends WorkspaceChat>(
         latestSentAt: latest.latestUserMessageAt ?? latest.createdAt,
       };
     })
-    .toSorted(
+    .sort(
       (left, right) =>
         right.latestSentAt.localeCompare(left.latestSentAt) || left.key.localeCompare(right.key),
     );

@@ -67,6 +67,9 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
         interactionMode: spec.interactionMode,
         branch: spec.branch,
         worktreePath: isWorktree ? null : spec.worktreePath,
+        // Its own tab group, as on web, so it never joins another thread's
+        // tabs by sharing the checkout.
+        chatGroupId: ThreadId.make(spec.threadId),
         createdAt: spec.createdAt,
       },
       ...(isWorktree
