@@ -187,6 +187,7 @@ const LEGACY_MENU_ACTIONS: MenuAction[] = [
   { id: "archive", title: "Archive", image: "archivebox" },
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
+const EMPTY_TABS: ReadonlyArray<EnvironmentThreadShell> = [];
 
 function ThreadListV2Section(props: {
   readonly label: string;
@@ -318,6 +319,71 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="settled" />;
+});
+
+/** A project's rows within one section, as in the web sidebar. */
+export const ThreadListV2ProjectHeader = memo(function ThreadListV2ProjectHeader(props: {
+  readonly project: EnvironmentProject;
+  readonly title: string;
+  readonly count: number;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+  readonly onNewThread: (project: EnvironmentProject) => void;
+  readonly pane?: "screen" | "sidebar";
+}) {
+  const { project } = props;
+  const sidebarPane = props.pane === "sidebar";
+  const iconTint = sidebarPane ? "accent-drawer-foreground-muted" : "accent-foreground-muted";
+  return (
+    <View className={cn("mt-2 flex-row items-center", sidebarPane ? "px-2" : "px-3")}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${props.title}, ${props.count} threads`}
+        accessibilityState={{ expanded: props.expanded }}
+        onPress={props.onToggle}
+        className="min-h-[44px] min-w-0 flex-1 flex-row items-center gap-2 px-2"
+      >
+        <SymbolView
+          name={props.expanded ? "chevron.down" : "chevron.right"}
+          size={12}
+          tintColorClassName={iconTint}
+        />
+        <ProjectFavicon
+          environmentId={project.environmentId}
+          faviconPath={project.faviconPath}
+          projectIcon={project.projectIcon}
+          projectTitle={project.title}
+          workspaceRoot={project.workspaceRoot}
+          size={16}
+        />
+        <Text
+          className={cn(
+            "min-w-0 flex-1 text-sm font-t3-medium",
+            sidebarPane ? "text-drawer-foreground" : "text-foreground",
+          )}
+          numberOfLines={1}
+        >
+          {props.title}
+        </Text>
+        <Text
+          className={cn(
+            "text-xs tabular-nums",
+            sidebarPane ? "text-drawer-foreground-muted" : "text-foreground-muted",
+          )}
+        >
+          {props.count}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`New thread in ${props.title}`}
+        onPress={() => props.onNewThread(project)}
+        className="size-11 items-center justify-center"
+      >
+        <SymbolView name="plus" size={16} tintColorClassName={iconTint} />
+      </Pressable>
+    </View>
+  );
 });
 
 export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {
@@ -644,6 +710,9 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly thread: EnvironmentThreadShell;
+  /** Every chat tab in the row's workspace, as in the web sidebar's session
+      row. More than one adds a tab count and a tab picker to the menu. */
+  readonly tabs?: ReadonlyArray<EnvironmentThreadShell>;
   readonly variant: "card" | "slim";
   readonly hasQueuedMessages?: boolean;
   readonly snoozed?: boolean;
@@ -732,6 +801,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   } = props;
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
+  const tabs = props.tabs ?? EMPTY_TABS;
+  const tabSuffix = tabs.length > 1 ? ` · ${tabs.length} tabs` : null;
   const dormant = useSwipeRowDormant(props.activationKey);
 
   const selectThread = () => onSelectThread(thread);
@@ -961,6 +1032,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const menuActions = useMemo<MenuAction[]>(() => {
     const nested = Platform.OS === "ios";
     const direct: MenuAction[] = [
+      ...(tabs.length > 1
+        ? [
+            {
+              id: "tabs",
+              title: "Chat tabs",
+              image: "square.on.square",
+              subactions: tabs.map((chat) => ({
+                id: `tab:${chat.id}`,
+                title: chat.title,
+                state: chat.id === thread.id ? ("on" as const) : ("off" as const),
+              })),
+            },
+          ]
+        : []),
       ...(thread.branch
         ? [
             {
@@ -1039,7 +1124,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     snoozePresetActions,
     snoozedRow,
     swipeActions.secondary,
+    tabs,
     thread.branch,
+    thread.id,
     titleMenuItems,
   ]);
   const handleMenuAction = useCallback(
@@ -1072,6 +1159,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         copyTextWithHaptic(thread.id, { target: "thread-id" });
       }
       if (nativeEvent.event === "delete") handleDelete();
+      if (nativeEvent.event.startsWith("tab:")) {
+        const tab = tabs.find((chat) => `tab:${chat.id}` === nativeEvent.event);
+        if (tab) onSelectThread(tab);
+        return;
+      }
       if (nativeEvent.event === "snooze:custom") {
         setCustomSnoozeOpen(true);
         return;
@@ -1093,6 +1185,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     },
     [
       onNewThreadOnBranch,
+      onSelectThread,
+      tabs,
       thread,
       handleArchive,
       handleDelete,
@@ -1214,6 +1308,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           }
         >
           {thread.title}
+          {tabSuffix ? (
+            <Text className={rowAppearance.tertiaryForegroundClassName}>{tabSuffix}</Text>
+          ) : null}
         </Text>
         <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
           {disclosure}
@@ -1525,6 +1622,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               numberOfLines={1}
             >
               {thread.title}
+              {tabSuffix ? (
+                <Text className={rowAppearance.tertiaryForegroundClassName}>{tabSuffix}</Text>
+              ) : null}
             </Text>
             {providerNameLabel ? (
               <Text

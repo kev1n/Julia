@@ -65,6 +65,7 @@ import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
+  ThreadListV2ProjectHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
@@ -73,12 +74,17 @@ import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider
 import { useOpenThreadPullRequests } from "../threads/use-open-thread-pull-requests";
 import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
 import {
+  isThreadListV2ListItem,
   threadListV2ListItemsAreEqual,
   THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
-  type ThreadListV2ListItem,
 } from "../threads/threadListV2";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
+import {
+  groupThreadSidebarItems,
+  useCollapsedProjectKeys,
+  type GroupedSidebarRow,
+} from "../threads/threadSidebarGroups";
 import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
 import {
   buildHomeProjectScopes,
@@ -333,7 +339,7 @@ export function HomeScreen(props: HomeScreenProps) {
     });
   });
   const swipeRowActivation = createSwipeRowActivation();
-  const activateVisibleRows = (rows: ReadonlyArray<ThreadListV2ListItem>) => {
+  const activateVisibleRows = (rows: ReadonlyArray<{ readonly key: string }>) => {
     const state = listRef.current?.getState();
     if (state === undefined || !(state.end >= 0)) return;
     swipeRowActivation.activate(
@@ -501,12 +507,39 @@ export function HomeScreen(props: HomeScreenProps) {
     onSelectThread(thread);
   };
   useThreadJumpShortcuts(threadListV2Items, selectThread);
+
+  // Project headers inside each section, as in the web sidebar. A search, or
+  // a single project already in scope, reads better flat.
+  const [collapsedProjectKeys, toggleProjectCollapsed] = useCollapsedProjectKeys();
+  const groupedByProject = props.searchQuery.trim().length === 0 && v2ScopedProjectGroup === null;
+  const homeListItems: readonly GroupedSidebarRow[] = !groupedByProject
+    ? threadListV2Items
+    : groupThreadSidebarItems({
+        items: threadListV2Items,
+        scopes: projectScopes,
+        collapsedKeys: collapsedProjectKeys,
+        selectedThreadKey,
+      });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the list's visible range after commit to enable swipe gestures on those rows
   useEffect(() => {
-    if (swipeEnabled) activateVisibleRows(threadListV2Items);
-  }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
+    if (swipeEnabled) activateVisibleRows(homeListItems);
+  }, [activateVisibleRows, swipeEnabled, homeListItems]);
 
-  const renderV2Item = ({ item }: { readonly item: ThreadListV2ListItem }) => {
+  const renderV2Item = ({ item }: { readonly item: GroupedSidebarRow }) => {
+    if (item.type === "project-header") {
+      return (
+        <ThreadListV2ProjectHeader
+          pane={primaryColumn ? "sidebar" : "screen"}
+          project={item.scope.representative}
+          title={item.scope.title}
+          count={item.count}
+          expanded={item.expanded}
+          onToggle={() => toggleProjectCollapsed(item.collapseKey)}
+          onNewThread={props.onNewThreadInProject}
+        />
+      );
+    }
+    if (item.type === "v2-show-more") return null;
     if (item.type === "v2-pending") {
       const pendingScopeKey = scopedProjectKey(
         item.pendingTask.environmentId,
@@ -585,12 +618,18 @@ export function HomeScreen(props: HomeScreenProps) {
         hasQueuedMessages={item.hasQueuedMessages}
         snoozed={item.item.snoozed}
         pinned={item.item.pinned}
+        tabs={item.item.tabs}
         wokeAt={item.item.wokeAt}
         snoozePresetMinute={item.snoozePresetMinute ?? ""}
         snoozeWakeLabelText={item.snoozeWakeLabelText}
         timeLabel={item.timeLabel}
         showTrailingDivider={item.showTrailingDivider}
-        project={projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null}
+        // A project header already names grouped rows; pins sit outside the groups.
+        project={
+          groupedByProject && !item.item.pinned
+            ? null
+            : (projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null)
+        }
         providerInstance={resolveProviderInstance(thread)}
         providers={providersByEnvironmentId.get(thread.environmentId)}
         environmentLabel={
@@ -644,7 +683,7 @@ export function HomeScreen(props: HomeScreenProps) {
       />
     );
   };
-  const v2KeyExtractor = (item: ThreadListV2ListItem) => item.key;
+  const v2KeyExtractor = (item: GroupedSidebarRow) => item.key;
 
   // extraData changes invalidate every visible row; put the minute clock on items to limit updates.
   const v2ExtraData = {
@@ -657,6 +696,21 @@ export function HomeScreen(props: HomeScreenProps) {
     selectedThreadKey,
     threadSearchMatchByKey,
     workingShelfEnabled,
+    groupedByProject,
+  };
+
+  const homeListItemsAreEqual = (previous: GroupedSidebarRow, item: GroupedSidebarRow) => {
+    if (isThreadListV2ListItem(previous) && isThreadListV2ListItem(item)) {
+      return threadListV2ListItemsAreEqual(previous, item);
+    }
+    return (
+      previous.type === "project-header" &&
+      item.type === "project-header" &&
+      previous.key === item.key &&
+      previous.scope === item.scope &&
+      previous.count === item.count &&
+      previous.expanded === item.expanded
+    );
   };
 
   const hasAnyThreads =
@@ -796,16 +850,16 @@ export function HomeScreen(props: HomeScreenProps) {
               <AnimatedLegendList
                 itemLayoutAnimation={sidebarSurface ? THREAD_SIDEBAR_ROW_LAYOUT : undefined}
                 ref={listRef}
-                onLoad={() => activateVisibleRows(threadListV2Items)}
+                onLoad={() => activateVisibleRows(homeListItems)}
                 onTouchStart={(event) => trackListTouches(event, true)}
                 onTouchEnd={(event) => trackListTouches(event, false)}
                 onTouchCancel={(event) => trackListTouches(event, false)}
                 renderScrollComponent={Platform.OS === "ios" ? renderHomeScrollView : undefined}
-                data={threadListV2Items}
+                data={homeListItems}
                 renderItem={renderV2Item}
                 keyExtractor={v2KeyExtractor}
                 getItemType={(item) => item.type}
-                itemsAreEqual={threadListV2ListItemsAreEqual}
+                itemsAreEqual={homeListItemsAreEqual}
                 estimatedItemSize={ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT}
                 drawDistance={THREAD_LIST_V2_DRAW_DISTANCE}
                 recycleItems

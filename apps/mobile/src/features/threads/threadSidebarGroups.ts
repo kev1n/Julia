@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+
 import type { HomeProjectScope } from "../home/homeThreadList";
 import type { ThreadListV2ListItem } from "./threadListV2";
 
@@ -14,12 +16,22 @@ export type GroupedSidebarRow =
   | {
       readonly type: "project-header";
       readonly key: string;
+      /** Collapse state is per section, as on web: folding a project's
+          settled threads leaves its active ones open. */
+      readonly collapseKey: string;
       readonly scope: HomeProjectScope;
       readonly count: number;
       readonly expanded: boolean;
     };
 
-/** Group each lifecycle block without moving shelves or offline pending tasks. */
+const SHELF_SECTION = {
+  "v2-working-shelf": "working",
+  "v2-snoozed-shelf": "snoozed",
+  "v2-settled-shelf": "settled",
+} as const;
+
+/** Group each lifecycle block without moving shelves or offline pending tasks.
+    Pins stay one shelf across projects, as in the web sidebar. */
 export function groupThreadSidebarItems(input: {
   items: readonly SidebarRow[];
   scopes: readonly HomeProjectScope[];
@@ -33,7 +45,7 @@ export function groupThreadSidebarItems(input: {
   );
   const output: GroupedSidebarRow[] = [];
   let block: Extract<SidebarRow, { type: "v2-thread" }>[] = [];
-  let ordinal = 0;
+  let section = "active";
   const flush = () => {
     if (block.length === 0) return;
     const buckets = new Map<string, typeof block>();
@@ -52,10 +64,12 @@ export function groupThreadSidebarItems(input: {
     for (const scope of input.scopes) {
       const rows = buckets.get(scope.key);
       if (!rows) continue;
-      const expanded = !input.collapsedKeys.has(scope.key);
+      const collapseKey = `${section}:${scope.key}`;
+      const expanded = !input.collapsedKeys.has(collapseKey);
       output.push({
         type: "project-header",
-        key: `project:${ordinal}:${scope.key}`,
+        key: `project:${collapseKey}`,
+        collapseKey,
         scope,
         count: rows.length,
         expanded,
@@ -70,16 +84,30 @@ export function groupThreadSidebarItems(input: {
     }
     output.push(...ungrouped);
     block = [];
-    ordinal++;
   };
   for (const row of input.items) {
-    if (row.type === "v2-thread") {
+    if (row.type === "v2-thread" && !row.item.pinned) {
       block.push(row);
     } else {
       flush();
+      if (row.type in SHELF_SECTION)
+        section = SHELF_SECTION[row.type as keyof typeof SHELF_SECTION];
       output.push(row);
     }
   }
   flush();
   return output;
+}
+
+/** Collapsed `collapseKey`s for `groupThreadSidebarItems`, and their toggle. */
+export function useCollapsedProjectKeys() {
+  const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = useCallback((collapseKey: string) => {
+    setCollapsedKeys((keys) => {
+      const next = new Set(keys);
+      if (!next.delete(collapseKey)) next.add(collapseKey);
+      return next;
+    });
+  }, []);
+  return [collapsedKeys, toggle] as const;
 }
