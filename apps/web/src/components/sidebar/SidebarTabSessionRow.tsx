@@ -161,7 +161,8 @@ export function SidebarTabSessionRow(props: {
             <span
               className={cn(
                 "min-w-0 flex-1 truncate group-hover/session:text-sidebar-foreground group-focus-within/session:text-sidebar-foreground",
-                isUnread && !statuses.has("working") ? "font-bold" : "font-normal",
+                // Bold until every tab is reviewed, even while a sibling works.
+                isUnread ? "font-bold" : "font-normal",
                 status === null && !isUnread && !props.isActive
                   ? "text-sidebar-muted-foreground"
                   : "text-sidebar-foreground",

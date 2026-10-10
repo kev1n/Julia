@@ -4,13 +4,19 @@ import { useAtomValue } from "@effect/atom-react";
 import { ChevronDownIcon, MessageSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopeProjectRef,
+  scopeThreadRef,
+  scopedThreadKey,
+} from "@t3tools/client-runtime/environment";
 import { useThreadShellsForProjectRefs } from "../../state/entities";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
+import { useUiStateStore } from "../../uiStateStore";
+import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ForkChatMenu } from "./ForkChatMenu";
@@ -53,6 +59,28 @@ export function WorkspaceChatTabs(props: {
   const hidden = chats.filter(
     (thread) => thread.id !== props.activeThread.id && closed.includes(thread.id),
   );
+  // A tab that finished while you were on another one reads like an unread
+  // sidebar row until you open it. Joined so unrelated visits do not re-render.
+  const unseenIds = useUiStateStore((state) =>
+    chats
+      .filter((chat) =>
+        hasUnseenCompletion({
+          ...chat,
+          lastVisitedAt: resolveThreadLastVisitedAt(
+            chat.lastVisitedAt,
+            state.threadLastVisitedAtById[
+              scopedThreadKey(scopeThreadRef(chat.environmentId, chat.id))
+            ],
+          ),
+        }),
+      )
+      .map((chat) => chat.id)
+      .join("\n"),
+  ).split("\n");
+  const unseenClass = (thread: EnvironmentThreadShell) =>
+    thread.id !== props.activeThread.id && unseenIds.includes(thread.id)
+      ? "font-bold text-[var(--app-theme-accent,var(--primary))]"
+      : undefined;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reopens a closed tab when navigation lands on it from outside the tab bar
   useEffect(() => {
     if (closingRef.current === props.activeThread.id) return;
@@ -150,8 +178,11 @@ export function WorkspaceChatTabs(props: {
                     />
                   }
                 >
-                  <MessageSquareIcon aria-hidden className="size-3.5 shrink-0" />
-                  <span className="truncate">{thread.title}</span>
+                  <MessageSquareIcon
+                    aria-hidden
+                    className={cn("size-3.5 shrink-0", unseenClass(thread))}
+                  />
+                  <span className={cn("truncate", unseenClass(thread))}>{thread.title}</span>
                 </TooltipTrigger>
                 <TooltipPopup>{thread.title}</TooltipPopup>
               </Tooltip>
@@ -222,7 +253,7 @@ export function WorkspaceChatTabs(props: {
                     void openChat(thread);
                   }}
                 >
-                  {thread.title}
+                  <span className={unseenClass(thread)}>{thread.title}</span>
                 </MenuItem>
               ))}
             </MenuPopup>
