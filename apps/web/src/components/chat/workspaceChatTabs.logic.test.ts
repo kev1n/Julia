@@ -59,6 +59,8 @@ it("keeps a stable session name and newest send when switching to an older tab",
   expect(session).toMatchObject({
     title: "Original task",
     thread: first,
+    // The sidebar sorts by this, so selecting a tab leaves the row in place.
+    latest: second,
     chats: [first, second],
     latestSentAt: second.latestUserMessageAt,
   });
