@@ -33,6 +33,10 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  groupWorkspaceChatSessions,
+  type WorkspaceChatSection,
+} from "@t3tools/client-runtime/state/workspace-chat-sessions";
 import { isListedThreadLineage, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import type { MenuAction } from "@react-native-menu/menu";
@@ -418,6 +422,10 @@ export interface ThreadListV2Item {
   readonly pinned: boolean;
   readonly wokeAt: string | null;
   readonly isLast: boolean;
+  /** Every chat tab in this row's workspace, oldest first (see
+      `groupWorkspaceChatSessions`). One entry for an untabbed thread; `thread`
+      is the selected tab, else the most recently sent one. */
+  readonly tabs: ReadonlyArray<EnvironmentThreadShell>;
 }
 
 export interface ThreadListV2Layout {
@@ -517,6 +525,7 @@ export function threadListV2ListItemsAreEqual(
         previous.item.variant === item.item.variant &&
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
+        sameTabs(previous.item.tabs, item.item.tabs) &&
         previous.item.wokeAt === item.item.wokeAt &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
         previous.timeLabel === item.timeLabel &&
@@ -556,6 +565,16 @@ export function threadListV2ListItemsAreEqual(
         previous.disabled === item.disabled
       );
   }
+}
+
+/** Sessions are rebuilt every partition, so compare their tabs by element. */
+function sameTabs(
+  previous: ReadonlyArray<EnvironmentThreadShell>,
+  next: ReadonlyArray<EnvironmentThreadShell>,
+): boolean {
+  return (
+    previous.length === next.length && previous.every((thread, index) => thread === next[index])
+  );
 }
 
 function resolveThreadListV2ItemTimeLabel(
@@ -760,6 +779,8 @@ export function buildThreadListV2Items(input: {
     : null;
 
   const workingShelfEnabled = input.workingShelfEnabled === true;
+  const visible: EnvironmentThreadShell[] = [];
+  const sectionByThread = new Map<EnvironmentThreadShell, WorkspaceChatSection>();
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
@@ -800,8 +821,9 @@ export function buildThreadListV2Items(input: {
     }
     const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
+    visible.push(thread);
     if (supportsSnooze && effectiveSnoozed(thread, { now })) {
-      snoozed.push(thread);
+      sectionByThread.set(thread, "snoozed");
       if (
         thread.snoozedUntil != null &&
         (nextSnoozeWakeAt === null ||
@@ -813,16 +835,46 @@ export function buildThreadListV2Items(input: {
     }
     const hasQueuedMessages =
       queuedThreadKeys?.has(`${thread.environmentId}:${thread.id}`) === true;
-    if (supportsSettlement && thread.settledOverride === "settled" && !hasQueuedMessages) {
-      settled.push(thread);
-    } else if (thread.pinnedAt != null) {
-      pinned.push(thread);
-    } else if (workingShelfEnabled && (input.isWorking ?? isThreadWorking)(thread)) {
-      working.push(thread);
-    } else {
-      active.push(thread);
-    }
+    sectionByThread.set(
+      thread,
+      supportsSettlement && thread.settledOverride === "settled" && !hasQueuedMessages
+        ? "settled"
+        : thread.pinnedAt != null
+          ? "pinned"
+          : workingShelfEnabled && (input.isWorking ?? isThreadWorking)(thread)
+            ? "working"
+            : "active",
+    );
   }
+
+  // Chat tabs sharing a workspace are one row, as in the web sidebar: the
+  // session sits in its highest-priority tab's section and shows the selected
+  // tab, else the most recently sent one.
+  const selectedThread =
+    input.selectedThreadKey == null
+      ? undefined
+      : visible.find(
+          (thread) => `${thread.environmentId}:${thread.id}` === input.selectedThreadKey,
+        );
+  const sessionByThread = new Map(
+    groupWorkspaceChatSessions(
+      visible,
+      selectedThread
+        ? { environmentId: selectedThread.environmentId, threadId: selectedThread.id }
+        : null,
+      (thread) => sectionByThread.get(thread)!,
+    ).map((session) => [session.thread, session] as const),
+  );
+  const tabsByThread = new Map<EnvironmentThreadShell, ReadonlyArray<EnvironmentThreadShell>>();
+  const sections = { pinned, active, working, snoozed, settled };
+  // Input order, not session order: the section sorts break ties by it.
+  for (const thread of visible) {
+    const session = sessionByThread.get(thread);
+    if (!session) continue;
+    tabsByThread.set(thread, session.chats);
+    sections[session.section].push(thread);
+  }
+  const tabsOf = (thread: EnvironmentThreadShell) => tabsByThread.get(thread) ?? [thread];
 
   if (rankedMatches !== null) {
     // Searching lists every match by rank across shelves, as the palette and
@@ -850,6 +902,7 @@ export function buildThreadListV2Items(input: {
         pinned: pinnedThreads.has(thread),
         wokeAt: slim.has(thread) ? null : resolveThreadListV2WokeAt(thread, { now }),
         isLast: index === results.length - 1,
+        tabs: tabsOf(thread),
       })),
       hiddenSettledCount: 0,
       listedSettledThreads: [],
@@ -923,6 +976,7 @@ export function buildThreadListV2Items(input: {
       pinned: true,
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
+      tabs: tabsOf(thread),
     });
   }
   for (const thread of orderedActive) {
@@ -933,6 +987,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
+      tabs: tabsOf(thread),
     });
   }
   const workingShelfHeaderIndex = orderedWorking.length > 0 ? items.length : null;
@@ -944,6 +999,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
+      tabs: tabsOf(thread),
     });
   }
   const snoozedShelfHeaderIndex = orderedSnoozed.length > 0 ? items.length : null;
@@ -955,6 +1011,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       wokeAt: null,
       isLast: false,
+      tabs: tabsOf(thread),
     });
   }
   const settledShelfHeaderIndex = settledTotal > 0 ? items.length : null;
@@ -966,6 +1023,7 @@ export function buildThreadListV2Items(input: {
       pinned: false,
       wokeAt: null,
       isLast: false,
+      tabs: tabsOf(thread),
     });
   }
   const last = items.at(-1);
