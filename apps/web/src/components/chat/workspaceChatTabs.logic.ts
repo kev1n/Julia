@@ -98,6 +98,7 @@ export function groupWorkspaceChatSessions<T extends WorkspaceChat>(
         title: first.title,
         chats,
         thread,
+        latest,
         section,
         latestSentAt: latest.latestUserMessageAt ?? latest.createdAt,
       };
