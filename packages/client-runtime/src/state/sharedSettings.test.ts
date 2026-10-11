@@ -9,8 +9,8 @@ import { filterSharedServerPatch } from "./sharedSettings.ts";
 
 describe("filterSharedServerPatch", () => {
   it("holds the restart preference until the target's config loads", () => {
-    const patch = { continueThreadsAfterServerUpdate: true, sidebarAutoSettleAfterDays: 7 };
-    expect(filterSharedServerPatch(patch, undefined)).toEqual({ sidebarAutoSettleAfterDays: 7 });
+    const patch = { continueThreadsAfterServerUpdate: true, snoozeLimitedThreads: true };
+    expect(filterSharedServerPatch(patch, undefined)).toEqual({ snoozeLimitedThreads: true });
     expect(filterSharedServerPatch(patch, DEFAULT_SERVER_SETTINGS)).toEqual(patch);
   });
 
@@ -35,14 +35,14 @@ describe("filterSharedServerPatch", () => {
       const patch = {
         textGenerationModelSelection: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
         continueThreadsAfterServerUpdate: true,
-        sidebarAutoSettleAfterDays: 7,
+        snoozeLimitedThreads: true,
       };
       expect(filterSharedServerPatch(patch, settings, settings, targetIsSource)).toEqual({
         ...(targetIsSource
           ? { textGenerationModelSelection: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection }
           : {}),
         continueThreadsAfterServerUpdate: true,
-        sidebarAutoSettleAfterDays: 7,
+        snoozeLimitedThreads: true,
       });
     },
   );
@@ -67,7 +67,7 @@ describe("filterSharedServerPatch", () => {
         ...DEFAULT_SERVER_SETTINGS,
         providerInstances: availability === "missing" ? {} : { [instanceId]: instance },
       };
-      const patch = { sidebarAutoSettleAfterDays: 7, textGenerationModelSelection: selection };
+      const patch = { snoozeLimitedThreads: true, textGenerationModelSelection: selection };
       const sourceSettings = {
         ...settings,
         providerInstances: {
@@ -75,7 +75,7 @@ describe("filterSharedServerPatch", () => {
         },
       };
       expect(filterSharedServerPatch(patch, settings, sourceSettings)).toEqual(
-        availability === "enabled" ? patch : { sidebarAutoSettleAfterDays: 7 },
+        availability === "enabled" ? patch : { snoozeLimitedThreads: true },
       );
     },
   );

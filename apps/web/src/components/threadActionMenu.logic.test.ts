@@ -8,14 +8,12 @@ const baseState: ThreadActionMenuState = {
   projectFilter: null,
   isPinned: false,
   isSettled: false,
-  autoSettleEnabled: true,
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
   supports: {
     settlement: true,
-    autoSettleOptOut: true,
     snooze: true,
     pinning: true,
     titleRegeneration: true,
@@ -37,26 +35,8 @@ describe("buildThreadActionMenuItems", () => {
         isSnoozed: reversed,
       });
       const expected = reversed
-        ? [
-            "unpin",
-            "unsettle",
-            "unsnooze",
-            "rename",
-            "regenerate-title",
-            "auto-settle",
-            "archive",
-            "delete",
-          ]
-        : [
-            "pin",
-            "settle",
-            "snooze",
-            "rename",
-            "regenerate-title",
-            "auto-settle",
-            "archive",
-            "delete",
-          ];
+        ? ["unpin", "unsettle", "unsnooze", "rename", "regenerate-title", "archive", "delete"]
+        : ["pin", "settle", "snooze", "rename", "regenerate-title", "archive", "delete"];
       expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(expected);
       expect(
         items.find((item) => item.id === "snooze")?.children?.every((child) => child.disabled) ??
