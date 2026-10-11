@@ -128,7 +128,7 @@ const EDITABLE_AT_POINT_SCRIPT = `(x, y) => {
 }`;
 /**
  * Native Chrome only screencasts a visible tab. Raising one also brings Aside in front of
- * the person's other apps, so do it only when Chrome has hidden the tab.
+ * the person's other apps, so do it only when they take control and Chrome has hidden the tab.
  */
 const revealAsideTab = async (page: Page) => {
   const state = await page.evaluate("document.visibilityState").catch(() => "visible");
@@ -2561,7 +2561,6 @@ const make = Effect.gen(function* () {
     "ServerBrowser.attachViewer",
   )(function* (input) {
     const tab = yield* findTab(input.threadId, input.tabId);
-    if (tab.aside) yield* Effect.promise(() => revealAsideTab(tab.page).catch(constVoid));
     const output = yield* Queue.make<ServerBrowserViewerOutput>({
       capacity: VIEWER_OUTPUT_LIMIT,
       strategy: "dropping",

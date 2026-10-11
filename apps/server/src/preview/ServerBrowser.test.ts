@@ -828,8 +828,8 @@ it.live.each([false, true])(
 
 it.live.each([
   ["visible", 0],
-  ["hidden", 2],
-] as const)("viewing a %s Aside tab raises it %s times", ([visibility, raises]) =>
+  ["hidden", 1],
+] as const)("only taking control of a %s Aside tab raises it, %s times", ([visibility, raises]) =>
   Effect.scoped(
     Effect.gen(function* () {
       const browser = yield* ServerBrowser.ServerBrowser;
@@ -841,8 +841,9 @@ it.live.each([
       });
       pageVisibility = visibility;
       const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, true));
+      // Raising activates Aside over the person's other apps, so viewing never does.
+      expect(contexts[0]!.page.bringToFront).not.toHaveBeenCalled();
       yield* viewer.input({ type: "takeControl" });
-      // Raising activates Aside over the person's other apps.
       expect(contexts[0]!.page.bringToFront).toHaveBeenCalledTimes(raises);
     }),
   ).pipe(Effect.provide(layer)),
