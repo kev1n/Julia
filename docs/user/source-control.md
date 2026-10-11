@@ -322,8 +322,7 @@ Linking and unlinking are available in the web and desktop clients.
 The **Linked pull requests** panel lists every review and groups stacks. Unlink a review from its
 row menu. An unlinked stack layer stays out of later syncs. Open linked reviews refresh on the server;
 closed reviews refresh periodically so reopening one on the host is detected. Merged reviews refresh
-when requested. Settling a thread refreshes its open and closed reviews once; after that they stop refreshing until you unsettle it. With **Auto-settle merged threads** enabled, a thread can settle after every linked
-review is terminal. An open or unsynced link keeps it active.
+when requested. Settling a thread refreshes its open and closed reviews once; after that they stop refreshing until you unsettle it.
 
 Ask the agent to watch, monitor, or babysit a pull request and it calls `watch_pull_request`. While
 the thread is active, the server checks the pull request every two minutes and wakes the agent when a
@@ -339,8 +338,7 @@ watch already reported; unlinking the pull request clears that. Subagents cannot
 it yourself, use the row menu in the **Linked pull requests** panel. In the thread details card, a
 watched pull request shows an eye; click it to stop watching.
 
-A watched thread counts as working between wakes, so it stays in the **Working** section and does
-not auto-settle. Agents stop watching when they hand the work back to you, and the thread then
+A watched thread counts as working between wakes, so it stays in the **Working** section. Agents stop watching when they hand the work back to you, and the thread then
 returns to your inbox.
 
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked

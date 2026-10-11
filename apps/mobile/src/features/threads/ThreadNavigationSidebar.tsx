@@ -135,7 +135,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     unsettleThread,
     pinThread,
     unpinThread,
-    setThreadAutoSettle,
     moveThread,
     renameThread,
     regenerateThreadTitle,
@@ -257,7 +256,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     snoozeEnvironmentIds,
     snoozePresetsByEnvironmentId,
     pinningEnvironmentIds,
-    autoSettleOptOutEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -503,7 +501,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
             snoozePresets={snoozePresetsByEnvironmentId.get(thread.environmentId)}
             pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
-            autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}
             reorderSupported={
               item.item.pinned
                 ? pinReorderEnvironmentIds.has(thread.environmentId)
@@ -516,7 +513,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             onUnsettleThread={unsettleThread}
             onPinThread={pinThread}
             onUnpinThread={unpinThread}
-            onSetThreadAutoSettle={setThreadAutoSettle}
             onMoveThread={(thread, direction) =>
               moveThread(
                 thread,

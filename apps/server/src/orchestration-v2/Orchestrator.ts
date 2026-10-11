@@ -609,11 +609,9 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.guest-message.submit":
     case "thread.guest-message.dismiss":
     case "thread.settle":
-    case "thread.auto-settle":
     case "thread.unsettle":
     case "thread.snooze":
     case "thread.unsnooze":
-    case "thread.auto-settle.set":
     case "thread.pin":
     case "thread.unpin":
     case "thread.pin.reorder":
@@ -3722,7 +3720,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.unsettle"
           | "thread.snooze"
           | "thread.unsnooze"
-          | "thread.auto-settle.set"
           | "thread.pin"
           | "thread.unpin"
           | "thread.pin.reorder"
@@ -3870,7 +3867,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.type === "thread.unsettle" ||
         command.type === "thread.snooze" ||
         command.type === "thread.unsnooze" ||
-        command.type === "thread.auto-settle.set" ||
         command.type === "thread.pin" ||
         command.type === "thread.unpin" ||
         command.type === "thread.pin.reorder" ||
@@ -4279,14 +4275,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedAt: null,
             lastSnoozeWakeAt: alreadyAwake ? thread.lastSnoozeWakeAt : now,
             updatedAt: alreadyAwake ? thread.updatedAt : now,
-          };
-        }
-        case "thread.auto-settle.set": {
-          const unchanged = command.enabled === (thread.autoSettleDisabledAt == null);
-          return {
-            ...thread,
-            autoSettleDisabledAt: command.enabled ? null : (thread.autoSettleDisabledAt ?? now),
-            updatedAt: unchanged ? thread.updatedAt : now,
           };
         }
         case "thread.pin": {
@@ -4716,8 +4704,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.snoozed" as const;
         case "thread.unsnooze":
           return "thread.unsnoozed" as const;
-        case "thread.auto-settle.set":
-          return "thread.auto-settle-set" as const;
         case "thread.pin":
           return "thread.pinned" as const;
         case "thread.unpin":
@@ -14284,37 +14270,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.visit":
         yield* dispatchThreadVisit(command, events);
         break;
-      case "thread.auto-settle": {
-        // Recheck live state; changes and explicit overrides take precedence over the sweep snapshot.
-        const thread = yield* projectionStore
-          .getThread(command.threadId)
-          .pipe(
-            Effect.mapError(
-              (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
-            ),
-          );
-        if (
-          thread.settledOverride !== null ||
-          DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt)
-        ) {
-          return yield* new OrchestratorDispatchError({
-            commandId: command.commandId,
-            commandType: command.type,
-            cause: `Thread ${command.threadId} changed before automatic settlement.`,
-          });
-        }
-        yield* dispatchThreadMutation(
-          {
-            type: "thread.settle",
-            commandId: command.commandId,
-            threadId: command.threadId,
-            ...(command.settledAt === undefined ? {} : { settledAt: command.settledAt }),
-          },
-          events,
-          effects,
-        );
-        break;
-      }
       case "thread.delete": {
         const now = yield* DateTime.now;
         const planDeletion = Effect.fn("Orchestrator.planDeletion")(function* (
@@ -14381,7 +14336,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.unsettle":
       case "thread.snooze":
       case "thread.unsnooze":
-      case "thread.auto-settle.set":
       case "thread.pin":
       case "thread.unpin":
       case "thread.pin.reorder":

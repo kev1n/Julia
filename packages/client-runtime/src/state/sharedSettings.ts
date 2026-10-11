@@ -1,3 +1,7 @@
+/**
+ * Settings a server acts on with no client attached but a user wants the same on every machine.
+ * Clients write them to every shared-settings sync target and warn when another target differs.
+ */
 import type { ServerSettings, ServerSettingsPatch } from "@t3tools/contracts";
 import { isModelSelectionProviderEnabled } from "@t3tools/shared/serverSettings";
 import * as Struct from "effect/Struct";
@@ -6,8 +10,6 @@ import type { EnvironmentConnectionPhase } from "../connection/presentation.ts";
 
 const SHARED_SERVER_SETTING_KEYS = [
   "continueThreadsAfterServerUpdate",
-  "sidebarAutoSettleAfterDays",
-  "sidebarAutoSettleOnMerge",
   "autoResumeLimitedThreads",
   "snoozeLimitedThreads",
   "snoozePresets",
@@ -63,6 +65,7 @@ export function filterSharedServerPatch(
   return settings ? patch : Struct.omit(patch, ["continueThreadsAfterServerUpdate"]);
 }
 
+/** Whether an environment can participate in shared-settings sync right now. */
 export function supportsSharedSettingsSync(environment: {
   readonly connection: { readonly phase: EnvironmentConnectionPhase };
   readonly serverConfig: object | null;
