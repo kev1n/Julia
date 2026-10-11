@@ -493,7 +493,6 @@ it.live("the agent asks without waiting, and the user links the box after its tu
           yield* a.orchestrator.getThreadProjection(threadId),
         ).pendingRuntimeRequest,
       ).toMatchObject({ kind: "user_input" });
-      expect(yield* a.projections.getSettlementCandidates(threadId)).toEqual([]);
 
       // The user's client mints a code on the box and picks more than the agent suggested.
       const pairing = yield* b.auth.issuePairingCredential();

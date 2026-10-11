@@ -165,6 +165,8 @@ const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
+// Keeps background reads of open PRs fresh: an external merge shows up within
+// about a minute instead of waiting out a longer cache. Unpublished branches never reach the
 const PR_LOOKUP_CACHE_TTL = Duration.seconds(60);
 const PR_LOOKUP_NO_OPEN_PR_CACHE_TTL = Duration.minutes(5);
 const PR_LOOKUP_FAILURE_BASE_TTL = Duration.seconds(20);
@@ -1138,6 +1140,7 @@ export const make = Effect.gen(function* () {
         prLookupEpochByCwd.set(cacheKey, prLookupEpoch(cacheKey) + 1);
       }),
     );
+  // Cache keys are NUL-joined.
   const prLookupCacheKey = (
     cwd: string,
     details: {

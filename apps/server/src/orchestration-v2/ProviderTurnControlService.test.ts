@@ -218,7 +218,6 @@ it.effect(
           getThreadShell: () => Effect.die("unused getThreadShell"),
           findGuestShareThreadId: () => Effect.die("unused findGuestShareThreadId"),
           getThread: () => Ref.get(projection).pipe(Effect.map((state) => state.thread)),
-          getSettlementCandidates: () => Effect.die("unused getSettlementCandidates"),
           getThreadsWithPullRequests: () => Effect.die("unused getThreadsWithPullRequests"),
           getThreadWorktreePaths: () => Effect.die("unused getThreadWorktreePaths"),
           getThreadProjection: () => Effect.die("control effects must not load transcript"),

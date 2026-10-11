@@ -27,12 +27,7 @@ import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
-import {
-  readEnvironmentServerConfigLoaded,
-  readEnvironmentSupportsAutoSettleOptOut,
-  readThreadShell,
-  useProjects,
-} from "../state/entities";
+import { readEnvironmentServerConfigLoaded, readThreadShell, useProjects } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
 import {
@@ -81,7 +76,6 @@ export function useThreadActionMenu(input: {
     unsnoozeThread,
     pinThread,
     confirmAndUnpinThread,
-    setThreadAutoSettle,
     archiveThread,
     deleteThread,
     markThreadUnread,
@@ -125,7 +119,6 @@ export function useThreadActionMenu(input: {
       const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
       const supports = {
         settlement: configLoaded,
-        autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
         snooze: configLoaded,
         pinning: configLoaded,
         titleRegeneration: configLoaded,
@@ -139,7 +132,6 @@ export function useThreadActionMenu(input: {
           projectFilter: null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
-          autoSettleEnabled: thread.autoSettleDisabledAt == null,
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
@@ -237,12 +229,6 @@ export function useThreadActionMenu(input: {
           await reportFailure("Failed to unpin thread", () => confirmAndUnpinThread(threadRef));
           return;
         }
-        case "auto-settle:enabled":
-        case "auto-settle:disabled":
-          await reportFailure("Failed to update auto-settle", () =>
-            setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
-          );
-          return;
         case "rename":
           onStartRename();
           return;

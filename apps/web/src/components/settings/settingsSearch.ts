@@ -2,8 +2,6 @@ import { HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
-import type { EnvironmentId } from "@t3tools/contracts";
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   sourceControlClients,
   type SourceControlDefinition,
@@ -67,7 +65,6 @@ export interface SettingsSearchItem {
   readonly managedTunnelOnly?: boolean;
   readonly peerLinksOnly?: boolean;
   readonly secondary?: boolean;
-  readonly requiresThreadAutoSettlement?: boolean;
 }
 
 export interface SettingsSearchAvailability {
@@ -78,7 +75,6 @@ export interface SettingsSearchAvailability {
   readonly hasMacProviderSettingsEnvironment: boolean;
   readonly canManageLocalBackend: boolean;
   readonly isWslSettingsRowVisible: boolean;
-  readonly hasThreadAutoSettlement: boolean;
   readonly managedTunnelActive?: boolean;
   readonly hasPeerLinkHost?: boolean;
 }
@@ -487,45 +483,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta alpha simlock callstack simulator emulator ios android pool lease gateway"],
   },
   {
-    id: "auto-settle-inactive-threads",
-    title: "Auto-settle inactive threads",
-    to: "/settings/threads",
-    searchTerms: ["sidebar inactivity days no activity automatically"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
-  },
-  {
     id: "compact-idle-threads",
     title: "Compact idle threads",
     to: "/settings/providers",
     scope: "environment-defaults",
     searchTerms: ["claude context compaction idle cache tokens usage summary resume"],
-  },
-  {
-    id: "auto-settle-merged-threads",
-    title: "Auto-settle merged threads",
-    to: "/settings/threads",
-    searchTerms: ["pull request merge closed automatically sidebar"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
-  },
-  {
-    id: "keep-threads-with-pull-requests",
-    title: "Keep threads with a PR",
-    to: "/settings/threads",
-    targetId: "auto-settle-inactive-threads",
-    searchTerms: ["pull request inactivity auto-settle merge close sidebar"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
-  },
-  {
-    id: "days-before-auto-settle",
-    title: "Days of inactivity before auto-settle",
-    to: "/settings/threads",
-    targetId: "auto-settle-inactive-threads",
-    searchTerms: ["thread timeout activity sidebar"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
   },
   {
     id: "thread-notifications",
@@ -1233,37 +1195,8 @@ export function getSettingsSearchTargetScope(targetId: string) {
     ? {
         title: item.title,
         scope: item.scope ?? SETTINGS_CATEGORY_SCOPES[item.to],
-        ...(item.requiresThreadAutoSettlement ? { requiresThreadAutoSettlement: true } : {}),
       }
     : null;
-}
-
-interface AutoSettlementSearchEnvironment {
-  readonly environmentId: EnvironmentId;
-  readonly connection: { readonly phase: EnvironmentConnectionPhase };
-  readonly serverConfig: object | null;
-}
-
-export function getThreadAutoSettlementSearchAvailability(
-  environments: readonly AutoSettlementSearchEnvironment[],
-  scope?: Pick<ResolvedSettingsScope, "kind" | "environmentIds">,
-) {
-  const connected = environments.filter(
-    (environment) =>
-      environment.connection.phase === "connected" && environment.serverConfig !== null,
-  );
-  const eligibleEnvironmentIds = connected.map((environment) => environment.environmentId);
-  const selected = connected.filter((environment) =>
-    scope?.environmentIds.includes(environment.environmentId),
-  );
-  return {
-    eligibleEnvironmentIds,
-    isTargetAvailable:
-      scope !== undefined &&
-      scope.kind !== "unavailable" &&
-      selected.length > 0 &&
-      selected.every((environment) => eligibleEnvironmentIds.includes(environment.environmentId)),
-  };
 }
 
 export function isSettingsSearchScopeAvailable(
@@ -1312,7 +1245,6 @@ export function filterAvailableSettingsSearchItems(
       (!item.localBackendManagementOnly || availability.canManageLocalBackend) &&
       (!item.localEnvironmentOnly || !availability.localEnvironmentDisabled) &&
       (!item.wslAvailableOnly || availability.isWslSettingsRowVisible) &&
-      (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
       (!item.managedTunnelOnly || availability.managedTunnelActive === true) &&
       (!item.peerLinksOnly || availability.hasPeerLinkHost === true),
   );

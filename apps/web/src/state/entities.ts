@@ -314,13 +314,6 @@ export function readEnvironmentServerConfigLoaded(environmentId: EnvironmentId):
   return appAtomRegistry.get(environmentServerConfigsAtom).has(environmentId);
 }
 
-export function readEnvironmentSupportsAutoSettleOptOut(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadAutoSettleOptOut === true
-  );
-}
-
 export function readEnvironmentThreadRefs(
   environmentId: EnvironmentId,
 ): ReadonlyArray<ScopedThreadRef> {

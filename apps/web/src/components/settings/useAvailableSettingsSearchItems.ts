@@ -12,10 +12,7 @@ import { useEnvironmentScope } from "~/state/session";
 import { isWslSettingsRowVisible } from "./ConnectionsSettings.logic";
 import { isProviderSettingsEnvironmentAvailable } from "./ProviderSettingsPanel.logic";
 import type { SettingsScopeSearch } from "./settingsScope";
-import {
-  filterAvailableSettingsSearchItems,
-  getThreadAutoSettlementSearchAvailability,
-} from "./settingsSearch";
+import { filterAvailableSettingsSearchItems } from "./settingsSearch";
 
 export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch = {}) {
   const { environments } = useEnvironments();
@@ -39,8 +36,6 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
           hasServerConfig: true,
         }),
     ) === true;
-  const hasThreadAutoSettlement =
-    getThreadAutoSettlementSearchAvailability(environments).eligibleEnvironmentIds.length > 0;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const canMaintain = useEnvironmentScope(primaryEnvironmentId, AuthEnvironmentMaintainScope);
   const hasPeerLinkHost = usePeerLinkHosts().length > 0;
@@ -66,7 +61,6 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
     hasMacProviderSettingsEnvironment,
     canManageLocalBackend,
     isWslSettingsRowVisible: wslSettingsRowVisible,
-    hasThreadAutoSettlement,
     managedTunnelActive,
     hasPeerLinkHost,
   });
