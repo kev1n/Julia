@@ -4,7 +4,6 @@ import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -103,10 +102,6 @@ import * as PullRequestReadCache from "./PullRequestReadCache.ts";
 import * as PullRequestProviderRegistry from "./PullRequestProviderRegistry.ts";
 import * as ViewedFiles from "./pullRequestViewedFiles.ts";
 import { toChangeBreakdown } from "./pullRequestChangeBreakdown.ts";
-
-export interface PullRequestMergeEvent extends PullRequestRef {
-  readonly mergedAt: string;
-}
 
 type PullRequestReading = Pick<
   PullRequestSummary,
@@ -216,11 +211,6 @@ export class PullRequestService extends Context.Service<
         readonly bypassCache?: boolean;
       },
     ) => Effect.Effect<PullRequestStack | null, PullRequestError>;
-    readonly subscribeMerges: Effect.Effect<
-      Stream.Stream<PullRequestMergeEvent>,
-      never,
-      Scope.Scope
-    >;
     readonly subscribeStateChanges: Effect.Effect<
       Stream.Stream<ThreadPullRequestKey>,
       never,
@@ -773,7 +763,6 @@ const observeRead = Effect.fnUntraced(function* <A, E, R>(read: Effect.Effect<A,
 });
 
 export const make = Effect.gen(function* () {
-  const mergedPullRequests = yield* PubSub.sliding<PullRequestMergeEvent>(64);
   const stateChanges = yield* PubSub.sliding<ThreadPullRequestKey>(64);
   const pullRequestRefreshes = yield* SubscriptionRef.make(0);
   const linkedThreadRefreshes = yield* SubscriptionRef.make(0);
@@ -4119,29 +4108,6 @@ export const make = Effect.gen(function* () {
     bumpRefEpoch({ ...ref, repository });
     listingsEpoch = ++epochCounter;
     yield* SubscriptionRef.set(pullRequestRefreshes, listingsEpoch);
-    if (input.action === "merge") {
-      // A successful merge action can merely enqueue the PR or enable auto-merge.
-      const merged = summary?.state === "merged" ? summary : null;
-      const confirmed =
-        merged?.mergedAt != null
-          ? merged
-          : yield* summaryUncached({ ...input, repository }).pipe(
-              Effect.map((reread) => (reread.state === "merged" ? reread : merged)),
-              Effect.catch((error) =>
-                Effect.logWarning("failed to confirm pull request merge", { error }).pipe(
-                  Effect.as(merged),
-                ),
-              ),
-            );
-      if (confirmed?.state === "merged") {
-        yield* PubSub.publish(mergedPullRequests, {
-          projectId: input.projectId,
-          repository,
-          number: input.number,
-          mergedAt: confirmed.mergedAt ?? DateTime.formatIso(yield* DateTime.now),
-        });
-      }
-    }
     return input.replyWithSummary === true ? summary : undefined;
   });
 
@@ -4283,9 +4249,6 @@ export const make = Effect.gen(function* () {
     summary: credentialCached(summary),
     batchesReads,
     stack: credentialCached(stack),
-    subscribeMerges: PubSub.subscribe(mergedPullRequests).pipe(
-      Effect.map((subscription) => Stream.fromSubscription(subscription)),
-    ),
     subscribeStateChanges: PubSub.subscribe(stateChanges).pipe(
       Effect.map((subscription) => Stream.fromSubscription(subscription)),
     ),

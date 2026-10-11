@@ -81,8 +81,7 @@ Enable **Settings → Labs → Boring sidebar (group by project)** on web/deskto
 
 ### Settlement rules and hooks
 
-- **Automatic settlement**: By default, environments settle threads after 7 days of inactivity or when their linked PR merges/closes (even while your apps are closed). Active work, pending questions/approvals, and waited-on background work block auto-settlement. Configure rules in **Settings → Threads** (per environment or **All environments**), including **Keep threads with a PR**.
-- **Per-thread override**: Open a thread's menu → **Auto-settle behavior → Never** to exempt a single thread.
+- **Manual only**: Threads settle only when you or an agent settles them.
 - **Drag-to-settle** (web/desktop): Press and drag down/up from a thread's **Settle**, **Un-settle**, or **Wake** button to act on a contiguous range (`Esc` cancels).
 - **Offline settle/snooze**: Queues locally (**Pending** / **Waiting to sync**) and syncs on reconnect; remote changes take precedence if the thread changed in the meantime.
 - **Worktree cleanup on settle**: Enable **Run in the thread's worktree when the thread settles** on a project action (or `"runOnSettle": true` in `t3.json`), e.g. `cargo clean`, to reclaim disk space automatically in worktree threads.
@@ -93,7 +92,7 @@ Customize presets in **Settings → Threads → Snooze options** (durations like
 
 ## Link a pull request
 
-The server automatically links open PRs matching an unsettled thread's branch. On web/desktop, right-click any PR link in a thread and choose **Link to thread** or **Unlink from thread** to override it. Linked PRs participate in auto-settlement.
+The server automatically links open PRs matching an unsettled thread's branch. On web/desktop, right-click any PR link in a thread and choose **Link to thread** or **Unlink from thread** to override it.
 
 ## Find and reference work
 

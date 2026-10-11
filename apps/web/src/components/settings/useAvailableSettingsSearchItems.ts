@@ -13,10 +13,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
 import { isWslSettingsRowVisible } from "./ConnectionsSettings.logic";
 import { isProviderSettingsEnvironmentAvailable } from "./ProviderSettingsPanel.logic";
-import {
-  filterAvailableSettingsSearchItems,
-  getThreadAutoSettlementSearchAvailability,
-} from "./settingsSearch";
+import { filterAvailableSettingsSearchItems } from "./settingsSearch";
 
 /** Any environment whose server enables secret providers; gates the Secrets page, nav and search. */
 export function useHasSecretProvidersEnvironment() {
@@ -58,8 +55,6 @@ export function useAvailableSettingsSearchItems() {
         environment.serverConfig.managedPolicy?.limits?.providers?.allowedDrivers === undefined,
     ) === true;
   const hasSecretProvidersEnvironment = useHasSecretProvidersEnvironment();
-  const hasThreadAutoSettlement =
-    getThreadAutoSettlementSearchAvailability(environments).eligibleEnvironmentIds.length > 0;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const canMaintain = useEnvironmentScope(primaryEnvironmentId, AuthEnvironmentMaintainScope);
   const hasPeerLinkHost = usePeerLinkHosts().length > 0;
@@ -85,7 +80,6 @@ export function useAvailableSettingsSearchItems() {
     hasProviderSettingsEnvironment,
     canManageLocalBackend,
     isWslSettingsRowVisible: wslSettingsRowVisible,
-    hasThreadAutoSettlement,
     managedTunnelActive,
     hasPeerLinkHost,
     hasFastWorktreeCheckoutEnvironment,

@@ -135,6 +135,14 @@ describe("ClientSettings terminal close confirmation", () => {
   });
 });
 
+describe("ServerSettings retired auto-settle keys", () => {
+  it("ignores them in old settings files and patches", () => {
+    const retired = { sidebarAutoSettleAfterDays: 3, sidebarAutoSettleOnMerge: true };
+    expect(decodeServerSettings(retired)).not.toHaveProperty("sidebarAutoSettleAfterDays");
+    expect(decodeServerSettingsPatch(retired)).not.toHaveProperty("sidebarAutoSettleOnMerge");
+  });
+});
+
 describe("ServerSettings usage price overrides", () => {
   const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
 

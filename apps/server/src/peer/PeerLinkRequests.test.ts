@@ -531,7 +531,6 @@ it.live("the agent asks without waiting, and the user links the box after its tu
           yield* a.orchestrator.getThreadProjection(threadId),
         ).pendingRuntimeRequest,
       ).toMatchObject({ kind: "user_input" });
-      expect(yield* a.projections.getSettlementCandidates(threadId)).toEqual([]);
 
       // Once the user writes in the thread again, the card stops asking but stays answerable.
       const wroteAt = DateTime.add(card.startedAt!, { seconds: 1 });
@@ -566,9 +565,6 @@ it.live("the agent asks without waiting, and the user links the box after its tu
           yield* a.orchestrator.getThreadProjection(threadId),
         ).pendingRuntimeRequest,
       ).toBeNull();
-      expect(
-        (yield* a.projections.getSettlementCandidates(threadId)).map((thread) => thread.id),
-      ).toEqual([threadId]);
       expect(yield* cardOf(a)).toMatchObject({ status: "waiting", linkStatus: "pending" });
 
       yield* a.orchestrator.dispatch({
@@ -974,9 +970,6 @@ it.live("a later run that completes, started by another agent, stops the card as
           yield* a.orchestrator.getThreadProjection(threadId),
         ).pendingRuntimeRequest,
       ).toBeNull();
-      expect(
-        (yield* a.projections.getSettlementCandidates(threadId)).map((thread) => thread.id),
-      ).toEqual([threadId]);
     }),
   ),
 );

@@ -44,7 +44,6 @@ vi.mock("../../state/preferences", () => ({
   mobilePreferencesAtom: {},
   saveMobilePreferences: {},
 }));
-vi.mock("./components/AutoSettleDaysField", () => ({ AutoSettleDaysField: () => null }));
 vi.mock("./components/IssueTrackerSection", () => ({ IssueTrackerSection: () => null }));
 vi.mock("./components/SourceControlProvidersSection", () => ({
   SourceControlProvidersSection: () => null,
@@ -156,7 +155,6 @@ function environment(environmentId: string, label: string) {
       settings: {
         ...DEFAULT_SERVER_SETTINGS,
         defaultAutoPull: false,
-        sidebarAutoSettleOnMerge: false,
       },
       environment: {
         capabilities: { projectSettingsOverrides: true, threadAutoSettlement: true },
@@ -205,8 +203,7 @@ describe("SettingsServerControlsRouteScreen", () => {
     });
   });
 
-  it("holds auto-settle changes until a pending project override write settles", async () => {
-    mocks.projectSelected = true;
+  it("holds usage-limit changes until a pending write settles", async () => {
     const pending = Promise.withResolvers<AsyncResult.Success<void>>();
     mocks.updateSettings.mockReturnValueOnce(pending.promise);
     act(() => root.render(<SettingsThreadsRouteScreen />));
@@ -216,24 +213,24 @@ describe("SettingsServerControlsRouteScreen", () => {
       )!;
 
     act(() => toggle("Agent browser access").click());
-    act(() => toggle("Auto-settle merged threads").click());
+    act(() => toggle("Resume after usage limits").click());
 
-    // Both rewrite the whole project override, so a second write planned now would drop the first.
+    // A second write planned now would race the first.
     expect(mocks.updateSettings).toHaveBeenCalledOnce();
     await act(async () => pending.resolve(AsyncResult.success(undefined)));
   });
 
-  it("disables auto-settle when a selected environment cannot save settings", () => {
+  it("disables usage-limit rows when a selected environment cannot save settings", () => {
     const remote = environment("remote", "Remote");
-    // Auto-settle rows skip a server without auto-settlement, but the page still saves to it.
+    // Usage-limit rows skip a server without shared settings sync, but the page still saves to it.
     remote.serverConfig.environment.capabilities.threadAutoSettlement = false;
     mocks.targets = [environment("local", "Local"), remote];
     mocks.readOnly = new Set(["remote"]);
     act(() => root.render(<SettingsThreadsRouteScreen />));
 
-    const autoSettle = [...container.querySelectorAll<HTMLButtonElement>('[role="switch"]')].find(
-      (button) => button.textContent === "Auto-settle merged threads",
+    const resume = [...container.querySelectorAll<HTMLButtonElement>('[role="switch"]')].find(
+      (button) => button.textContent === "Resume after usage limits",
     )!;
-    expect(autoSettle.disabled).toBe(true);
+    expect(resume.disabled).toBe(true);
   });
 });

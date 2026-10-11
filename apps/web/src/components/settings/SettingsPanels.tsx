@@ -19,8 +19,6 @@ import {
 import {
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
-  MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
-  MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   type ResponseStreamingMode,
   type QuitConfirmationMode,
   SidebarProjectSortOrder,
@@ -96,11 +94,6 @@ import { ScopedSwitch } from "./ScopedSwitch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  autoSettleDaysField,
-  cancelAutoSettleDaysField,
-  commitAutoSettleDaysField,
-  editAutoSettleDaysField,
-  failAutoSettleDaysField,
   getChangedBrowserSettingLabels,
   getChangedTypographySettingLabels,
   hasChangedBackgroundActivitySettings,
@@ -108,7 +101,6 @@ import {
   projectGroupingModeFromToggle,
   readLastEnabledProjectGroupingMode,
   rememberEnabledProjectGroupingMode,
-  syncAutoSettleDaysField,
 } from "./SettingsPanels.logic";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
@@ -548,16 +540,6 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? [gt("Working section")]
       : []),
-    ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
-      ? [gt("Auto-settle inactive threads")]
-      : []),
-    ...(settings.sidebarAutoSettleKeepPullRequests !==
-    DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests
-      ? [gt("Keep threads with a PR")]
-      : []),
-    ...(settings.sidebarAutoSettleOnMerge !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge
-      ? [gt("Auto-settle merged threads")]
-      : []),
     ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
       ? [gt("Resume after usage limits")]
       : []),
@@ -751,9 +733,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
-      sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
-      sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
-      sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
@@ -808,55 +787,6 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
-}
-
-const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 7;
-
-function AutoSettleDaysInput({
-  value,
-  onCommit,
-}: {
-  value: number;
-  onCommit: (days: number, options: { onFailed: () => void }) => void;
-}) {
-  const gt = useGT();
-  const [stored, setField] = useState(() => autoSettleDaysField(value));
-  const field = syncAutoSettleDaysField(stored, value);
-  if (field !== stored) setField(field);
-
-  const commit = () => {
-    const next = commitAutoSettleDaysField(field);
-    setField(next.field);
-    if (next.submit === null) return;
-    const { revision } = next.field;
-    onCommit(next.submit, {
-      onFailed: () => setField((current) => failAutoSettleDaysField(current, revision)),
-    });
-  };
-
-  return (
-    <Input
-      size="sm"
-      type="number"
-      min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      className="w-full sm:w-24"
-      value={field.draft}
-      onChange={(event) => setField(editAutoSettleDaysField(field, event.target.value))}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.nativeEvent.isComposing) return;
-        if (event.key === "Enter") commit();
-        if (event.key === "Escape" && field.dirty) {
-          // An unhandled Escape closes the settings page, and the blur that follows would save.
-          event.preventDefault();
-          event.stopPropagation();
-          setField(cancelAutoSettleDaysField(field));
-        }
-      }}
-      aria-label={gt("Days of inactivity before auto-settle")}
-    />
-  );
 }
 
 export function GeneralSettingsPanel() {
@@ -1965,9 +1895,6 @@ export function ThreadsSettingsPanel() {
     (environment?.serverConfig
       ? providersByEnvironment.get(environment.environmentId)
       : undefined) ?? EMPTY_SERVER_PROVIDERS;
-  const supportsAutoSettlementScope = connectedEnvironments.every(
-    (target) => target.serverConfig?.environment.capabilities.threadAutoSettlementScope === true,
-  );
 
   const textGenerationTargets = useTextGenerationTargets({
     environmentId,
@@ -2137,111 +2064,6 @@ export function ThreadsSettingsPanel() {
         />
         <SyncAutofixModelsRow />
       </SettingsSection>
-
-      {hasServerTargets ? (
-        <SettingsSection id="auto-settle" title={gt("Auto-settle")}>
-          <SettingsRow
-            serverScoped
-            settingKeys={["sidebarAutoSettleOnMerge"]}
-            {...setting("auto-settle-merged-threads")}
-            description={gt(
-              "Settle a thread when its pull request merges. Closed pull requests still settle automatically.",
-            )}
-            resetAction={
-              settings.sidebarAutoSettleOnMerge !==
-              DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge ? (
-                <SettingResetButton
-                  ariaLabel={gt("Reset auto-settle on merge to default")}
-                  onClick={() =>
-                    updateSettings({
-                      sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <ScopedSwitch
-                settingKeys={["sidebarAutoSettleOnMerge"]}
-                checked={settings.sidebarAutoSettleOnMerge}
-                onCheckedChange={(checked) =>
-                  updateSettings({ sidebarAutoSettleOnMerge: Boolean(checked) })
-                }
-                aria-label={gt("Auto-settle merged threads")}
-              />
-            }
-          />
-
-          <SettingsRow
-            serverScoped
-            settingKeys={["sidebarAutoSettleAfterDays"]}
-            {...setting("auto-settle-inactive-threads")}
-            description={gt("Sidebar threads with no activity for this long settle automatically.")}
-            resetAction={
-              settings.sidebarAutoSettleAfterDays !==
-              DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ? (
-                <SettingResetButton
-                  ariaLabel={gt("Reset auto-settle to default")}
-                  onClick={() =>
-                    updateSettings({
-                      sidebarAutoSettleAfterDays:
-                        DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <ScopedSwitch
-                settingKeys={["sidebarAutoSettleAfterDays"]}
-                checked={settings.sidebarAutoSettleAfterDays !== null}
-                onCheckedChange={(checked) =>
-                  updateSettings({
-                    sidebarAutoSettleAfterDays: checked ? AUTO_SETTLE_DEFAULT_DAYS : null,
-                  })
-                }
-                aria-label={gt("Auto-settle inactive threads")}
-              />
-            }
-          />
-          {settings.sidebarAutoSettleAfterDays !== null ? (
-            <SettingsRow
-              serverScoped
-              settingKeys={["sidebarAutoSettleAfterDays"]}
-              title={setting("days-before-auto-settle").title}
-              description={gt("Any new activity un-settles a thread automatically.")}
-              control={
-                <AutoSettleDaysInput
-                  value={settings.sidebarAutoSettleAfterDays}
-                  onCommit={(days, options) =>
-                    updateSettings({ sidebarAutoSettleAfterDays: days }, options)
-                  }
-                />
-              }
-            />
-          ) : null}
-          {settings.sidebarAutoSettleAfterDays !== null && supportsAutoSettlementScope ? (
-            <SettingsRow
-              serverScoped
-              settingKeys={["sidebarAutoSettleKeepPullRequests"]}
-              title={gt("Keep threads with a PR")}
-              description={gt(
-                "Inactivity does not settle threads with a pull request. Merge and close still do.",
-              )}
-              control={
-                <ScopedSwitch
-                  settingKeys={["sidebarAutoSettleKeepPullRequests"]}
-                  checked={settings.sidebarAutoSettleKeepPullRequests}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ sidebarAutoSettleKeepPullRequests: checked })
-                  }
-                  aria-label={gt("Keep threads with a PR")}
-                />
-              }
-            />
-          ) : null}
-        </SettingsSection>
-      ) : null}
 
       <SettingsSection id="text-generation" title={gt("Text generation")}>
         <SettingsRow

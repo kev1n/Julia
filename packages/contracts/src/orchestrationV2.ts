@@ -3431,14 +3431,6 @@ export const OrchestrationV2Command = Schema.Union([
     expectedLatestRunId: Schema.optional(RunId),
     settledAt: Schema.optional(Schema.DateTimeUtc),
   }),
-  /** Rejects changes since snapshotAt or any explicit settled override to preserve user actions. */
-  Schema.Struct({
-    type: Schema.Literal("thread.auto-settle"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    snapshotAt: Schema.DateTimeUtc,
-    settledAt: Schema.optional(Schema.DateTimeUtc),
-  }),
   Schema.Struct({
     type: Schema.Literal("thread.unsettle"),
     commandId: CommandId,
@@ -3458,12 +3450,6 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     reason: Schema.Literal("user"),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("thread.auto-settle.set"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    enabled: Schema.Boolean,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pin"),

@@ -7,13 +7,10 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2RuntimeRequest,
   ProjectId,
-  ProviderDriverKind,
   ProviderInstanceId,
-  ProviderThreadId,
   RunId,
   RuntimeRequestId,
   ThreadId,
-  TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -24,11 +21,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import {
-  isAutoSettlementCandidate,
-  isSnoozed,
-  resolveAutoSettlementAt,
-} from "./ThreadSettlementService.ts";
+import { isSnoozed } from "./ThreadSettlementService.ts";
 
 const layerSql = ProjectionStore.layer.pipe(
   Layer.provide(NodeCrypto.layerDigest),
@@ -112,41 +105,6 @@ const createRun = Effect.fn(function* (
   return runId;
 });
 
-const createItem = Effect.fn(function* (
-  threadId: ThreadId,
-  runId: RunId,
-  status: "idle" | "running" | "completed",
-  persistent = false,
-) {
-  const store = yield* ProjectionStore.ProjectionStoreV2;
-  yield* store.apply({
-    id: EventId.make(`event:item:${runId}`),
-    type: "turn-item.updated",
-    threadId,
-    occurredAt: old,
-    payload: {
-      id: TurnItemId.make(`item:${runId}`),
-      threadId,
-      runId,
-      nodeId: null,
-      providerThreadId: null,
-      providerTurnId: null,
-      nativeItemRef: null,
-      parentItemId: null,
-      ordinal: 1,
-      type: "dynamic_tool",
-      status,
-      title: null,
-      startedAt: old,
-      completedAt: status === "completed" ? old : null,
-      updatedAt: old,
-      toolName: "background",
-      input: persistent ? { persistent: true } : null,
-      output: null,
-    },
-  });
-});
-
 it.effect.each([["sql", layerSql]] as const)(
   "%s: pending approvals wake a snoozed question even with older creation times",
   ([, testLayer]) =>
@@ -216,162 +174,7 @@ it.effect.each([["sql", layerSql]] as const)(
     }).pipe(Effect.provide(testLayer)),
 );
 
-it.effect(
-  "sql: discovers settlement work with the same activity and background semantics as the shell",
-  () =>
-    Effect.gen(function* () {
-      const store = yield* ProjectionStore.ProjectionStoreV2;
-      const idle = yield* createThread("idle");
-      const completed = yield* createThread("completed");
-      yield* createRun(completed);
-      for (const [name, overrides] of [
-        ["archived", { archivedAt: old }],
-        ["deleted", { deletedAt: old }],
-        ["settled", { settledOverride: "settled" }],
-        ["unsettled", { settledOverride: "active" }],
-        ["pinned", { pinnedAt: old }],
-        ["auto-settle-disabled", { autoSettleDisabledAt: old }],
-      ] satisfies ReadonlyArray<readonly [string, Partial<OrchestrationV2AppThread>]>) {
-        yield* createRun(yield* createThread(name, overrides));
-      }
-      for (const status of ["preparing", "starting", "running", "waiting"] as const) {
-        yield* createRun(yield* createThread(status), status);
-      }
-      const queued = yield* createThread("queued");
-      yield* createRun(queued, "queued");
-      const blocked = yield* createThread("blocked");
-      yield* store.apply({
-        id: EventId.make("event:settlement:request"),
-        type: "runtime-request.updated",
-        threadId: blocked,
-        occurredAt: old,
-        payload: {
-          id: RuntimeRequestId.make("request:settlement"),
-          nodeId: NodeId.make("node:settlement"),
-          providerTurnId: null,
-          nativeRequestRef: null,
-          kind: "user_input",
-          status: "pending",
-          responseCapability: { type: "not_resumable", reason: "Process stopped" },
-          createdAt: old,
-          resolvedAt: null,
-        },
-      });
-      const recent = yield* createThread("recent-message");
-      yield* createRun(recent);
-      yield* store.apply({
-        id: EventId.make("event:settlement:message"),
-        type: "message.updated",
-        threadId: recent,
-        occurredAt: now,
-        payload: {
-          createdBy: "user",
-          creationSource: "web",
-          id: MessageId.make("message:settlement:recent"),
-          threadId: recent,
-          runId: null,
-          nodeId: null,
-          role: "user",
-          text: "Next turn",
-          attachments: [],
-          streaming: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-      yield* createRun(
-        yield* createThread("snoozed", {
-          snoozedUntil: DateTime.add(now, { days: 1 }),
-          snoozedAt: now,
-        }),
-      );
-      const woke = yield* createThread("woke", {
-        snoozedUntil: DateTime.add(now, { days: 1 }),
-        snoozedAt: DateTime.subtract(old, { days: 1 }),
-      });
-      yield* createRun(woke, "failed");
-      const background = yield* createThread("idle-background");
-      yield* createItem(background, yield* createRun(background), "idle");
-      const persistent = yield* createThread("persistent-monitor");
-      yield* createItem(persistent, yield* createRun(persistent), "running", true);
-      const rolledBack = yield* createThread("rolled-back-background");
-      yield* createItem(rolledBack, yield* createRun(rolledBack, "rolled_back"), "running");
-      yield* createRun(rolledBack, "completed", 2);
-      const roster = yield* createThread("provider-roster");
-      yield* createRun(roster);
-      yield* store.apply({
-        id: EventId.make("event:settlement:roster"),
-        type: "provider-thread.updated",
-        threadId: roster,
-        occurredAt: old,
-        payload: {
-          id: ProviderThreadId.make("provider-thread:settlement"),
-          appThreadId: roster,
-          ownerNodeId: null,
-          driver: ProviderDriverKind.make("codex"),
-          providerInstanceId,
-          providerSessionId: null,
-          nativeThreadRef: null,
-          nativeConversationHeadRef: null,
-          status: "idle",
-          firstRunOrdinal: null,
-          lastRunOrdinal: null,
-          handoffIds: [],
-          forkedFrom: null,
-          createdAt: old,
-          updatedAt: old,
-          pendingBackgroundTasks: [{ taskId: "running-task", kind: "subagent" }],
-        },
-      });
-      const candidates = yield* store.getSettlementCandidates();
-      const shell = yield* store.getShellSnapshot({ location: "active" });
-      const eligible = candidates.filter((thread) =>
-        isAutoSettlementCandidate(thread, DateTime.toEpochMillis(now)),
-      );
-      assert.deepEqual(
-        new Set(eligible.map((thread) => thread.id)),
-        new Set([idle, completed, queued, woke, background, persistent, rolledBack]),
-      );
-      assert.deepEqual(
-        new Set(eligible.map((thread) => thread.id)),
-        new Set(
-          shell.threads
-            .filter((thread) => isAutoSettlementCandidate(thread, DateTime.toEpochMillis(now)))
-            .map((thread) => thread.id),
-        ),
-      );
-      for (const candidate of candidates) {
-        const expected = shell.threads.find((thread) => thread.id === candidate.id)!;
-        assert.deepEqual(candidate.pendingBackgroundTasks, expected.pendingBackgroundTasks);
-        const settings = {
-          pullRequest: null,
-          nowMs: DateTime.toEpochMillis(now),
-          autoSettleAfterDays: 7,
-          autoSettleOnMerge: false,
-        };
-        assert.deepEqual(
-          resolveAutoSettlementAt({ ...settings, thread: candidate }),
-          resolveAutoSettlementAt({
-            ...settings,
-            thread: {
-              ...expected,
-              latestResumingMessageAt: candidate.latestResumingMessageAt,
-            },
-          }),
-        );
-      }
-      assert.equal(
-        DateTime.formatIso((yield* store.getThread(completed)).createdAt),
-        DateTime.formatIso(old),
-      );
-      assert.equal(
-        (yield* store.getThread(ThreadId.make("missing")).pipe(Effect.flip))._tag,
-        "ProjectionStoreThreadNotFoundError",
-      );
-    }).pipe(Effect.provide(layerSql)),
-);
-
-it.effect("sql: the resuming message time counts MCP sends and ignores agent notifications", () =>
+it.effect("sql: the user-authored message time ignores agent notifications", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
     const threadId = yield* createThread("agent-woken");
@@ -408,13 +211,11 @@ it.effect("sql: the resuming message time counts MCP sends and ignores agent not
     yield* message("sent", "agent", "mcp", sent);
     yield* message("notification", "agent", "provider", now);
 
-    const [candidate] = yield* store.getSettlementCandidates(threadId);
-    assert.isDefined(candidate);
-    assert.equal(DateTime.formatIso(candidate.latestUserMessageAt!), DateTime.formatIso(now));
-    assert.equal(DateTime.formatIso(candidate.latestResumingMessageAt!), DateTime.formatIso(sent));
+    // The user-authored stamp orders the Working section.
     const shellThread = (yield* store.getShellSnapshot()).threads.find(
       (thread) => thread.id === threadId,
     );
+    assert.equal(DateTime.formatIso(shellThread!.latestUserMessageAt!), DateTime.formatIso(now));
     assert.equal(
       DateTime.formatIso(shellThread!.latestUserAuthoredMessageAt!),
       DateTime.formatIso(written),
@@ -587,147 +388,5 @@ it.effect("sql: an unsettled-only shell read skips settled threads", () =>
     assert.equal(shell.archivedThreads.length, 0);
     const all = yield* store.getShellSnapshot({ location: "active" });
     assert.equal(all.threads.length, 4);
-  }).pipe(Effect.provide(layerSql)),
-);
-
-it.effect("sql: a subagent thread becomes a candidate once its parent is done", () =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const parent = yield* createThread("subagent-parent");
-    const child = yield* createThread("subagent-child", {
-      lineage: { parentThreadId: parent, relationshipToParent: "subagent", rootThreadId: parent },
-    });
-    const ids = () =>
-      store.getSettlementCandidates().pipe(Effect.map((rows) => rows.map((row) => row.id)));
-    assert.deepEqual(yield* ids(), [parent]);
-
-    const parentThread = yield* store.getThread(parent);
-    for (const [type, overrides] of [
-      ["thread.settled", { settledOverride: "settled", settledAt: now }],
-      ["thread.archived", { archivedAt: now }],
-      ["thread.deleted", { deletedAt: now }],
-    ] satisfies ReadonlyArray<
-      readonly [
-        "thread.settled" | "thread.archived" | "thread.deleted",
-        Partial<OrchestrationV2AppThread>,
-      ]
-    >) {
-      yield* store.apply({
-        id: EventId.make(`event:settlement:subagent-parent:${type}`),
-        type,
-        threadId: parent,
-        occurredAt: now,
-        payload: { ...parentThread, ...overrides, updatedAt: now },
-      });
-      assert.deepEqual(yield* ids(), [child]);
-    }
-    const orphan = yield* createThread("orphan", {
-      lineage: {
-        parentThreadId: ThreadId.make("missing-parent"),
-        relationshipToParent: "subagent",
-        rootThreadId: parent,
-      },
-    });
-    assert.deepEqual(new Set(yield* ids()), new Set([child, orphan]));
-  }).pipe(Effect.provide(layerSql)),
-);
-
-it.effect("sql: a finished subagent waits for its active parent to hold the result", () =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const parent = yield* createThread("result-parent");
-    const child = yield* createThread("result-child", {
-      lineage: { parentThreadId: parent, relationshipToParent: "subagent", rootThreadId: parent },
-    });
-    const ids = () =>
-      store.getSettlementCandidates().pipe(Effect.map((rows) => rows.map((row) => row.id)));
-    assert.deepEqual(yield* ids(), [parent]);
-
-    const taskId = NodeId.make("node:result-task");
-    for (const state of ["pending", "delivered"] as const) {
-      yield* store.apply({
-        id: EventId.make(`event:settlement:result-task:${state}`),
-        type: "subagent.updated",
-        threadId: parent,
-        nodeId: taskId,
-        driver: ProviderDriverKind.make("codex"),
-        providerInstanceId,
-        occurredAt: now,
-        payload: {
-          id: taskId,
-          threadId: parent,
-          runId: null,
-          parentNodeId: NodeId.make("node:result-parent"),
-          origin: "app_owned",
-          createdBy: "agent",
-          driver: ProviderDriverKind.make("codex"),
-          providerInstanceId,
-          providerThreadId: null,
-          childThreadId: child,
-          nativeTaskRef: null,
-          prompt: "Reply PONG",
-          title: null,
-          model: null,
-          completionDelivery: { state, observedByRunId: null },
-          status: "completed",
-          result: "PONG",
-          startedAt: old,
-          completedAt: old,
-          updatedAt: now,
-        },
-      });
-      if (state === "pending") {
-        yield* createRun(child, "completed");
-        assert.deepEqual(yield* ids(), [parent]);
-      }
-    }
-    assert.deepEqual(new Set(yield* ids()), new Set([parent, child]));
-  }).pipe(Effect.provide(layerSql)),
-);
-
-it.effect("sql: a provider-native subagent with no run settles once its task ends", () =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const parent = yield* createThread("native-parent");
-    const child = yield* createThread("native-child", {
-      lineage: { parentThreadId: parent, relationshipToParent: "subagent", rootThreadId: parent },
-    });
-    const ids = () =>
-      store.getSettlementCandidates().pipe(Effect.map((rows) => rows.map((row) => row.id)));
-    const taskId = NodeId.make("node:native-task");
-    for (const status of ["running", "completed"] as const) {
-      yield* store.apply({
-        id: EventId.make(`event:settlement:native-task:${status}`),
-        type: "subagent.updated",
-        threadId: parent,
-        nodeId: taskId,
-        driver: ProviderDriverKind.make("codex"),
-        providerInstanceId,
-        occurredAt: now,
-        payload: {
-          id: taskId,
-          threadId: parent,
-          runId: null,
-          parentNodeId: NodeId.make("node:native-parent"),
-          origin: "provider_native",
-          createdBy: "agent",
-          driver: ProviderDriverKind.make("codex"),
-          providerInstanceId,
-          providerThreadId: null,
-          childThreadId: child,
-          nativeTaskRef: null,
-          prompt: "Explore",
-          title: null,
-          model: null,
-          status,
-          result: status === "completed" ? "Done" : null,
-          startedAt: old,
-          completedAt: status === "completed" ? old : null,
-          updatedAt: now,
-        },
-      });
-      if (status === "running") assert.deepEqual(yield* ids(), [parent]);
-    }
-    assert.deepEqual(new Set(yield* ids()), new Set([parent, child]));
   }).pipe(Effect.provide(layerSql)),
 );

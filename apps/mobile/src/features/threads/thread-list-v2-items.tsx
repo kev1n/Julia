@@ -866,12 +866,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
   readonly onPinThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => void;
-  readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
   readonly settlementSupported: boolean;
   readonly snoozeSupported: boolean;
   readonly snoozePresets: ReadonlyArray<SnoozePresetSetting> | undefined;
   readonly pinningSupported: boolean;
-  readonly autoSettleOptOutSupported: boolean;
   readonly titleRegenerationSupported: boolean;
   readonly reorderSupported?: boolean;
   readonly onMoveThread?: (
@@ -916,7 +914,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onArchiveThread,
     onPinThread,
     onUnpinThread,
-    onSetThreadAutoSettle,
     onMoveThread,
   } = props;
   const snoozedRow = props.snoozed === true;
@@ -1071,10 +1068,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleUnsettle = useCallback(() => onUnsettleThread(thread), [onUnsettleThread, thread]);
   const handlePin = useCallback(() => onPinThread(thread), [onPinThread, thread]);
   const handleUnpin = useCallback(() => onUnpinThread(thread), [onUnpinThread, thread]);
-  const handleSetAutoSettle = useCallback(
-    (enabled: boolean) => onSetThreadAutoSettle(thread, enabled),
-    [onSetThreadAutoSettle, thread],
-  );
   const handleMoveUp = useCallback(() => onMoveThread?.(thread, "up"), [onMoveThread, thread]);
   const handleMoveDown = useCallback(() => onMoveThread?.(thread, "down"), [onMoveThread, thread]);
   const handleArchive = useCallback(() => onArchiveThread(thread), [onArchiveThread, thread]);
@@ -1150,31 +1143,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           ]
         : [],
     [gt, props.pinningSupported, thread.pinnedAt],
-  );
-  const autoSettleMenuItems = useMemo<MenuAction[]>(
-    () =>
-      props.autoSettleOptOutSupported
-        ? [
-            {
-              id: "auto-settle",
-              title: gt("Auto-settle behavior"),
-              image: "timer",
-              subactions: [
-                {
-                  id: "auto-settle:enabled",
-                  title: gt("Follow settings"),
-                  state: thread.autoSettleDisabledAt == null ? "on" : "off",
-                },
-                {
-                  id: "auto-settle:disabled",
-                  title: gt("Never", { $context: "never auto-settle this thread" }),
-                  state: thread.autoSettleDisabledAt == null ? "off" : "on",
-                },
-              ],
-            } satisfies MenuAction,
-          ]
-        : [],
-    [gt, props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
   );
   const canTurnIntoProject = canTurnThreadIntoProject(thread);
   const titleMenuItems = useMemo<MenuAction[]>(
@@ -1257,7 +1225,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           pin: [],
           secondary: [
             ...titleMenuItems,
-            ...autoSettleMenuItems,
             localized(LEGACY_MENU_ACTIONS[0]!),
             localized(SNOOZED_MENU_ACTIONS[1]!),
           ],
@@ -1288,7 +1255,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           pin: pinMenuItems,
           secondary: [
             ...titleMenuItems,
-            ...autoSettleMenuItems,
             localized(LEGACY_MENU_ACTIONS[0]!),
             localized(SLIM_MENU_ACTIONS[1]!),
           ],
@@ -1317,7 +1283,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         pin: pinMenuItems,
         secondary: [
           ...titleMenuItems,
-          ...autoSettleMenuItems,
           localized(LEGACY_MENU_ACTIONS[0]!),
           localized(CARD_MENU_ACTIONS[1]!),
         ],
@@ -1325,7 +1290,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       m,
     );
   }, [
-    autoSettleMenuItems,
     canShareWithGuest,
     canUnsettle,
     pinMenuItems,
@@ -1349,8 +1313,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "unsnooze") handleUnsnooze();
       if (nativeEvent.event === "pin") handlePin();
       if (nativeEvent.event === "unpin") handleUnpin();
-      if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
-      if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
       if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
       if (nativeEvent.event === "move-up") handleMoveUp();
       if (nativeEvent.event === "move-down") handleMoveDown();
@@ -1426,7 +1388,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handlePin,
       handleSettle,
       handleSnooze,
-      handleSetAutoSettle,
       handleUnpin,
       handleUnsettle,
       handleUnsnooze,

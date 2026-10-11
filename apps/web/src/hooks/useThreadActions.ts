@@ -52,7 +52,6 @@ import { readLocalApi } from "../localApi";
 import {
   readDelegatedUnderParent,
   readEnvironmentServerConfigLoaded,
-  readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentThreadRefs,
   readProject,
   readThreadShell,
@@ -171,22 +170,6 @@ function claimTabs(kind: string, refs: readonly ScopedThreadRef[]) {
 
 function firstFailure<R extends { readonly _tag: string }>(results: readonly R[]): R {
   return results.find((result) => result._tag !== "Success") ?? results[0]!;
-}
-
-export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<ThreadAutoSettleOptOutUnsupportedError>()(
-  "ThreadAutoSettleOptOutUnsupportedError",
-  {
-    environmentId: EnvironmentId,
-    threadId: ThreadId,
-  },
-) {
-  override get message(): string {
-    return m(
-      msg(
-        "This environment's server does not support turning auto-settle off per thread yet. Update the server to use it.",
-      ),
-    );
-  }
 }
 
 export class ThreadPinningUnsupportedError extends Schema.TaggedError<ThreadPinningUnsupportedError>()(
@@ -365,9 +348,6 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const unpinThreadMutation = useOrchestrationCommand(threadEnvironment.unpin, {
-    reportFailure: false,
-  });
-  const setThreadAutoSettleMutation = useOrchestrationCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
   });
   const reorderPinnedThreadMutation = useOrchestrationCommand(threadEnvironment.reorderPin, {
@@ -787,7 +767,6 @@ export function useThreadActions() {
 
   const unsettleChat = (target: ScopedThreadRef, restoreUnsettledAt?: string | null) => {
     ThreadUndo.invalidate("settle", scopedThreadKey(target));
-    // reason "user" pins active until real activity, suppressing auto-settle.
     return unsettleThreadMutation({
       environmentId: target.environmentId,
       input: {
@@ -817,23 +796,6 @@ export function useThreadActions() {
         ),
       ),
     );
-  };
-
-  const setThreadAutoSettle = async (target: ScopedThreadRef, enabled: boolean) => {
-    if (!readEnvironmentSupportsAutoSettleOptOut(target.environmentId)) {
-      return AsyncResult.failure(
-        Cause.fail(
-          new ThreadAutoSettleOptOutUnsupportedError({
-            environmentId: target.environmentId,
-            threadId: target.threadId,
-          }),
-        ),
-      );
-    }
-    return setThreadAutoSettleMutation({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, enabled },
-    });
   };
 
   const sendPin = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
@@ -1184,7 +1146,6 @@ export function useThreadActions() {
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
-    setThreadAutoSettle,
     turnThreadIntoProject: (target: ScopedThreadRef) =>
       createProjectFromThread({
         environmentId: target.environmentId,

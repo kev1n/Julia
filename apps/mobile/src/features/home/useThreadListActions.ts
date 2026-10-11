@@ -52,15 +52,6 @@ function environmentConfigLoaded(environmentId: EnvironmentThreadShell["environm
   return appAtomRegistry.get(environmentServerConfigsAtom).has(environmentId);
 }
 
-function environmentSupportsAutoSettleOptOut(
-  environmentId: EnvironmentThreadShell["environmentId"],
-) {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadAutoSettleOptOut === true
-  );
-}
-
 type ThreadListAction = "archive" | "unarchive" | "delete" | "settle" | "unsettle";
 
 const ACTION_FAILURES: Record<ThreadListAction, string> = {
@@ -209,9 +200,7 @@ function useThreadActionExecutor(
         key,
         async () =>
           action === "unsettle"
-            ? // reason "user" pins the thread active: auto-settle stays
-              // suppressed until real activity clears the pin server-side.
-              await unsettleMutation({
+            ? await unsettleMutation({
                 environmentId: thread.environmentId,
                 input: {
                   threadId: thread.id,
@@ -287,10 +276,6 @@ export function useThreadListActions(): {
   readonly unsettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly pinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly unpinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly setThreadAutoSettle: (
-    thread: EnvironmentThreadShell,
-    enabled: boolean,
-  ) => Promise<boolean>;
   readonly moveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -304,9 +289,6 @@ export function useThreadListActions(): {
   const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
   const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
-  const setAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
-    reportFailure: false,
-  });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -656,35 +638,6 @@ export function useThreadListActions(): {
     offerUndo(thread, "Unpinned", claim, plan);
     return true;
   };
-  const setThreadAutoSettle = async (thread: EnvironmentThreadShell, enabled: boolean) => {
-    if (!environmentSupportsAutoSettleOptOut(thread.environmentId)) {
-      Dialog.alert(
-        m(msg("Could not update auto-settle")),
-        m(
-          msg(
-            "This environment's server does not support turning auto-settle off per thread yet. Update the server to use it.",
-          ),
-        ),
-      );
-      return false;
-    }
-    selectionHaptic();
-    const result = await setAutoSettleMutation({
-      environmentId: thread.environmentId,
-      input: { threadId: thread.id, enabled },
-    });
-    if (result._tag === "Failure") {
-      const error = Cause.squash(result.cause);
-      Dialog.alert(
-        m(msg("Could not update auto-settle")),
-        error instanceof Error && errorDisplayMessage(error, m) !== null
-          ? (errorDisplayMessage(error, m) ?? error.message)
-          : m(msg("The auto-settle setting could not be changed.")),
-      );
-      return false;
-    }
-    return true;
-  };
   const regenerateThreadTitle = async (thread: EnvironmentThreadShell) => {
     if (!checkThreadOperationPermission(thread, m(msg("Could not regenerate title")))) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
@@ -965,9 +918,6 @@ export function useThreadListActions(): {
     pinThread: useStableCallback((thread: EnvironmentThreadShell) => pinThread(liveThread(thread))),
     unpinThread: useStableCallback((thread: EnvironmentThreadShell) =>
       unpinThread(liveThread(thread)),
-    ),
-    setThreadAutoSettle: useStableCallback((thread: EnvironmentThreadShell, enabled: boolean) =>
-      setThreadAutoSettle(liveThread(thread), enabled),
     ),
     moveThread: useStableCallback(moveThread),
     renameThread: useStableCallback((thread: EnvironmentThreadShell) =>
