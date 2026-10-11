@@ -199,39 +199,6 @@ export type ProjectionThreadPullRequests = Pick<
   "id" | "projectId" | "lineage" | "settledOverride" | "settledAt" | "pullRequests"
 >;
 
-export type ProjectionSettlementCandidate = Pick<
-  OrchestrationV2ThreadShell,
-  | "id"
-  | "projectId"
-  | "branch"
-  | "worktreePath"
-  | "pullRequests"
-  | "linkedPullRequest"
-  | "branchPullRequest"
-  | "createdAt"
-  | "updatedAt"
-  | "archivedAt"
-  | "settledOverride"
-  | "pinnedAt"
-  | "autoSettleDisabledAt"
-  | "snoozedUntil"
-  | "snoozedAt"
-  | "latestRunId"
-  | "latestRunRequestedAt"
-  | "latestRunStartedAt"
-  | "latestRunCompletedAt"
-  | "latestUserMessageAt"
-  | "status"
-  | "activityRunStartedAt"
-  | "activityRunStatus"
-  | "pendingRuntimeRequest"
-  | "pendingBackgroundTasks"
-  | "pendingGuestMessageCount"
-> &
-  Pick<OrchestrationV2AppThread, "lastSnoozeWakeAt"> & {
-    readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
-  };
-
 const ProjectionCheckpointContext = Schema.Struct({
   runs: Schema.Array(
     OrchestrationV2RunJsonSchema.mapFields(({ id, ordinal, status }) => ({ id, ordinal, status })),
@@ -566,9 +533,6 @@ export interface ProjectionStoreV2Shape {
   readonly getLimitRecoveryWakeAt: (
     now: DateTime.Utc,
   ) => Effect.Effect<number | null, ProjectionStoreV2Error>;
-  readonly getSettlementCandidates: (
-    threadId?: ThreadId,
-  ) => Effect.Effect<ReadonlyArray<ProjectionSettlementCandidate>, ProjectionStoreV2Error>;
   readonly getThreadsWithPullRequests: (
     threadId?: ThreadId,
   ) => Effect.Effect<ReadonlyArray<ProjectionThreadPullRequests>, ProjectionStoreV2Error>;
@@ -1077,19 +1041,6 @@ type ShellRunRow = {
   readonly run_id: string;
   readonly ordinal: number;
 };
-
-type SettlementThreadRow = Pick<
-  ShellThreadRow,
-  | "thread_id"
-  | "payload_json"
-  | "latest_run_id"
-  | "latest_run_status"
-  | "latest_run_requested_at"
-  | "latest_run_started_at"
-  | "latest_run_completed_at"
-  | "latest_user_message_at"
-  | "latest_user_authored_message_at"
->;
 
 type ShellRunItemCountRow = {
   readonly thread_id: string;
@@ -6957,138 +6908,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return { providerThreadsByThreadId, pendingTurnItemsByThreadId };
     });
 
-    const getSettlementCandidates: ProjectionStoreV2Shape["getSettlementCandidates"] = (threadId) =>
-      sql
-        .withTransaction(
-          Effect.gen(function* () {
-            const rows = yield* sql<SettlementThreadRow>`
-            SELECT t.thread_id, t.payload_json,
-              r.run_id AS latest_run_id,
-              r.status AS latest_run_status,
-              r.requested_at AS latest_run_requested_at,
-              json_extract(r.payload_json, '$.startedAt') AS latest_run_started_at,
-              r.completed_at AS latest_run_completed_at,
-              (
-                SELECT message.updated_at
-                FROM orchestration_v2_projection_messages message
-                WHERE message.thread_id = t.thread_id AND message.role = 'user'
-                  AND NOT ${isIdleCompactionMessage("message")}
-                ORDER BY message.updated_at DESC, message.message_id DESC
-                LIMIT 1
-              ) AS latest_user_message_at,
-              (
-                SELECT message.updated_at
-                FROM orchestration_v2_projection_messages message
-                WHERE message.thread_id = t.thread_id AND message.role = 'user'
-                  AND json_extract(message.payload_json, '$.createdBy') = 'user'
-                  AND NOT ${isIdleCompactionMessage("message")}
-                ORDER BY message.updated_at DESC, message.message_id DESC
-                LIMIT 1
-              ) AS latest_user_authored_message_at
-            FROM orchestration_v2_projection_threads t
-            LEFT JOIN orchestration_v2_projection_runs r ON r.run_id = (
-              SELECT latest.run_id FROM orchestration_v2_projection_runs latest
-              WHERE latest.thread_id = t.thread_id
-                AND NOT ${isSilentShellRun("latest")}
-              ORDER BY latest.ordinal DESC, latest.run_id DESC
-              LIMIT 1
-            )
-            WHERE t.deleted_at IS NULL${threadId === undefined ? sql`` : sql` AND t.thread_id = ${threadId}`}
-              AND json_extract(t.payload_json, '$.archivedAt') IS NULL
-              AND json_extract(t.payload_json, '$.settledOverride') IS NULL
-              AND json_extract(t.payload_json, '$.pinnedAt') IS NULL
-              AND json_extract(t.payload_json, '$.autoSettleDisabledAt') IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM orchestration_v2_projection_runs active
-                WHERE active.thread_id = t.thread_id
-                  AND active.status IN ('preparing', 'starting', 'running', 'waiting')
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM orchestration_v2_projection_runtime_requests request
-                WHERE request.thread_id = t.thread_id AND request.status = 'pending'
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM orchestration_v2_projection_turn_items link
-                  INDEXED BY orchestration_v2_projection_turn_items_waiting_link_idx
-                WHERE link.thread_id = t.thread_id
-                  AND link.type = 'link_request' AND link.status = 'waiting'
-                  -- linkCardStillAsks: once the user writes after the card, it stops asking.
-                  AND NOT EXISTS (
-                    SELECT 1 FROM orchestration_v2_projection_messages message
-                    WHERE message.thread_id = t.thread_id AND message.role = 'user'
-                      AND json_extract(message.payload_json, '$.createdBy') = 'user'
-                      AND NOT ${isIdleCompactionMessage("message")}
-                      AND message.updated_at > COALESCE(
-                        json_extract(link.payload_json, '$.startedAt'), link.updated_at
-                      )
-                  )
-              )
-            ORDER BY t.updated_at ASC, t.thread_id ASC
-          `;
-            if (rows.length === 0) return [];
-            const threadIds = rows.map((row) => ThreadId.make(row.thread_id));
-            const { providerThreadsByThreadId, pendingTurnItemsByThreadId } =
-              yield* pendingBackgroundDataByThreadId({
-                providerThreadRows: yield* selectShellProviderThreadRows(threadIds),
-                pendingTurnItemRows: yield* selectShellPendingTurnItemRows(threadIds),
-              });
-            return yield* Effect.forEach(rows, (row) =>
-              Effect.gen(function* () {
-                const thread = yield* decodeThreadPayload(row.payload_json);
-                const status = shellStatusFromStoredRunStatus(row.latest_run_status);
-                const latestRunId =
-                  row.latest_run_id === null ? null : RunId.make(row.latest_run_id);
-                return {
-                  ...thread,
-                  pinnedAt: thread.pinnedAt ?? null,
-
-                  autoSettleDisabledAt: thread.autoSettleDisabledAt ?? null,
-                  snoozedUntil: thread.snoozedUntil ?? null,
-                  snoozedAt: thread.snoozedAt ?? null,
-                  status,
-                  latestRunId,
-                  latestRunRequestedAt:
-                    row.latest_run_requested_at === null
-                      ? null
-                      : DateTime.makeUnsafe(row.latest_run_requested_at),
-                  latestRunStartedAt:
-                    row.latest_run_started_at === null
-                      ? null
-                      : DateTime.makeUnsafe(row.latest_run_started_at),
-                  latestRunCompletedAt:
-                    row.latest_run_completed_at === null
-                      ? null
-                      : DateTime.makeUnsafe(row.latest_run_completed_at),
-                  latestUserMessageAt:
-                    row.latest_user_message_at === null
-                      ? null
-                      : DateTime.makeUnsafe(row.latest_user_message_at),
-                  latestUserAuthoredMessageAt:
-                    row.latest_user_authored_message_at === null
-                      ? null
-                      : DateTime.makeUnsafe(row.latest_user_authored_message_at),
-                  activityRunStatus: null,
-                  activityRunStartedAt: null,
-                  pendingRuntimeRequest: null,
-                  pendingGuestMessageCount: pendingGuestMessageCount(thread.guestShare),
-                  pendingBackgroundTasks: derivePendingBackgroundWork({
-                    latestRun:
-                      latestRunId === null || status === "idle"
-                        ? null
-                        : { id: latestRunId, ordinal: 0, status },
-                    providerThreads: providerThreadsByThreadId.get(thread.id) ?? [],
-                    turnItems: pendingTurnItemsByThreadId.get(thread.id) ?? [],
-                    activeProviderThreadId: thread.activeProviderThreadId,
-                    hasActiveRun: false,
-                    pullRequests: thread.pullRequests,
-                  }),
-                } satisfies ProjectionSettlementCandidate;
-              }),
-            );
-          }),
-        )
-        .pipe(Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })));
-
     const getOpenRemoteDelegatedTasks: ProjectionStoreV2Shape["getOpenRemoteDelegatedTasks"] = sql<{
       readonly thread_id: string;
       readonly subagent_id: string;
@@ -7933,7 +7752,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadShell: readOnReader(getThreadShell),
       findGuestShareThreadId: readOnReader(findGuestShareThreadId),
       getThread: readOnReader(getThread),
-      getSettlementCandidates: readOnReader(getSettlementCandidates),
       getThreadsWithPullRequests: readOnReader(getThreadsWithPullRequests),
       getThreadTitles: readOnReader(getThreadTitles),
       getThreadLinkMetadata: readOnReader(getThreadLinkMetadata),

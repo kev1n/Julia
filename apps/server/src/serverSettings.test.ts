@@ -404,6 +404,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
       }),
   );
 
+  it.effect("loads a settings file that still holds retired auto-settle keys", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        JSON.stringify({
+          addProjectBaseDirectory: "~/Development",
+          sidebarAutoSettleAfterDays: 3,
+          sidebarAutoSettleOnMerge: true,
+        }),
+      );
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.equal(settings.addProjectBaseDirectory, "~/Development");
+      assert.notProperty(settings, "sidebarAutoSettleAfterDays");
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("deep merges nested settings updates without dropping siblings", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

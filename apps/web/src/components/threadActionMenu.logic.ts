@@ -11,9 +11,6 @@ export type ThreadActionMenuId =
   | "unpin"
   | "settle"
   | "unsettle"
-  | "auto-settle"
-  | "auto-settle:enabled"
-  | "auto-settle:disabled"
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -77,7 +74,6 @@ export interface ThreadActionMenuState {
   } | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
-  readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
@@ -85,7 +81,6 @@ export interface ThreadActionMenuState {
   readonly isRunning: boolean;
   readonly supports: {
     readonly settlement: boolean;
-    readonly autoSettleOptOut: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
@@ -200,27 +195,6 @@ export function buildThreadActionMenuItems(
             label: "Turn into project",
             icon: "folder-plus",
             disabled: state.isRunning,
-          },
-        ]
-      : []),
-    ...(state.supports.autoSettleOptOut
-      ? [
-          {
-            id: "auto-settle" as const,
-            label: "Auto-settle behavior",
-            icon: "timer",
-            children: [
-              {
-                id: "auto-settle:enabled" as const,
-                label: "Follow settings",
-                checked: state.autoSettleEnabled,
-              },
-              {
-                id: "auto-settle:disabled" as const,
-                label: "Never",
-                checked: !state.autoSettleEnabled,
-              },
-            ],
           },
         ]
       : []),

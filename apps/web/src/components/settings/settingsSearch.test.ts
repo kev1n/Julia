@@ -1,16 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import {
-  EnvironmentId,
-  makeProviderSettingsSchema,
-  SourceControlProviderKind,
-} from "@t3tools/contracts";
+import { makeProviderSettingsSchema, SourceControlProviderKind } from "@t3tools/contracts";
 import { UNKNOWN_SOURCE_CONTROL_CLIENT } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
 import {
   filterAvailableSettingsSearchItems,
   getSettingsSearchTargetScope,
-  getThreadAutoSettlementSearchAvailability,
   isSettingsSearchScopeAvailable,
   movedSettingsPath,
   searchSettings,
@@ -118,7 +113,6 @@ describe("searchSettings", () => {
       hasProviderSettingsEnvironment: false,
       canManageLocalBackend: false,
       isWslSettingsRowVisible: false,
-      hasThreadAutoSettlement: false,
     });
 
     const gatedIds = new Set<string>([
@@ -135,9 +129,6 @@ describe("searchSettings", () => {
       "hold-webhooks-while-offline",
       "tailscale-https",
       "wsl-backend",
-      "auto-settle-inactive-threads",
-      "auto-settle-merged-threads",
-      "days-before-auto-settle",
       "linked-environments",
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
@@ -151,7 +142,6 @@ describe("searchSettings", () => {
       canManageLocalBackend: false,
       localEnvironmentDisabled: true,
       isWslSettingsRowVisible: false,
-      hasThreadAutoSettlement: false,
     };
     const results = (hasPeerLinkHost: boolean) =>
       searchSettings(
@@ -257,62 +247,6 @@ describe("settings search targets", () => {
     for (const id of ["tool-call-visibility", "boring-sidebar"]) {
       expect(getSettingsSearchTargetScope(id)!.scope).toBeNull();
     }
-  });
-});
-
-describe("auto-settlement search availability", () => {
-  function environment(id: string, { connected = true, loaded = true } = {}) {
-    return {
-      environmentId: EnvironmentId.make(id),
-      connection: { phase: connected ? ("connected" as const) : ("offline" as const) },
-      serverConfig: loaded ? { environment: { capabilities: {} } } : null,
-    };
-  }
-
-  const capable = environment("capable");
-  const offline = environment("offline", { connected: false });
-  const loading = environment("loading", { loaded: false });
-  const environments = [capable, offline, loading];
-
-  it("keeps results discoverable when one connected environment supports them", () => {
-    const availability = getThreadAutoSettlementSearchAvailability(environments);
-    expect(availability.eligibleEnvironmentIds).toEqual([capable.environmentId]);
-    const items = filterAvailableSettingsSearchItems({
-      hasCloudPublicConfig: false,
-      hasEnvironment: true,
-      hasProviderSettingsEnvironment: true,
-      canManageLocalBackend: false,
-      isWslSettingsRowVisible: false,
-      hasThreadAutoSettlement: availability.eligibleEnvironmentIds.length > 0,
-    });
-    expect(searchSettings("auto-settle", items).map((item) => item.id)).toEqual([
-      "auto-settle-inactive-threads",
-      "auto-settle-merged-threads",
-      "days-before-auto-settle",
-      "keep-threads-with-pull-requests",
-    ]);
-  });
-
-  it.each([offline, loading])(
-    "does not render the target on $environmentId or silently fall back",
-    (selected) => {
-      expect(
-        getThreadAutoSettlementSearchAvailability(environments, {
-          kind: "environment",
-          environmentIds: [selected.environmentId],
-        }),
-      ).toEqual({ eligibleEnvironmentIds: [capable.environmentId], isTargetAvailable: false });
-    },
-  );
-
-  it("ignores offline and unloaded targets when all connected targets support the setting", () => {
-    const selected = [capable, offline, loading];
-    expect(
-      getThreadAutoSettlementSearchAvailability(selected, {
-        kind: "all",
-        environmentIds: selected.map((entry) => entry.environmentId),
-      }).isTargetAvailable,
-    ).toBe(true);
   });
 });
 

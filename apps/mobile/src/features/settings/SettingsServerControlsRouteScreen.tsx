@@ -41,7 +41,7 @@ import {
   type ScopedMobileSettingsTarget,
 } from "./settings-scoped-server";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
-import { AutoSettleSettingsRows } from "./ThreadSettingsSections";
+import { UsageLimitSettingsRows } from "./ThreadSettingsSections";
 import { supportsSharedSettingsSync } from "@t3tools/client-runtime/state/shared-settings";
 
 type SettingsPage = "threads" | "source-control" | "worktrees" | "maintenance";
@@ -59,8 +59,6 @@ const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettin
     "defaultRuntimeMode",
     "responseStreamingMode",
     "enableAgentBrowserAccess",
-    "sidebarAutoSettleOnMerge",
-    "sidebarAutoSettleAfterDays",
   ],
   "source-control": ["defaultAutoPull", "removeAgentCreditsOnMerge"],
   worktrees: [
@@ -131,10 +129,8 @@ const STREAMING_CHOICES: ReadonlyArray<{
   },
 ];
 
-// Only servers with thread auto-settlement store these, so other targets get the rest of a patch.
-const AUTO_SETTLE_SETTING_KEYS: ReadonlySet<string> = new Set([
-  "sidebarAutoSettleOnMerge",
-  "sidebarAutoSettleAfterDays",
+// Only servers with shared settings sync store these, so other targets get the rest of a patch.
+const USAGE_LIMIT_SETTING_KEYS: ReadonlySet<string> = new Set([
   "autoResumeLimitedThreads",
   "snoozeLimitedThreads",
 ]);
@@ -147,7 +143,7 @@ function planServerSettingsWrites(
   const capable = targets.filter((target) => supportsSharedSettingsSync(target.environment));
   const others = targets.filter((target) => !supportsSharedSettingsSync(target.environment));
   const othersPatch = Object.fromEntries(
-    Object.entries(patch).filter(([key]) => !AUTO_SETTLE_SETTING_KEYS.has(key)),
+    Object.entries(patch).filter(([key]) => !USAGE_LIMIT_SETTING_KEYS.has(key)),
   ) as ServerSettingsPatch;
   return [
     ...planMobileScopedSettingsPatch(capable, projectSelected, patch),
@@ -394,7 +390,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                     onValueChange={(value) => write({ enableAgentBrowserAccess: value })}
                   />
                 </SettingsSection>
-                <AutoSettleSettingsRows write={write} pending={pendingWrites > 0} />
+                <UsageLimitSettingsRows write={write} pending={pendingWrites > 0} />
               </>
             ) : null}
 

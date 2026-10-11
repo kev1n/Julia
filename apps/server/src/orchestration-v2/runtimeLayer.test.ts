@@ -2674,44 +2674,6 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         DateTime.toEpochMillis(untaggedShell.updatedAt),
       );
 
-      const preAutoProjection = yield* orchestrator.getThreadProjection(threadId);
-      const staleAutoSettle = yield* orchestrator
-        .dispatch({
-          type: "thread.auto-settle",
-          commandId: CommandId.make("runtime-layer-lifecycle-auto-settle-stale"),
-          threadId,
-          snapshotAt: DateTime.makeUnsafe(
-            DateTime.toEpochMillis(preAutoProjection.thread.updatedAt) - 1,
-          ),
-        })
-        .pipe(Effect.flip);
-      assert.instanceOf(staleAutoSettle, Orchestrator.OrchestratorDispatchError);
-      yield* orchestrator.dispatch({
-        type: "thread.auto-settle",
-        commandId: CommandId.make("runtime-layer-lifecycle-auto-settle"),
-        threadId,
-        snapshotAt: preAutoProjection.thread.updatedAt,
-      });
-      const autoSettledProjection = yield* orchestrator.getThreadProjection(threadId);
-      assert.equal(autoSettledProjection.thread.settledOverride, "settled");
-      assert.isNull(autoSettledProjection.thread.activeOrderKey);
-      yield* orchestrator.dispatch({
-        type: "thread.unsettle",
-        commandId: CommandId.make("runtime-layer-lifecycle-auto-unsettle"),
-        threadId,
-        reason: "user",
-      });
-      const postUnsettleProjection = yield* orchestrator.getThreadProjection(threadId);
-      const overriddenAutoSettle = yield* orchestrator
-        .dispatch({
-          type: "thread.auto-settle",
-          commandId: CommandId.make("runtime-layer-lifecycle-auto-settle-overridden"),
-          threadId,
-          snapshotAt: postUnsettleProjection.thread.updatedAt,
-        })
-        .pipe(Effect.flip);
-      assert.instanceOf(overriddenAutoSettle, Orchestrator.OrchestratorDispatchError);
-
       yield* orchestrator.dispatch({
         type: "thread.settle",
         commandId: CommandId.make("runtime-layer-lifecycle-settle"),
@@ -3120,16 +3082,16 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
-  it.effect.each(["manual", "automatic"])("settling ends every pull request watch: %s", (mode) =>
+  it.effect("settling ends every pull request watch", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const maintenance = yield* ProjectionReplay.ProjectionReplay;
-      const threadId = ThreadId.make(`pr-watch-settle-${mode}`);
+      const threadId = ThreadId.make(`pr-watch-settle`);
       yield* orchestrator.dispatch({
         type: "thread.create",
         createdBy: "user",
         creationSource: "web",
-        commandId: CommandId.make(`pr-watch-settle-create-${mode}`),
+        commandId: CommandId.make(`pr-watch-settle-create`),
         threadId,
         projectId: ProjectId.make("pr-watch-settle-project"),
         title: "Settle watched PRs",
@@ -3143,7 +3105,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       for (const number of [7, 8]) {
         yield* orchestrator.dispatch({
           type: "thread.pull-request.watch",
-          commandId: CommandId.make(`pr-watch-settle-start-${mode}-${number}`),
+          commandId: CommandId.make(`pr-watch-settle-start-${number}`),
           threadId,
           ...key,
           number,
@@ -3156,10 +3118,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       assert.isDefined(started);
       if (started === undefined || before === null) return;
       yield* orchestrator.dispatch({
-        ...(mode === "manual"
-          ? { type: "thread.settle" as const }
-          : { type: "thread.auto-settle" as const, snapshotAt: before.updatedAt }),
-        commandId: CommandId.make(`pr-watch-settle-${mode}`),
+        type: "thread.settle",
+        commandId: CommandId.make(`pr-watch-settle`),
         threadId,
       });
       const expected = before.pullRequests?.map(({ watch, ...link }) => ({
@@ -3173,7 +3133,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       for (const wake of [
         undefined,
         {
-          messageId: MessageId.make(`pr-watch-settle-late-wake-${mode}`),
+          messageId: MessageId.make(`pr-watch-settle-late-wake`),
           text: "Update",
           notification: {
             source: { kind: "monitor" as const },
@@ -3185,7 +3145,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         const late = yield* orchestrator
           .dispatch({
             type: "thread.pull-request-watch.sync",
-            commandId: CommandId.make(`pr-watch-settle-late-${mode}-${wake !== undefined}`),
+            commandId: CommandId.make(`pr-watch-settle-late-${wake !== undefined}`),
             threadId,
             ...key,
             number: 7,
@@ -3206,20 +3166,20 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const blocked = yield* orchestrator
         .dispatch({
           ...restart,
-          commandId: CommandId.make(`pr-watch-settle-blocked-${mode}`),
+          commandId: CommandId.make(`pr-watch-settle-blocked`),
         })
         .pipe(Effect.flip);
       assert.equal(blocked._tag, "OrchestratorDispatchError");
       assert.deepEqual((yield* orchestrator.getThreadRecords(threadId, ["messages"])).messages, []);
       yield* orchestrator.dispatch({
         type: "thread.unsettle",
-        commandId: CommandId.make(`pr-watch-settle-unsettle-${mode}`),
+        commandId: CommandId.make(`pr-watch-settle-unsettle`),
         threadId,
         reason: "user",
       });
       yield* orchestrator.dispatch({
         ...restart,
-        commandId: CommandId.make(`pr-watch-settle-restart-${mode}`),
+        commandId: CommandId.make(`pr-watch-settle-restart`),
       });
       assert.isDefined((yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch);
     }),
@@ -7972,11 +7932,10 @@ it.layer(layerSharedApplicationDataPlaneTest)("snooze projection", (it) => {
         threadId,
         reason: "user",
       });
-      const projections = yield* ProjectionStore.ProjectionStoreV2.pipe(
-        Effect.provide(ProjectionStore.layer),
+      assert.deepEqual(
+        (yield* orchestrator.getThreadProjection(threadId)).thread.lastSnoozeWakeAt,
+        yield* DateTime.now,
       );
-      const [candidate] = yield* projections.getSettlementCandidates(threadId);
-      assert.deepEqual(candidate?.lastSnoozeWakeAt, yield* DateTime.now);
       yield* orchestrator.dispatch({
         type: "thread.settle",
         commandId: CommandId.make("runtime-layer-snoozed-thread-settle"),
