@@ -145,10 +145,6 @@ interface HomeScreenProps {
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
   readonly onPinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnpinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly onSetThreadAutoSettle: (
-    thread: EnvironmentThreadShell,
-    enabled: boolean,
-  ) => Promise<boolean>;
   readonly onMoveThread: (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -377,7 +373,6 @@ export function HomeScreen(props: HomeScreenProps) {
   const handlePinThread = props.onPinThread;
   const handleMoveThread = props.onMoveThread;
   const handleUnpinThread = props.onUnpinThread;
-  const handleSetThreadAutoSettle = props.onSetThreadAutoSettle;
   const handleRegenerateThreadTitle = props.onRegenerateThreadTitle;
   const handleRenameThread = props.onRenameThread;
   const handleDeleteThread = props.onDeleteThread;
@@ -412,7 +407,6 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozeEnvironmentIds,
     snoozePresetsByEnvironmentId,
     pinningEnvironmentIds,
-    autoSettleOptOutEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -615,7 +609,6 @@ export function HomeScreen(props: HomeScreenProps) {
         snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
         snoozePresets={snoozePresetsByEnvironmentId.get(thread.environmentId)}
         pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
-        autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}
         reorderSupported={
           item.item.pinned
             ? pinReorderEnvironmentIds.has(thread.environmentId)
@@ -628,7 +621,6 @@ export function HomeScreen(props: HomeScreenProps) {
         onUnsettleThread={handleUnsettleThread}
         onPinThread={handlePinThread}
         onUnpinThread={handleUnpinThread}
-        onSetThreadAutoSettle={handleSetThreadAutoSettle}
         onMoveThread={handleMoveThread}
         onSwipeableClose={handleSwipeableClose}
         onSwipeableWillOpen={handleSwipeableWillOpen}

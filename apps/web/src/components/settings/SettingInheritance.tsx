@@ -54,28 +54,22 @@ function formatValue(
   if (value === null || value === undefined) {
     return key === "pullRequestMergeMethod"
       ? resolve(msg("Last selected"))
-      : key === "sidebarAutoSettleAfterDays"
-        ? resolve(msg("Never"))
-        : key === "defaultModelSelection"
-          ? resolve(msg("Automatic"))
-          : key === "sourceControlWriterModelSelection"
-            ? resolve(msg("Text generation model"))
-            : key === "reviewGuideModelSelection"
-              ? resolve(msg("Source control writer model"))
-              : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
-                ? resolve(msg("Inherit"))
-                : resolve(msg("Not set"));
+      : key === "defaultModelSelection"
+        ? resolve(msg("Automatic"))
+        : key === "sourceControlWriterModelSelection"
+          ? resolve(msg("Text generation model"))
+          : key === "reviewGuideModelSelection"
+            ? resolve(msg("Source control writer model"))
+            : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
+              ? resolve(msg("Inherit"))
+              : resolve(msg("Not set"));
   }
   if (typeof value === "boolean") {
     return value
       ? resolve(msg("On", { $context: "setting value" }))
       : resolve(msg("Off", { $context: "setting value" }));
   }
-  if (typeof value === "number") {
-    return key === "sidebarAutoSettleAfterDays"
-      ? resolve(msg("{count, plural, one {{count} day} other {{count} days}}", { count: value }))
-      : String(value);
-  }
+  if (typeof value === "number") return String(value);
   if (typeof value === "string") {
     if (key === "defaultThreadEnvMode" && (value === "local" || value === "worktree")) {
       return resolveEnvModeLabel(value, resolve);

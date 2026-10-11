@@ -13,7 +13,6 @@ import {
   SettingsScopeProvider,
   useSettingsScope,
 } from "../components/settings/SettingsScopeContext";
-import { useEnvironments } from "../state/environments";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
@@ -23,7 +22,6 @@ import {
 } from "../components/settings/settingsScopeNavigation";
 import {
   getSettingsSearchTargetScope,
-  getThreadAutoSettlementSearchAvailability,
   isSettingsSearchScopeAvailable,
   movedSettingsPath,
 } from "../components/settings/settingsSearch";
@@ -47,37 +45,10 @@ function RestoreDeviceDefaultsButton({ onRestored }: { onRestored: () => void })
 
 function SettingsScopeBoundary({ pathname, children }: { pathname: string; children: ReactNode }) {
   const { scope, connectedEnvironments } = useSettingsScope();
-  const { environments } = useEnvironments();
   const gt = useGT();
   const m = useMessages();
   const hash = useLocation({ select: (location) => location.hash });
   const searchTarget = getSettingsSearchTargetScope(hash);
-  const autoSettlementAvailability = searchTarget?.requiresThreadAutoSettlement
-    ? getThreadAutoSettlementSearchAvailability(environments, scope)
-    : null;
-  if (
-    scope.kind !== "unavailable" &&
-    searchTarget &&
-    autoSettlementAvailability &&
-    !autoSettlementAvailability.isTargetAvailable
-  ) {
-    return (
-      <SettingsScopeNotice
-        target="environment"
-        targetId={hash}
-        eligibleEnvironmentIds={autoSettlementAvailability.eligibleEnvironmentIds}
-      >
-        {autoSettlementAvailability.eligibleEnvironmentIds.length > 0
-          ? gt("{title} requires a supporting environment. Choose one to continue.", {
-              title: m(searchTarget.title),
-            })
-          : gt(
-              "{title} requires a supporting environment. Connect or update an environment to continue.",
-              { title: m(searchTarget.title) },
-            )}
-      </SettingsScopeNotice>
-    );
-  }
   if (
     scope.kind !== "unavailable" &&
     searchTarget &&
