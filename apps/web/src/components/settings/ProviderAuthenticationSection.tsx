@@ -40,18 +40,31 @@ const EVERYWHERE_METHOD = {
     "Signs in separately on this machine and each connected machine, so each keeps its own login and shows the account's email, plan and usage. Opens one sign-in page per machine; paste each page's code back here. Replaces a shared login token.",
 };
 
+/**
+ * Claude only, and only with another machine to sign in on. Client-side: each
+ * machine runs its ordinary "claudeai" login.
+ */
+export function offersSignInEverywhere(provider: ServerProvider, environmentCount: number) {
+  return provider.driver === "claudeAgent" && environmentCount > 1;
+}
+
 export function ProviderAuthenticationSection({
   environmentId,
   environmentLabel,
   instanceId,
   provider,
   readOnly,
+  everywhereOpen: everywhereOpenProp,
+  onEverywhereOpenChange,
 }: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly instanceId: ProviderInstanceId;
   readonly provider: ServerProvider;
   readonly readOnly: boolean;
+  /** Lets a parent such as the add-provider wizard open the every-machine panel. */
+  readonly everywhereOpen?: boolean;
+  readonly onEverywhereOpenChange?: (open: boolean) => void;
 }) {
   const target = { environmentId, input: { instanceId } };
   const query = useEnvironmentQuery(serverEnvironment.providerAuthState(target));
@@ -68,7 +81,9 @@ export function ProviderAuthenticationSection({
   const pendingRef = useRef(false);
   const terminalQueue = useRef<ProviderAuthRespondInput[]>([]);
   const terminalSending = useRef(false);
-  const [everywhereOpen, setEverywhereOpen] = useState(false);
+  const [everywhereOpenState, setEverywhereOpenState] = useState(false);
+  const everywhereOpen = everywhereOpenProp ?? everywhereOpenState;
+  const setEverywhereOpen = onEverywhereOpenChange ?? setEverywhereOpenState;
   const { environments } = useEnvironments();
   const auth = query.data;
   const interaction = auth?.interaction;
@@ -116,18 +131,17 @@ export function ProviderAuthenticationSection({
               : `Sign in on ${environmentLabel}.`;
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
+  // The default method whenever it is offered.
+  const everywhereMethod = offersSignInEverywhere(provider, environments.length)
+    ? EVERYWHERE_METHOD
+    : undefined;
   const defaultMethod =
-    provider.driver === "claudeAgent"
+    everywhereMethod ??
+    (provider.driver === "claudeAgent"
       ? auth?.methods?.find((method) => method.id === "claudeai")
-      : undefined;
-  // Claude only, and only with another machine to sign in on. Client-side: each
-  // machine runs its ordinary "claudeai" login.
-  const everywhereMethod =
-    provider.driver === "claudeAgent" && environments.length > 1 ? EVERYWHERE_METHOD : undefined;
-  const selectedMethod =
-    (methodId === EVERYWHERE_METHOD.id ? everywhereMethod : undefined) ??
-    auth?.methods?.find((method) => method.id === methodId) ??
-    defaultMethod;
+      : undefined);
+  const everywhereSelected = everywhereMethod !== undefined && methodId === "";
+  const selectedMethod = auth?.methods?.find((method) => method.id === methodId) ?? defaultMethod;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
   const values = draft.id === draftId ? draft.values : {};
   const url =
@@ -230,14 +244,10 @@ export function ProviderAuthenticationSection({
       }
       control={
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {everywhereOpen ? null : !active && (auth?.methods?.length ?? 0) > 1 ? (
+          {everywhereOpen ? null : !active &&
+            (auth?.methods?.length ?? 0) + (everywhereMethod ? 1 : 0) > 1 ? (
             <Select
-              value={
-                auth?.methods?.some((method) => method.id === methodId) ||
-                (everywhereMethod && methodId === everywhereMethod.id)
-                  ? methodId
-                  : ""
-              }
+              value={auth?.methods?.some((method) => method.id === methodId) ? methodId : ""}
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
@@ -257,9 +267,6 @@ export function ProviderAuthenticationSection({
                     </SelectItem>
                   ) : null,
                 )}
-                {everywhereMethod ? (
-                  <SelectItem value={everywhereMethod.id}>{everywhereMethod.name}</SelectItem>
-                ) : null}
               </SelectPopup>
             </Select>
           ) : null}
@@ -332,7 +339,7 @@ export function ProviderAuthenticationSection({
                   variant="outline"
                   disabled={disabled || !provider.enabled || !provider.installed || !auth}
                   onClick={() =>
-                    everywhereMethod && methodId === everywhereMethod.id
+                    everywhereSelected
                       ? setEverywhereOpen(true)
                       : void run(() =>
                           start({
