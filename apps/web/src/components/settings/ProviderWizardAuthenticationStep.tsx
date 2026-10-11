@@ -1,12 +1,17 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import { T, useGT, useMessages } from "gt-react";
+import { useState } from "react";
 
+import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { Button } from "../ui/button";
 import { WizardFooter, WizardPanel } from "../ui/wizard";
-import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
+import {
+  offersSignInEverywhere,
+  ProviderAuthenticationSection,
+} from "./ProviderAuthenticationSection";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./settingsLayout";
 
@@ -39,6 +44,15 @@ export function ProviderWizardAuthenticationStep({
     (provider?.auth.status === "unknown" && auth?.phase === "succeeded");
   const isDiscovering = !signedIn && !query.error && auth?.methods === undefined;
   const canAuthenticate = (auth?.methods?.length ?? 0) > 0;
+  const { environments } = useEnvironments();
+  const [everywhereOpen, setEverywhereOpen] = useState(false);
+  // Signing in on this machine is only part of the job when other machines can
+  // sign in too, so the footer leads there instead of closing the wizard.
+  const offerEverywhere =
+    provider !== undefined &&
+    canAuthenticate &&
+    !everywhereOpen &&
+    offersSignInEverywhere(provider, environments.length);
 
   return (
     <>
@@ -59,6 +73,8 @@ export function ProviderWizardAuthenticationStep({
                 },
               }}
               readOnly={false}
+              everywhereOpen={everywhereOpen}
+              onEverywhereOpenChange={setEverywhereOpen}
             />
           ) : (
             <SettingsRow
@@ -92,14 +108,14 @@ export function ProviderWizardAuthenticationStep({
         </SettingsGroup>
       </WizardPanel>
       <WizardFooter>
-        <Button
-          size="sm"
-          variant={signedIn ? "default" : "outline"}
-          disabled={active}
-          onClick={onFinish}
-        >
-          {signedIn ? gt("Done") : gt("Skip for now")}
+        <Button size="sm" variant="ghost-muted" disabled={active} onClick={onFinish}>
+          {signedIn || everywhereOpen ? gt("Done") : gt("Skip for now")}
         </Button>
+        {offerEverywhere ? (
+          <Button size="sm" disabled={active} onClick={() => setEverywhereOpen(true)}>
+            <T>Sign in on every machine</T>
+          </Button>
+        ) : null}
       </WizardFooter>
     </>
   );
