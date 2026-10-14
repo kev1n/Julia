@@ -166,6 +166,7 @@ import {
 import { dedupeSnapshotBodies } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
+import * as ThreadHistory from "./fork/threadHistory/ThreadHistory.ts";
 import * as OrchestrationEventStore from "./persistence/OrchestrationEventStore.ts";
 import { userFacingDispatchErrorMessage } from "./orchestration-v2/UserFacingErrors.ts";
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
@@ -1245,6 +1246,7 @@ export const layerWsRpc = (
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
+      const threadHistory = yield* ThreadHistory.ThreadHistory;
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
@@ -2532,6 +2534,7 @@ export const layerWsRpc = (
                 message: cause instanceof Error ? cause.message : String(cause),
               }),
           }),
+        [WS_METHODS.forkThreadHistory]: (input) => threadHistory.watch(input.threadId),
         [WS_METHODS.forkFleetOverlaps]: (input) =>
           fleetSuggestions
             ? fleetSuggestions.read(input.threadId)

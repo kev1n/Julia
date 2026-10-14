@@ -171,6 +171,7 @@ import type {
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { FleetOverlapNotice } from "../../fork/FleetOverlapNotice";
+import { ThreadHistoryNotice } from "../../fork/ThreadHistoryNotice";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
@@ -1491,6 +1492,10 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                     />
                   ))}
                   <FleetOverlapNotice
+                    environmentId={props.environmentId}
+                    threadId={props.selectedThread.id}
+                  />
+                  <ThreadHistoryNotice
                     environmentId={props.environmentId}
                     threadId={props.selectedThread.id}
                   />

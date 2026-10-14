@@ -234,6 +234,51 @@ environment and thread id plus the repository's canonical key; paths are reposit
   `t3_who_else` remains the separate raw file-evidence tool. Old servers may leave `fork-fleet-notices.json` and,
   on mac-a, `fork-fleet-alerts-state.json` behind; nothing reads them now.
 
+**Settled threads in Azure** (`apps/server/src/fork/threadHistory/`,
+`apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). A thread that
+is settled (`settledOverride = "settled"`) or archived, and not deleted, moves its history off the
+machine a few seconds later (upstream's 5-second due-work scheduler): every event except its
+`thread.*` events, its `message.updated` events and its `provider-session.*` events, plus the
+projection rows those events wrote (runs, nodes, turn items, tool output, checkpoints...). On
+mac-a on 2026-10-13 that is 473 MB of the settled threads' 499 MB of event JSON; the kept message
+text is about 18 MB, so lists, titles and content search (`ThreadSearch`, which reads
+`orchestration_v2_projection_messages`, used by the sidebar search, the phone and `t3_thread_search`)
+still find the thread by any phrase in it. A content search over Azure would have to download every
+blob per query. Attachments stay on disk (17 MB in all on mac-a).
+
+- Offload uploads a gzip bundle to `<environment id>/<thread id>/<time>.json.gz`, downloads it and
+  checks its SHA-256, then deletes locally in one transaction that checks the thread again. It
+  never moves a thread with a running or queued turn, a waiting request or secret request, pending
+  effects or background work, a message waiting to start, a scheduled usage-limit resume, an open
+  fork of it (forks read their source's rows), an event type it does not know, or a row id another
+  thread owns (Orchestrator reuses message ids). `fork_thread_history` keeps the pointer.
+- Restore runs before every thread read and every command except metadata-only ones (visit, pin,
+  rename, pull request sync, snooze, settle, archive, delete), from `ensureLegacyTranscript` in
+  `ThreadManagementService`: opening, unsettling, unarchiving, sending, MCP `t3_thread_read` and the
+  fleet's peer read all go through it. Events come back under new sequence numbers (so a client that
+  cached the stub receives them) and their rows are rebuilt with the current projection code. A
+  thread opened to read stays local until it is settled or archived again; each offload is a new
+  blob, so re-settling restarts its 60 days.
+- `fork.threadHistory` (stream RPC, read scope) reports `restoring`, `expired` or `unavailable`,
+  shown in the composer's activity slot on web and desktop and above the composer on the phone.
+  Expired (the blob is gone) leaves the stub readable; unavailable fails the read, so the client
+  keeps retrying, and the notice has Retry.
+- Retention: the lifecycle rule `t3-thread-history-60-days` on storage account `examplestorage`
+  (resource group `example-rg`) deletes blobs 60 days after creation (prefix `t3-thread-history/`).
+  The account's one lifecycle policy document also holds the Orchestrator backup rules
+  (`orchestrator-backups/db/{hourly,weekly,monthly}/`, 7/28/31 days): change it by reading the policy,
+  merging and writing it back, never by replacing it.
+- Credentials: app registration `t3-thread-history` has only Storage Blob Data Contributor on
+  container `t3-thread-history`; its client secret (expires 2027-10-14) is the JSON in Key Vault
+  `example-vault` secret `example-secret`, read with the machine's own `az`
+  login when first needed and kept only in memory. `t3-thread-history-test` / its `-test-credential`
+  secret is the same for the test container. `T3CODE_THREAD_HISTORY_SECRET` picks another secret,
+  `off` turns the feature off. A Mac without an `az` login offloads nothing.
+- Disk: rows deleted inside SQLite free pages, not disk. `install-runtime.sh` switches the
+  database to incremental vacuum once per machine, at a deploy (one `VACUUM` with the server
+  stopped, 42 s for mac-a's 2.8 GB), and the server runs `PRAGMA incremental_vacuum` after each
+  offload.
+
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
 `fork/scripts/artifacts-server.py`). An Android build, **T3 Code (Owner)**
 (`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
@@ -389,6 +434,15 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/web/src/components/settings/AddProviderInstanceDialog.tsx`, `AddCodexAccountDialog.tsx`:
   the Add to all machines switch and the fan-out after a successful add.
 - `apps/web/src/components/settings/AddProviderInstanceDialog.environment.test.tsx`: mocks the fan-out.
+- `apps/server/src/orchestration-v2/ThreadManagementService.ts`: `ensureLegacyTranscript` also restores a
+  settled thread's history (`fork/threadHistory`), given the command type when dispatching.
+- `apps/server/src/orchestration-v2/runtimeLayer.ts`: provides `ThreadHistory` and registers its sweep.
+- `packages/contracts/src/rpc.ts`, `index.ts`: the `fork.threadHistory` stream RPC
+  (`forkThreadHistory.ts`); `apps/server/src/ws.ts`, `auth/RpcAuthorization.ts`,
+  `observability/RpcInstrumentation.ts`: its handler, read scope and span kind.
+- `packages/client-runtime/src/rpc/client.ts`, `state/server.ts`: its subscription atom.
+- `apps/web/src/components/ChatView.tsx`: the history notice, in place of "Syncing messages" while
+  it restores or fails; `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`: the phone's notice.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -400,7 +454,8 @@ pictures and account marks (1), sync and update serving (1), and its layout fix 
 then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
 machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
 in scheduled runs (1; moves the account rule to `packages/shared`), then limited accounts on
-desktop and the Codex default (1), then providers on every machine (1).
+desktop and the Codex default (1), then providers on every machine (1), then settled threads in
+Azure (1).
 
 ## Sync, build, deploy
 
