@@ -40,11 +40,18 @@ const providerInstanceId = ProviderInstanceId.make("claudeAgent");
 const modelSelection = { instanceId: providerInstanceId, model: "claude-opus-5-5" };
 const projectId = ProjectId.make("project:history");
 
-/** A blob container in memory; `failNext` makes the next download fail like Azure being down. */
+/**
+ * A blob container in memory. `failNext` makes the next download fail like
+ * Azure being down; `down` makes signing in fail, and `signIns` counts tries.
+ */
 function memoryBlobs() {
   const blobs = new Map<string, Uint8Array>();
-  const state = { failNext: false };
+  const state = { failNext: false, down: false, signIns: 0 };
   const store: HistoryBlobStore = {
+    ready: async () => {
+      state.signIns += 1;
+      if (state.down) throw new HistoryBlobUnavailable({ message: "Azure sign-in failed" });
+    },
     put: async (name, body) => void blobs.set(name, Uint8Array.from(body)),
     get: async (name) => {
       if (state.failNext) {
@@ -409,6 +416,28 @@ it.layer(layerTest)("ThreadHistory", (it) => {
 
       assert.equal(blobs.blobs.size, 2);
       assert.equal(yield* movedEventCount(threadId), 0);
+    }),
+  );
+
+  it.effect("pauses offloading after Azure fails, until another thread settles", () =>
+    Effect.gen(function* () {
+      const blobs = memoryBlobs();
+      const history = yield* ThreadHistory.make(blobs.store);
+      blobs.state.down = true;
+      const first = yield* settledThread("paused-first");
+      yield* history.sweep("env");
+      assert.equal(blobs.state.signIns, 1);
+
+      // New events elsewhere, same waiting threads: no new attempt.
+      yield* settledThread("paused-busy", { settled: false });
+      yield* history.sweep("env");
+      assert.equal(blobs.state.signIns, 1);
+
+      blobs.state.down = false;
+      yield* settledThread("paused-second");
+      yield* history.sweep("env");
+      assert.equal(yield* movedEventCount(first), 0);
+      assert.equal(blobs.blobs.size, 2);
     }),
   );
 });
