@@ -50,6 +50,7 @@ import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/mod
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { restoreAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
+import { countSubagentsKeptOnStop } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   composerContextSendBlockReason,
   reidentifyComposerContext,
@@ -490,6 +491,14 @@ export function useThreadComposerState(input: {
   const interruptibleRunId = threadRuntimeHasInterruptibleRun(selectedThreadRuntime)
     ? (selectedThreadRuntime?.activeRunId ?? null)
     : null;
+  // Only a running main agent can be stopped apart from its subagents.
+  const keptSubagentCount = (() => {
+    const projection = selectedThreadProjection?.projection;
+    const run = projection?.runs.find((candidate) => candidate.id === interruptibleRunId);
+    return projection !== undefined && run?.status === "running"
+      ? countSubagentsKeptOnStop(projection.subagents)
+      : 0;
+  })();
 
   const cancelQueuedRunEdit = () => {
     if (selectedThreadKey === null || savingQueuedEditRef.current) return;
@@ -1088,6 +1097,7 @@ export function useThreadComposerState(input: {
     interactionMode,
     activeThreadBusy,
     interruptibleRunId,
+    keptSubagentCount,
     onChangeDraftMessage,
     onPickDraftMedia,
     onPickDraftFiles,

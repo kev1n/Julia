@@ -18,6 +18,7 @@ import {
   type OrchestratorMcpCapabilitiesInput,
   type OrchestratorMcpCapabilitiesResult,
   type OrchestratorMcpModelOption,
+  type OrchestratorMcpRuntimeMode,
   type OrchestratorMcpCreateThreadsInput,
   type OrchestratorMcpCreateThreadsResult,
   type OrchestratorMcpCreatedThread,
@@ -3422,7 +3423,7 @@ const make = Effect.gen(function* () {
       if (
         current.workState !== "waiting_for_children" &&
         !(yield* threadManagement
-          .delegatedTaskResultPending(current.childThreadId)
+          .delegatedTaskResultPending(childThreadId)
           .pipe(Effect.mapError(threadManagementFailure))) &&
         ThreadManagementService.latestActiveRun(child) === undefined &&
         !child.runs.some(
@@ -4059,6 +4060,7 @@ const make = Effect.gen(function* () {
           threadId: input.threadId,
           ...(input.runId === undefined ? {} : { runId: input.runId }),
           reason: agentStopReason(input.reason),
+          ...(input.keepSubagents === true ? { keepSubagents: true } : {}),
         })
         .pipe(
           Effect.mapError((error) =>
