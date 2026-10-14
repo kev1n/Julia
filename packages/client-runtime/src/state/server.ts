@@ -1393,6 +1393,11 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 10_000,
       refreshIntervalMs: 30_000,
     }),
+    // Fork (Owner): where a settled thread's history is; subscribing restores it from Azure.
+    threadHistory: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:fork:thread-history",
+      tag: WS_METHODS.forkThreadHistory,
+    }),
     processResourceHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:process-resource-history",
       tag: WS_METHODS.serverGetProcessResourceHistory,

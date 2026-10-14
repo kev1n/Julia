@@ -2,6 +2,7 @@ import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as UsageWindowKeepAlive from "../fork/usageWindowKeepAlive.ts";
+import * as ThreadHistory from "../fork/threadHistory/ThreadHistory.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -259,9 +260,13 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
   ),
 );
 
+const layerThreadHistoryProvided = ThreadHistory.layer.pipe(
+  Layer.provide(Layer.merge(layerEventStoreProvided, ProjectionStore.layer)),
+);
 const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImporter.pipe(
   Layer.provide(
     Layer.mergeAll(
+      layerThreadHistoryProvided,
       layerOrchestratorProvided,
       layerLegacyV1ThreadImporterProvided,
       layerCommandReceiptStoreProvided,
@@ -385,6 +390,7 @@ export const layer = Layer.mergeAll(
   layerProviderRuntimeRecoveryProvided,
   layerProjectionMaintenanceProvided,
   layerLegacyV1ThreadImporterProvided,
+  layerThreadHistoryProvided,
 );
 
 export const layerProduction = Layer.mergeAll(
@@ -412,6 +418,7 @@ export const layerProduction = Layer.mergeAll(
     ),
   ),
   UsageWindowKeepAlive.layer.pipe(Layer.provide(TextGeneration.layer)),
+  ThreadHistory.layerSweep.pipe(Layer.provide(layerThreadHistoryProvided)),
   layerProviderContinuationWorkerProvided,
   layerAgentSessionScannerProvided,
   layerAgentSessionImporterProvided,
