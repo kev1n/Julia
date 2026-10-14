@@ -294,7 +294,10 @@ Staff"'s subagents and nothing resumed them for an hour.
 - Planned restarts wait. `live-work.sh` lists what a restart would cut off: runs that are working
   or about to start, the provider's background roster (shells, Monitors), running
   subagent/shell/tool items, and a wake turn Claude started for a finished task. Background work
-  counts only while its provider session is live. `deploy-when-idle.sh` and the daily
+  counts only while its provider session is live. A held queued message (after Stop, a provider
+  failure or a restart) does not count: it waits for a person and survives a restart. Sending a
+  message to that thread, from the user or over MCP, resumes the held queue, earliest message first;
+  upstream starts the user's new message ahead and leaves the hold to anything an agent sends. `deploy-when-idle.sh` and the daily
   `pull-deploy.sh` install only when it prints nothing. There is no timeout: every 30 s check logs
   what it waits for and since when (`~/t3-fork/logs/deploy-when-idle-<sha>.log`). A dev server
   left running holds the deploy until it stops, which is the same rule. Restarts started by hand
