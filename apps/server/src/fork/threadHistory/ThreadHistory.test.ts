@@ -2,9 +2,11 @@ import { assert, it } from "@effect/vitest";
 import {
   EventId,
   MessageId,
+  NodeId,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
+  type OrchestrationV2ThreadShell,
   ProjectId,
   ProviderInstanceId,
   RunId,
@@ -29,8 +31,9 @@ import {
   HistoryBlobRejected,
   HistoryBlobUnavailable,
   type HistoryBlobStore,
+  sha256Hex,
 } from "./blobStore.ts";
-import { MOVED_EVENT_TYPES } from "./historyStore.ts";
+import { decodeBundle, encodeBundle, MOVED_EVENT_TYPES } from "./historyStore.ts";
 import * as ThreadHistory from "./ThreadHistory.ts";
 
 const layerStores = Layer.mergeAll(EventStore.layer, ProjectionStore.layer).pipe(
@@ -265,6 +268,13 @@ const movedEventCount = (threadId: ThreadId) =>
     `.pipe(Effect.map((rows) => rows[0]!.n)),
   );
 
+/**
+ * How a thread lists while away: as it did, except the turn-item counts, which
+ * come from the moved rows and only matter once it is open (and back).
+ */
+const listedAway = (shell: OrchestrationV2ThreadShell | null) =>
+  shell && { ...shell, itemCount: 0, visibleItemCount: 0 };
+
 const firstStatus = (history: ThreadHistory.ThreadHistory["Service"], threadId: ThreadId) =>
   history.watch(threadId).pipe(
     Stream.take(1),
@@ -293,6 +303,120 @@ it.layer(layerTest)("ThreadHistory", (it) => {
 
       assert.deepEqual(yield* snapshot(threadId), before);
       assert.equal((yield* firstStatus(history, threadId))?.state, "local");
+    }),
+  );
+
+  it.effect("an offloaded thread lists exactly as it did, not as a thread that never ran", () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const history = yield* ThreadHistory.make(memoryBlobs().store);
+      const threadId = yield* settledThread("listed");
+      const before = yield* projections.getThreadShell(threadId);
+      assert.equal(before?.status, "completed");
+
+      yield* history.sweep("env");
+
+      assert.equal(yield* movedEventCount(threadId), 0);
+      assert.deepEqual(yield* projections.getThreadShell(threadId), listedAway(before));
+    }),
+  );
+
+  it.effect("a provider's own subagent thread lists as finished while away", () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const history = yield* ThreadHistory.make(memoryBlobs().store);
+      const threadId = ThreadId.make("thread:native-subagent");
+      const parentThreadId = ThreadId.make("thread:native-parent");
+      const base = threadPayload(threadId, {
+        createdBy: "agent",
+        creationSource: "provider",
+        lineage: { parentThreadId, relationshipToParent: "subagent", rootThreadId: parentThreadId },
+      });
+      const node = (id: string, kind: "root_turn" | "tool_call") => ({
+        id: NodeId.make(`node:native:${id}`),
+        threadId,
+        runId: null,
+        parentNodeId: kind === "root_turn" ? null : NodeId.make("node:native:root"),
+        rootNodeId: NodeId.make("node:native:root"),
+        kind,
+        status: "completed" as const,
+        countsForRun: false,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        runtimeRequestId: null,
+        checkpointScopeId: null,
+        startedAt: at,
+        completedAt: at,
+      });
+      const event = (id: string, rest: object) =>
+        ({
+          id: EventId.make(`event:native:${id}`),
+          threadId,
+          occurredAt: at,
+          ...rest,
+        }) as OrchestrationV2DomainEvent;
+      yield* (yield* EventSink.EventSinkV2).write({
+        events: [
+          event("created", { type: "thread.created", payload: base }),
+          event("root", { type: "node.updated", payload: node("root", "root_turn") }),
+          event("tool", { type: "node.updated", payload: node("tool", "tool_call") }),
+          event("settled", {
+            type: "thread.settled",
+            payload: { ...base, settledOverride: "settled", settledAt: at },
+          }),
+        ],
+      });
+      const before = yield* projections.getThreadShell(threadId);
+      assert.equal(before?.nativeSubagentActivity?.status, "completed");
+
+      yield* history.sweep("env");
+
+      assert.equal(yield* movedEventCount(threadId), 1);
+      assert.deepEqual(yield* projections.getThreadShell(threadId), listedAway(before));
+    }),
+  );
+
+  it.effect("a thread offloaded with its runs gets them back, and still restores identical", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const blobs = memoryBlobs();
+      const threadId = yield* settledThread("old-stub");
+      const listed = yield* projections.getThreadShell(threadId);
+      const before = yield* snapshot(threadId);
+      yield* (yield* ThreadHistory.make(blobs.store)).sweep("env");
+
+      // What the first release left: the run events only in the blob.
+      const runEvents = yield* sql<Record<string, unknown>>`
+        SELECT * FROM orchestration_events WHERE stream_id = ${threadId} AND event_type LIKE 'run.%'
+        ORDER BY sequence
+      `;
+      yield* sql`DELETE FROM orchestration_events WHERE stream_id = ${threadId} AND event_type LIKE 'run.%'`;
+      yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}`;
+      const [record] = yield* sql<{ readonly blob_name: string; readonly sha256: string }>`
+        SELECT blob_name, sha256 FROM fork_thread_history WHERE thread_id = ${threadId}
+      `;
+      const bundle = decodeBundle(blobs.blobs.get(record!.blob_name)!);
+      const old = encodeBundle({
+        ...bundle,
+        events: [...(runEvents as never[]), ...bundle.events],
+      });
+      blobs.blobs.set(record!.blob_name, old);
+      yield* sql`
+        UPDATE fork_thread_history SET sha256 = ${sha256Hex(old)}, runs_local = NULL
+        WHERE thread_id = ${threadId}
+      `;
+      assert.equal((yield* projections.getThreadShell(threadId))?.status, "idle");
+
+      // A restart's first sweep repairs it.
+      yield* (yield* ThreadHistory.make(blobs.store)).sweep("env");
+
+      assert.deepEqual(yield* projections.getThreadShell(threadId), listedAway(listed));
+      assert.equal(yield* movedEventCount(threadId), 0);
+      const history = yield* ThreadHistory.make(blobs.store);
+      yield* history.ensureLocal(threadId);
+      assert.deepEqual(yield* snapshot(threadId), before);
     }),
   );
 

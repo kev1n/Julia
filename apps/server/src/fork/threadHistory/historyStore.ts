@@ -1,19 +1,8 @@
 /**
- * Fork (Owner): the local half of keeping settled threads' history in Azure.
- *
- * What moves: every event of a settled or archived thread except its
- * `thread.*` events (the stub: title, project, timestamps, lifecycle),
- * `message.updated` events (the plain user and assistant text, so search keeps
- * finding the thread by content) and `provider-session.*` events (their rows are
- * shared between threads), plus the projection rows those moved events wrote.
- * Measured on mac-a on 2026-10-13: the moved part is 473 MB of event JSON, the
- * kept message text about 18 MB.
- *
- * Restore puts the events back under new sequence numbers (so a client that
- * cached the stub receives them when it resumes) and rebuilds their projection
- * rows with the current code, so a projection schema change while the thread
- * was away cannot strand rows in an old shape. The thread row itself is never
- * removed, and is written back as it was after the replay.
+ * Fork (Owner): the local half of offloading. Everything moves except `thread.*`, `message.updated`,
+ * `run.*`/runless root-turn node events (lists need status) and `provider-session.*` events.
+ * Restore replays under new sequence numbers and rebuilds projections with current code, so a
+ * schema change while away strands nothing; the thread row itself is never removed.
  */
 import { ThreadId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -29,9 +18,6 @@ import { threadHasQueuedTurnStart } from "../../orchestration-v2/ThreadSettlemen
 
 /** Event types that move, with the projection table and key each one writes. */
 const MOVED_EVENTS: Record<string, { table: string; key: string; id: string } | null> = {
-  "run.created": { table: "runs", key: "run_id", id: "$.id" },
-  "run.updated": { table: "runs", key: "run_id", id: "$.id" },
-  "run.background-work-cancelled": { table: "runs", key: "run_id", id: "$.runId" },
   "run-attempt.created": { table: "run_attempts", key: "attempt_id", id: "$.id" },
   "run-attempt.updated": { table: "run_attempts", key: "attempt_id", id: "$.id" },
   "node.updated": { table: "nodes", key: "node_id", id: "$.id" },
@@ -48,8 +34,21 @@ const MOVED_EVENTS: Record<string, { table: string; key: string; id: string } | 
 };
 /** Context transfers belong to the thread they were sent to. */
 const TRANSFER_EVENTS = ["context-transfer.created", "context-transfer.updated"];
+/** Moved before 2026-10-14; `repairRuns` puts them back for those threads. */
+const RUN_EVENTS = ["run.created", "run.updated", "run.background-work-cancelled"];
+const isListedNode = (row: Pick<EventRow, "event_type" | "payload_json">) => {
+  if (row.event_type !== "node.updated") return false;
+  const node = JSON.parse(row.payload_json) as { kind?: string; runId?: string | null };
+  return node.kind === "root_turn" && node.runId == null;
+};
+const listedNodeEvent = (events: string) => `(
+  ${events}.event_type = 'node.updated'
+  AND json_extract(${events}.payload_json, '$.kind') = 'root_turn'
+  AND json_extract(${events}.payload_json, '$.runId') IS NULL
+)`;
 const KEPT_EVENTS = [
   "message.updated",
+  ...RUN_EVENTS,
   "provider-session.attached",
   "provider-session.updated",
   "provider-session.detached",
@@ -123,6 +122,11 @@ export const make = Effect.gen(function* () {
       restored_at TEXT
     )
   `;
+  // 1 once the events lists read are local (see RUN_EVENTS and isListedNode).
+  const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(fork_thread_history)`;
+  if (!columns.some((column) => column.name === "runs_local")) {
+    yield* sql`ALTER TABLE fork_thread_history ADD COLUMN runs_local INTEGER`;
+  }
 
   const toRecord = (row: Record<string, unknown>): OffloadedRecord => ({
     threadId: ThreadId.make(String(row.thread_id)),
@@ -156,6 +160,7 @@ export const make = Effect.gen(function* () {
     AND aggregate_kind = 'thread'
     AND application_event_version = 2
     AND event_type IN ${sql.in(MOVED_EVENT_TYPES)}
+    AND NOT ${sql.literal(listedNodeEvent("orchestration_events"))}
   `;
 
   /** Settled or archived threads with history still on this disk. */
@@ -175,6 +180,7 @@ export const make = Effect.gen(function* () {
         WHERE events.stream_id = threads.thread_id
           AND events.aggregate_kind = 'thread'
           AND events.event_type IN ${sql.in(MOVED_EVENT_TYPES)}
+          AND NOT ${sql.literal(listedNodeEvent("events"))}
       )
     ORDER BY threads.updated_at ASC
   `.pipe(Effect.map((rows) => rows.map((row) => ThreadId.make(row.thread_id))));
@@ -275,7 +281,10 @@ export const make = Effect.gen(function* () {
   const deleteMovedRows = (threadId: ThreadId) =>
     Effect.gen(function* () {
       for (const table of MOVED_TABLES) {
-        yield* sql`DELETE FROM ${sql(`orchestration_v2_projection_${table}`)} WHERE thread_id = ${threadId}`;
+        yield* sql`
+          DELETE FROM ${sql(`orchestration_v2_projection_${table}`)} WHERE thread_id = ${threadId}
+          ${table === "nodes" ? sql`AND NOT (kind = 'root_turn' AND run_id IS NULL)` : sql``}
+        `;
       }
       yield* sql`DELETE FROM orchestration_v2_projection_context_transfers WHERE target_thread_id = ${threadId}`;
       yield* sql`DELETE FROM orchestration_v2_turn_item_positions WHERE thread_id = ${threadId}`;
@@ -307,12 +316,12 @@ export const make = Effect.gen(function* () {
         yield* sql`
           INSERT OR REPLACE INTO fork_thread_history (
             thread_id, blob_name, sha256, event_count, last_sequence, local_bytes, blob_bytes,
-            offloaded_at, expired_at, settled_mark, restored_at
+            offloaded_at, expired_at, settled_mark, restored_at, runs_local
           )
           SELECT
             ${input.threadId}, ${input.blobName}, ${input.sha256}, ${input.eventCount},
             ${input.lastSequence}, ${input.localBytes}, ${input.blobBytes},
-            ${DateTime.formatIso(yield* DateTime.now)}, NULL, ${settledMark}, NULL
+            ${DateTime.formatIso(yield* DateTime.now)}, NULL, ${settledMark}, NULL, 1
           FROM orchestration_v2_projection_threads AS threads
           WHERE threads.thread_id = ${input.threadId}
         `;
@@ -321,6 +330,64 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  /**
+   * Inserts bundled events this machine does not have and projects them,
+   * leaving the thread row as it was. Inside the caller's transaction.
+   */
+  const putBack = (
+    threadId: ThreadId,
+    events: ReadonlyArray<EventRow>,
+    positions: HistoryBundle["positions"],
+  ) =>
+    Effect.gen(function* () {
+      const [threadRow] = yield* sql<Record<string, unknown>>`
+        SELECT * FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}
+      `;
+      const [before] = yield* sql<{ readonly last: number | null }>`
+        SELECT max(sequence) AS last FROM orchestration_events
+      `;
+      for (const row of events) {
+        yield* sql`
+          INSERT INTO orchestration_events (
+            event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
+            command_id, causation_event_id, correlation_id, actor_kind, payload_json,
+            metadata_json, application_event_version
+          )
+          SELECT
+            ${row.event_id}, ${row.aggregate_kind}, ${row.stream_id},
+            (SELECT COALESCE(MAX(stream_version) + 1, 0) FROM orchestration_events
+              WHERE aggregate_kind = ${row.aggregate_kind} AND stream_id = ${row.stream_id}),
+            ${row.event_type}, ${row.occurred_at}, ${row.command_id},
+            ${row.causation_event_id}, ${row.correlation_id}, ${row.actor_kind},
+            ${row.payload_json}, ${row.metadata_json}, ${row.application_event_version}
+          WHERE NOT EXISTS (SELECT 1 FROM orchestration_events WHERE event_id = ${row.event_id})
+        `;
+      }
+      for (const position of positions) {
+        yield* sql`
+          INSERT INTO orchestration_v2_turn_item_positions (thread_id, turn_item_id, ordinal)
+          VALUES (${threadId}, ${position.turn_item_id}, ${position.ordinal})
+        `;
+      }
+      const restored = yield* eventStore
+        .read({ threadId, afterSequence: before?.last ?? 0 })
+        .pipe(Stream.runCollect);
+      for (const stored of restored) yield* projections.apply(stored.event);
+      if (threadRow !== undefined) {
+        yield* sql`
+          UPDATE orchestration_v2_projection_threads SET ${sql.update(threadRow, ["thread_id"])}
+          WHERE thread_id = ${threadId}
+        `;
+      }
+      const last = Array.from(restored).at(-1)?.sequence;
+      if (last !== undefined) {
+        yield* sql`
+          UPDATE orchestration_v2_projection_metadata SET last_sequence = ${last}
+          WHERE projection_name = 'thread-projections' AND last_sequence < ${last}
+        `;
+      }
+    });
+
   /** Puts a verified bundle back and rebuilds its projection rows. */
   const restoreLocal = Effect.fn("ThreadHistoryStore.restoreLocal")(function* (
     bundle: HistoryBundle,
@@ -328,55 +395,32 @@ export const make = Effect.gen(function* () {
     const threadId = ThreadId.make(bundle.threadId);
     yield* sql.withTransaction(
       Effect.gen(function* () {
-        const [threadRow] = yield* sql<Record<string, unknown>>`
-          SELECT * FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}
-        `;
-        const [before] = yield* sql<{ readonly last: number | null }>`
-          SELECT max(sequence) AS last FROM orchestration_events
-        `;
         // A partial restore could have left rows; the replay recreates them all.
         yield* deleteMovedRows(threadId);
-        for (const row of bundle.events) {
-          yield* sql`
-            INSERT INTO orchestration_events (
-              event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
-              command_id, causation_event_id, correlation_id, actor_kind, payload_json,
-              metadata_json, application_event_version
-            ) VALUES (
-              ${row.event_id}, ${row.aggregate_kind}, ${row.stream_id},
-              (SELECT COALESCE(MAX(stream_version) + 1, 0) FROM orchestration_events
-                WHERE aggregate_kind = ${row.aggregate_kind} AND stream_id = ${row.stream_id}),
-              ${row.event_type}, ${row.occurred_at}, ${row.command_id},
-              ${row.causation_event_id}, ${row.correlation_id}, ${row.actor_kind},
-              ${row.payload_json}, ${row.metadata_json}, ${row.application_event_version}
-            )
-          `;
-        }
-        for (const position of bundle.positions) {
-          yield* sql`
-            INSERT INTO orchestration_v2_turn_item_positions (thread_id, turn_item_id, ordinal)
-            VALUES (${threadId}, ${position.turn_item_id}, ${position.ordinal})
-          `;
-        }
-        const restored = yield* eventStore
-          .read({ threadId, afterSequence: before?.last ?? 0 })
-          .pipe(Stream.runCollect);
-        for (const stored of restored) yield* projections.apply(stored.event);
-        if (threadRow !== undefined) {
-          yield* sql`
-            UPDATE orchestration_v2_projection_threads SET ${sql.update(threadRow, ["thread_id"])}
-            WHERE thread_id = ${threadId}
-          `;
-        }
-        const last = Array.from(restored).at(-1)?.sequence;
-        if (last !== undefined) {
-          yield* sql`
-            UPDATE orchestration_v2_projection_metadata SET last_sequence = ${last}
-            WHERE projection_name = 'thread-projections' AND last_sequence < ${last}
-          `;
-        }
+        yield* putBack(threadId, bundle.events, bundle.positions);
         const now = DateTime.formatIso(yield* DateTime.now);
         yield* sql`UPDATE fork_thread_history SET restored_at = ${now} WHERE thread_id = ${threadId}`;
+      }),
+    );
+  });
+
+  /** Offloaded threads whose listing events are still only in their blob. */
+  const runsAway = sql<{ readonly thread_id: string }>`
+    SELECT thread_id FROM fork_thread_history
+    WHERE restored_at IS NULL AND expired_at IS NULL AND runs_local IS NULL
+  `.pipe(Effect.map((rows) => rows.map((row) => ThreadId.make(row.thread_id))));
+
+  /** Puts back only the listing events of a verified bundle; the rest stays away. */
+  const repairRuns = Effect.fn("ThreadHistoryStore.repairRuns")(function* (bundle: HistoryBundle) {
+    const threadId = ThreadId.make(bundle.threadId);
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* putBack(
+          threadId,
+          bundle.events.filter((row) => RUN_EVENTS.includes(row.event_type) || isListedNode(row)),
+          [],
+        );
+        yield* sql`UPDATE fork_thread_history SET runs_local = 1 WHERE thread_id = ${threadId}`;
       }),
     );
   });
@@ -428,6 +472,8 @@ export const make = Effect.gen(function* () {
     collect,
     removeLocal,
     restoreLocal,
+    runsAway,
+    repairRuns,
     markExpired,
   };
 });

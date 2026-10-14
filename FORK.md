@@ -238,8 +238,11 @@ environment and thread id plus the repository's canonical key; paths are reposit
 `apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). A thread that
 is settled (`settledOverride = "settled"`) or archived, and not deleted, moves its history off the
 machine a few seconds later (upstream's 5-second due-work scheduler): every event except its
-`thread.*` events, its `message.updated` events and its `provider-session.*` events, plus the
-projection rows those events wrote (runs, nodes, turn items, tool output, checkpoints...). On
+`thread.*` events, its `message.updated` events, its `run.*` events and its `provider-session.*`
+events, plus the projection rows those events wrote (nodes, turn items, tool output,
+checkpoints...). Runs stay because a thread's status in every list comes from its latest run;
+without them a finished thread showed the working spinner. Threads offloaded before 2026-10-14
+get their run events back from their blob on the next sweep. On
 mac-a on 2026-10-13 that is 473 MB of the settled threads' 499 MB of event JSON; the kept message
 text is about 18 MB, so lists, titles and content search (`ThreadSearch`, which reads
 `orchestration_v2_projection_messages`, used by the sidebar search, the phone and `t3_thread_search`)
