@@ -74,6 +74,7 @@ import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 import { checkOutput, outputRequestProblem } from "./runOutput.ts";
+import * as ThreadHistory from "../fork/threadHistory/ThreadHistory.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -647,6 +648,8 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
   const worktreeRestore = yield* ThreadWorktreeRestore;
+  // Fork (Owner): settled threads' history may be in Azure (fork/threadHistory).
+  const threadHistory = yield* Effect.serviceOption(ThreadHistory.ThreadHistory);
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
     (input) =>
@@ -686,7 +689,7 @@ const make = Effect.gen(function* () {
 
   const ensureLegacyTranscript = Effect.fn(
     "orchestrationV2.threadManagement.ensureLegacyTranscript",
-  )(function* (threadId: ThreadId) {
+  )(function* (threadId: ThreadId, commandType?: OrchestrationV2ServerCommand["type"]) {
     yield* legacyImporter.ensureTranscript(threadId).pipe(
       Effect.tapError((cause) =>
         Effect.logWarning("Unable to hydrate migrated v1 thread transcript", {
@@ -695,6 +698,18 @@ const make = Effect.gen(function* () {
         }),
       ),
     );
+    if (Option.isSome(threadHistory)) {
+      yield* threadHistory.value.ensureLocal(threadId, commandType).pipe(
+        Effect.mapError(
+          (cause) =>
+            new LegacyV1ThreadImporter.LegacyV1ThreadImportError({
+              operation: "restore settled history for",
+              threadId,
+              cause,
+            }),
+        ),
+      );
+    }
   });
 
   const ensureProjectionTranscript = (threadId: ThreadId) =>
@@ -713,7 +728,7 @@ const make = Effect.gen(function* () {
   )(function* (command: OrchestrationV2ServerCommand) {
     yield* Effect.forEach(
       existingThreadIdsForCommand(command),
-      (threadId) => ensureLegacyTranscript(threadId),
+      (threadId) => ensureLegacyTranscript(threadId, command.type),
       { discard: true },
     ).pipe(
       Effect.mapError(
