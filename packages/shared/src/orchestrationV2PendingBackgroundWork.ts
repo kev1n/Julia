@@ -3,6 +3,7 @@ import type {
   OrchestrationV2ProviderThread,
   OrchestrationV2Run,
   OrchestrationV2ThreadShell,
+  OrchestrationV2Subagent,
   OrchestrationV2TurnItem,
   ThreadId,
   ThreadPullRequestLink,
@@ -320,4 +321,22 @@ function pullRequestWatchTasks(
           },
         ],
   );
+}
+
+/** Native subagents of these drivers keep running when only the main agent is stopped. */
+const DRIVERS_KEEPING_NATIVE_SUBAGENTS_ON_STOP = new Set(["claudeAgent"]);
+
+/**
+ * How many running subagents a Stop that keeps subagents leaves running: delegated tasks of
+ * any provider, and native subagents of providers whose main turn can stop without them.
+ */
+export function countSubagentsKeptOnStop(
+  subagents: ReadonlyArray<Pick<OrchestrationV2Subagent, "origin" | "driver" | "status">>,
+): number {
+  return subagents.filter(
+    (subagent) =>
+      isOrchestrationV2WorkActive(subagent.status) &&
+      (subagent.origin === "app_owned" ||
+        DRIVERS_KEEPING_NATIVE_SUBAGENTS_ON_STOP.has(subagent.driver)),
+  ).length;
 }

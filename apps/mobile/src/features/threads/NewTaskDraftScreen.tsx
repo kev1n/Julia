@@ -1000,6 +1000,7 @@ export function NewTaskDraftScreen(props: {
         connectionStateLabel={connectionState}
         activeThreadBusy={false}
         canStopThread={false}
+        keptSubagentCount={0}
         queuedRunEdit={null}
         composerDraftKey={flow.draftKey}
         followUpBehavior="queue"

@@ -214,7 +214,10 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   onSubmitMessage: React.MouseEventHandler<HTMLButtonElement>;
   onResume: () => void;
   onPreviousPendingQuestion: () => void;
-  onInterrupt: () => void;
+  onInterrupt: (options?: { readonly keepSubagents?: boolean }) => void;
+  keptSubagentCount: number;
+  stopMenuOpen: boolean;
+  onStopMenuOpenChange: (open: boolean) => void;
   compactBeforeSendTokens: number | null;
   hideCompactToggle: boolean;
   keepFullHistory: boolean;
@@ -245,6 +248,9 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         onResume={props.onResume}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
+        keptSubagentCount={props.keptSubagentCount}
+        stopMenuOpen={props.stopMenuOpen}
+        onStopMenuOpenChange={props.onStopMenuOpenChange}
         compactBeforeSendTokens={props.compactBeforeSendTokens}
         hideCompactToggle={props.hideCompactToggle}
         keepFullHistory={props.keepFullHistory}

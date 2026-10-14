@@ -22,6 +22,7 @@ import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../Sideb
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerStopMenu } from "./ComposerStopMenu";
 import {
   alternateComposerDispatchAction,
   resolveComposerDispatchMode,
@@ -60,7 +61,11 @@ interface ComposerPrimaryActionsProps {
   onSubmitMessage?: MouseEventHandler<HTMLButtonElement>;
   onResume?: () => void;
   onPreviousPendingQuestion: () => void;
-  onInterrupt: () => void;
+  onInterrupt: (options?: { readonly keepSubagents?: boolean }) => void;
+  /** Running subagents that can outlive the main agent; above zero, Stop asks which to stop. */
+  keptSubagentCount?: number;
+  stopMenuOpen?: boolean;
+  onStopMenuOpenChange?: (open: boolean) => void;
   compactBeforeSendTokens?: number | null;
   hideCompactToggle?: boolean;
   keepFullHistory?: boolean;
@@ -118,6 +123,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onResume,
   onPreviousPendingQuestion,
   onInterrupt,
+  keptSubagentCount = 0,
+  stopMenuOpen = false,
+  onStopMenuOpenChange,
   compactBeforeSendTokens = null,
   hideCompactToggle = false,
   keepFullHistory = false,
@@ -160,36 +168,65 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
-  const renderStopGenerationButton = (insidePendingAction: boolean) => (
-    <Tooltip key="interrupt">
-      <TooltipTrigger
-        render={
+  const stopButtonClassName = (insidePendingAction: boolean) =>
+    cn(
+      "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none disabled:cursor-default disabled:opacity-64 disabled:hover:bg-destructive/90 [&_svg]:pointer-events-none",
+      insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
+    );
+  const stopIcon = (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+      <rect x="2" y="2" width="8" height="8" rx="1.5" />
+    </svg>
+  );
+  const renderStopGenerationButton = (insidePendingAction: boolean) =>
+    keptSubagentCount > 0 && onStopMenuOpenChange !== undefined ? (
+      <ComposerStopMenu
+        key="interrupt"
+        subagentCount={keptSubagentCount}
+        open={stopMenuOpen}
+        onOpenChange={onStopMenuOpenChange}
+        onStop={(options) => {
+          if (!canOperateThread || isStopDisabled) return;
+          setStopPhase("pending");
+          onInterrupt(options);
+        }}
+        trigger={
           <button
             type="button"
-            className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none disabled:cursor-default disabled:opacity-64 disabled:hover:bg-destructive/90 [&_svg]:pointer-events-none",
-              insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
-            )}
+            className={stopButtonClassName(insidePendingAction)}
             {...pointerFocusProps}
             disabled={!canOperateThread || isStopDisabled}
-            onClick={() => {
-              if (!canOperateThread || isStopDisabled) return;
-              setStopPhase("pending");
-              onInterrupt();
-            }}
-            aria-label={stopLabel}
-          />
+            aria-label="Stop agents"
+          >
+            {stopIcon}
+          </button>
         }
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <rect x="2" y="2" width="8" height="8" rx="1.5" />
-        </svg>
-      </TooltipTrigger>
-      <TooltipPopup>
-        {stopPhase === "pending" ? "Stopping…" : stopPhase === "landed" ? "Stopped" : "Interrupt"}
-      </TooltipPopup>
-    </Tooltip>
-  );
+      />
+    ) : (
+      <Tooltip key="interrupt">
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className={stopButtonClassName(insidePendingAction)}
+              {...pointerFocusProps}
+              disabled={!canOperateThread || isStopDisabled}
+              onClick={() => {
+                if (!canOperateThread || isStopDisabled) return;
+                setStopPhase("pending");
+                onInterrupt();
+              }}
+              aria-label={stopLabel}
+            />
+          }
+        >
+          {stopIcon}
+        </TooltipTrigger>
+        <TooltipPopup>
+          {stopPhase === "pending" ? "Stopping…" : stopPhase === "landed" ? "Stopped" : "Interrupt"}
+        </TooltipPopup>
+      </Tooltip>
+    );
 
   // Keep the clicked target at the right edge even if typing changes the primary action.
   const withStopButton = (action: ReactNode) => (
@@ -254,10 +291,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
+  // An open Stop menu keeps its button, even after typing replaced it with Send.
   if (
     (canInterrupt || stopPhase === "pending" || stopPhase === "timedOut") &&
-    !hasSendableContent &&
-    !isEditingQueuedMessage
+    (stopMenuOpen || (!hasSendableContent && !isEditingQueuedMessage))
   ) {
     return (
       <>
