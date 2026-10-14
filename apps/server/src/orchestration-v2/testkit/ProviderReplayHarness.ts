@@ -206,6 +206,10 @@ export function runOrchestratorV2ProviderReplayScenario<
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
+    // Close as serverRuntimeStartup's finalizer does: capture restart intent while
+    // providers are live, stop them, then reconcile. Otherwise closing only
+    // releases the provider sessions.
+    readonly shutdownLikeServer?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     readonly managedPolicy?: ManagedPolicyDocument;
   } = {},
@@ -249,6 +253,10 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
+    // Close as serverRuntimeStartup's finalizer does: capture restart intent while
+    // providers are live, stop them, then reconcile. Otherwise closing only
+    // releases the provider sessions.
+    readonly shutdownLikeServer?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     readonly managedPolicy?: ManagedPolicyDocument;
     readonly replayGate?: ProviderReplayGate;
@@ -283,6 +291,10 @@ export function layerWithRegistry<Error>(
     readonly runEffectWorker?: boolean;
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
+    // Close as serverRuntimeStartup's finalizer does: capture restart intent while
+    // providers are live, stop them, then reconcile. Otherwise closing only
+    // releases the provider sessions.
+    readonly shutdownLikeServer?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     /** Lets a test hold a projection read open to order concurrent dispatches. */
     readonly wrapProjectionStore?: (
@@ -598,13 +610,34 @@ export function layerWithRegistry<Error>(
           ),
         )
       : Layer.empty;
+  const layerRecovery = ProviderRuntimeRecoveryService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(layerStores, layerEventSinkProvided, IdAllocator.layer, layerServerSettings),
+    ),
+  );
   return Layer.effect(
     Orchestrator.OrchestratorV2,
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
+      if (options.shutdownLikeServer === true) {
+        const recovery = yield* ProviderRuntimeRecoveryService.ProviderRuntimeRecoveryService;
+        const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        // Registered before the worker fork, so it runs after the worker is interrupted.
+        yield* Effect.addFinalizer(() =>
+          recovery.prepareForShutdown.pipe(
+            Effect.ensuring(sessions.shutdown),
+            Effect.andThen(recovery.reconcile("shutdown")),
+            Effect.orDie,
+          ),
+        );
+      }
       yield* orchestrator.recoverDelegatedTasks;
       yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
       return orchestrator;
     }),
-  ).pipe(Layer.provideMerge(layerReplayRuntime), Layer.provide(layerStartupRecovery));
+  ).pipe(
+    Layer.provideMerge(layerReplayRuntime),
+    Layer.provide(layerRecovery),
+    Layer.provide(layerStartupRecovery),
+  );
 }
