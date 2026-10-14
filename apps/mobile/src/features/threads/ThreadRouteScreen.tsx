@@ -686,7 +686,7 @@ function ThreadRouteContent(
   const handleOpenConnectionEditor = () => {
     void navigation.navigate("Connections");
   };
-  const handleStopThread = () => {
+  const handleStopThread = (options?: { readonly keepSubagents?: boolean }) => {
     if (
       !selectedThread ||
       !readEnvironmentScope(selectedThread.environmentId, AuthOrchestrationOperateScope) ||
@@ -699,6 +699,7 @@ function ThreadRouteContent(
       input: {
         threadId: selectedThread.id,
         runId: composer.interruptibleRunId,
+        ...(options?.keepSubagents === true ? { keepSubagents: true } : {}),
       },
     });
   };
@@ -1094,6 +1095,7 @@ function ThreadRouteContent(
           historyControls={historyControls}
           activeThreadBusy={composer.activeThreadBusy}
           canStopThread={awaitingBootstrapTurn || composer.interruptibleRunId !== null}
+          keptSubagentCount={awaitingBootstrapTurn ? 0 : composer.keptSubagentCount}
           queuedRunEdit={composer.queuedRunEdit}
           composerDraftKey={composer.composerDraftKey}
           followUpBehavior={composer.followUpBehavior}

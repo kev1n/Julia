@@ -272,6 +272,8 @@ export interface ThreadDetailScreenProps {
   readonly historyControls?: ThreadFeedHistoryControls;
   readonly activeThreadBusy: boolean;
   readonly canStopThread: boolean;
+  /** Running subagents that can outlive the main agent; above zero, Stop asks which to stop. */
+  readonly keptSubagentCount: number;
   readonly queuedRunEdit: QueuedRunEdit | null;
   readonly composerDraftKey: string | null;
   readonly followUpBehavior: FollowUpBehavior;
@@ -296,7 +298,7 @@ export interface ThreadDetailScreenProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
-  readonly onStopThread: () => void;
+  readonly onStopThread: (options?: { readonly keepSubagents?: boolean }) => void;
   /** Present while the thread's queue is held. */
   readonly onResumeQueue: (() => Promise<void>) | null;
   readonly offersSideChat: boolean;
@@ -1791,7 +1793,7 @@ function ThreadDetailBody(
                             maxHeight={pendingUserInputMaxHeight}
                             collapsed={userInputCollapsed}
                             onToggleCollapsed={handleToggleUserInputCollapsed}
-                            onStopThread={props.onStopThread}
+                            onStopThread={() => props.onStopThread()}
                             cardProgress={userInputCardProgress}
                             cardCoverage={userInputCardCoverage}
                             onInputFocusChange={handleOwnedInputFocusChange}
@@ -1894,6 +1896,7 @@ function ThreadDetailBody(
                           props.activePendingUserInput === null
                         }
                         canStopThread={props.canStopThread}
+                        keptSubagentCount={props.keptSubagentCount}
                         environmentId={props.environmentId}
                         projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
                         // Keep follow-ups in the draft until server creation succeeds, or rejection strands them in the outbox.
