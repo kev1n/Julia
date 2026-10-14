@@ -246,7 +246,8 @@ text is about 18 MB, so lists, titles and content search (`ThreadSearch`, which 
 still find the thread by any phrase in it. A content search over Azure would have to download every
 blob per query. Attachments stay on disk (17 MB in all on mac-a).
 
-- Offload uploads a gzip bundle to `<environment id>/<thread id>/<time>.json.gz`, downloads it and
+- Offload uploads a gzip bundle to `<environment id>/<SHA-256 of thread id>/<time>.json.gz` (thread
+  ids can pass Azure's 1,024-character name limit), downloads it and
   checks its SHA-256, then deletes locally in one transaction that checks the thread again. It
   never moves a thread with a running or queued turn, a waiting request or secret request, pending
   effects or background work, a message waiting to start, a scheduled usage-limit resume, an open
