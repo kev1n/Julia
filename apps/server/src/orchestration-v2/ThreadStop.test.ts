@@ -707,93 +707,86 @@ it.effect.each(["thread.stop", "run.interrupt"] as const)(
     }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("a message the user sends after Stop releases the held queue; an agent's does not", () =>
-  Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const threadId = ThreadId.make("thread:stop-release");
-    const agentSend = (text: string) =>
-      orchestrator.dispatch({
-        type: "message.dispatch",
-        commandId: CommandId.make(`agent-send:${text}`),
+// Fork (Owner): an agent's message (t3_thread_send) resumes a Stop's held queue too, and a
+// message sent to an idle thread with a held queue joins its back, so the queue drains
+// earliest first instead of the new message starting ahead.
+it.effect(
+  "a message sent after Stop resumes the held queue earliest first; a scheduled task's does not",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = ThreadId.make("thread:stop-release");
+      const agentSend = (text: string) =>
+        orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`agent-send:${text}`),
+          threadId,
+          messageId: MessageId.make(`message:${threadId}:${text}`),
+          text,
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: "agent",
+          creationSource: "mcp",
+        });
+      yield* createWatchingThread(threadId, 6);
+      yield* send(threadId, "active", "start_immediately");
+      yield* send(threadId, "queued before the stop", "queue_after_active");
+      yield* orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make("stop-release"),
         threadId,
-        messageId: MessageId.make(`message:${threadId}:${text}`),
-        text,
+      });
+      assert.deepEqual((yield* threadState(threadId)).runs, ["interrupted", "queued:held"]);
+
+      // A scheduled task the user created is not the user coming back.
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("scheduled-send"),
+        threadId,
+        messageId: MessageId.make(`message:${threadId}:scheduled`),
+        text: "Nightly check",
         attachments: [],
         dispatchMode: { type: "queue_after_active" },
-        createdBy: "agent",
-        creationSource: "mcp",
+        createdBy: "user",
+        creationSource: "web",
+        scheduledTaskId: ScheduledTaskId.make("scheduled:nightly"),
       });
-    yield* createWatchingThread(threadId, 6);
-    yield* send(threadId, "active", "start_immediately");
-    yield* send(threadId, "queued before the stop", "queue_after_active");
-    yield* orchestrator.dispatch({
-      type: "thread.stop",
-      commandId: CommandId.make("stop-release"),
-      threadId,
-    });
-    assert.deepEqual((yield* threadState(threadId)).runs, ["interrupted", "queued:held"]);
+      const scheduled = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      assert.deepEqual((yield* threadState(threadId)).runs, [
+        "interrupted",
+        "queued:held",
+        "starting",
+      ]);
+      const now = yield* DateTime.now;
+      yield* projections.apply({
+        id: EventId.make("event:stop-release:scheduled-completed"),
+        type: "run.updated",
+        threadId,
+        runId: scheduled.id,
+        occurredAt: now,
+        payload: { ...scheduled, status: "completed", completedAt: now },
+      });
 
-    // An agent's message starts on the idle thread, but the hold is the user's.
-    yield* agentSend("agent nudge");
-    assert.deepEqual((yield* threadState(threadId)).runs, [
-      "interrupted",
-      "queued:held",
-      "starting",
-    ]);
-    const nudge = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
-    const now = yield* DateTime.now;
-    yield* projections.apply({
-      id: EventId.make("event:stop-release:nudge-completed"),
-      type: "run.updated",
-      threadId,
-      runId: nudge.id,
-      occurredAt: now,
-      payload: { ...nudge, status: "completed", completedAt: now },
-    });
+      // The agent's message joins the back of the released queue, and the held message
+      // starts first.
+      yield* agentSend("agent nudge");
+      const afterNudge = yield* orchestrator.getThreadProjection(threadId);
+      const statusOf = (text: string) =>
+        afterNudge.runs.find(
+          (run) => run.userMessageId === MessageId.make(`message:${threadId}:${text}`),
+        )?.status;
+      assert.equal(statusOf("queued before the stop"), "starting");
+      assert.equal(statusOf("agent nudge"), "queued");
+      assert.isFalse(afterNudge.runs.some((run) => run.queueHeld === true));
 
-    // A scheduled task the user created is not the user coming back.
-    yield* orchestrator.dispatch({
-      type: "message.dispatch",
-      commandId: CommandId.make("scheduled-send"),
-      threadId,
-      messageId: MessageId.make(`message:${threadId}:scheduled`),
-      text: "Nightly check",
-      attachments: [],
-      dispatchMode: { type: "queue_after_active" },
-      createdBy: "user",
-      creationSource: "web",
-      scheduledTaskId: ScheduledTaskId.make("scheduled:nightly"),
-    });
-    const scheduled = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
-    assert.deepEqual((yield* threadState(threadId)).runs, [
-      "interrupted",
-      "queued:held",
-      "completed",
-      "starting",
-    ]);
-    yield* projections.apply({
-      id: EventId.make("event:stop-release:scheduled-completed"),
-      type: "run.updated",
-      threadId,
-      runId: scheduled.id,
-      occurredAt: now,
-      payload: { ...scheduled, status: "completed", completedAt: now },
-    });
-
-    // The user is back: the held message follows their run, and a wake that
-    // queues behind it is not held by the old Stop.
-    yield* send(threadId, "back", "start_immediately");
-    yield* agentSend("task finished");
-    assert.deepEqual((yield* threadState(threadId)).runs, [
-      "interrupted",
-      "queued",
-      "completed",
-      "completed",
-      "starting",
-      "queued",
-    ]);
-  }).pipe(Effect.provide(layerTest)),
+      // The user's message queues behind them and is not held by the old Stop.
+      yield* send(threadId, "back", "start_immediately");
+      const back = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      assert.equal(back.userMessageId, MessageId.make(`message:${threadId}:back`));
+      assert.equal(back.status, "queued");
+      assert.notEqual(back.queueHeld, true);
+    }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect(
@@ -1097,8 +1090,10 @@ it.effect.each(["thread.stop", "run.interrupt"] as const)(
         creationSource: "server",
         restartContinuationOfRunId: source.id,
       });
+      // Fork (Owner): a message sent to a held queue waits behind it, so the held run
+      // resumed before the restart source ever ran and keeps the earlier place.
       assert.deepEqual(yield* threadState(threadId), {
-        runs: ["completed", "cancelled", "interrupted"],
+        runs: ["completed", "interrupted", "cancelled"],
         watched: [],
       });
     }).pipe(Effect.provide(layerTest.pipe(Layer.provideMerge(TestClock.layer())))),

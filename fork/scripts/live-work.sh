@@ -8,6 +8,8 @@
 # thread left running after its turn ended: provider subagents, background
 # shells and Monitors (Claude's roster), and a wake Claude started to report a
 # finished task. A restart kills all of these, so they count until they end.
+# A held queued message is not live: it starts only when someone sends to its
+# thread or resumes the queue, and it survives a restart.
 # Background work only counts while its provider session is live: a stopped
 # session's leftover rows are not running anything (see fork/restartWake.ts).
 #
@@ -26,6 +28,8 @@ work(kind, thread_id, what) AS (
   SELECT 'run ' || status, thread_id, ''
   FROM orchestration_v2_projection_runs
   WHERE status IN ('preparing', 'queued', 'starting', 'running', 'waiting')
+    -- A held queued message waits for someone to send or resume; a restart keeps it.
+    AND NOT (status = 'queued' AND json_extract(payload_json, '$.queueHeld') IS 1)
   UNION ALL
   SELECT json_extract(task.value, '$.kind'), live.thread_id,
     coalesce(json_extract(task.value, '$.description'), json_extract(task.value, '$.taskId'))

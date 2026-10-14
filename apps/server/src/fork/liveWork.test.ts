@@ -21,7 +21,8 @@ const liveWork = (databasePath: string) =>
 
 /**
  * One thread whose turn completed and left a Claude subagent and a Monitor running,
- * the shape of "Discuss Email with Example Person" on mac-a on 2026-10-14.
+ * the shape of "Discuss Email with Example Person" on mac-a on 2026-10-14, and a
+ * held queued message, which waits for a person and so is not live.
  */
 const seed = (sessionStatus: string) =>
   Effect.gen(function* () {
@@ -32,7 +33,9 @@ const seed = (sessionStatus: string) =>
       VALUES ('thread-1', 'project-1', 'Example Person', 'claudeAgent', 'full-access', 'default', '2026-10-14', '2026-10-14', '{}')`;
     yield* sql`INSERT INTO orchestration_v2_projection_runs
       (run_id, thread_id, ordinal, provider, status, requested_at, payload_json, provider_thread_id)
-      VALUES ('run-1', 'thread-1', 1, 'claudeAgent', 'completed', '2026-10-14', '{}', 'provider-thread-1')`;
+      VALUES
+        ('run-1', 'thread-1', 1, 'claudeAgent', 'completed', '2026-10-14', '{}', 'provider-thread-1'),
+        ('run-2', 'thread-1', 2, 'claudeAgent', 'queued', '2026-10-14', '{"queueHeld":true}', 'provider-thread-1')`;
     yield* sql`INSERT INTO orchestration_v2_projection_provider_sessions
       (provider_session_id, thread_id, provider, status, updated_at, payload_json)
       VALUES ('session-1', 'thread-1', 'claudeAgent', ${sessionStatus}, '2026-10-14', '{}')`;
