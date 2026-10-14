@@ -191,6 +191,7 @@ export interface ThreadManagementInterruptInput {
   readonly threadId: ThreadId;
   readonly runId?: RunId;
   readonly reason?: string;
+  readonly keepSubagents?: boolean;
 }
 
 export type ThreadManagementInterruptResult =
@@ -1193,6 +1194,7 @@ const make = Effect.gen(function* () {
       threadId: input.threadId,
       runId: interruptibleRun.id,
       ...(input.reason === undefined ? {} : { reason: input.reason }),
+      ...(input.keepSubagents === true ? { keepSubagents: true } : {}),
     });
     return { type: "interrupt_requested", run: interruptibleRun, dispatch } as const;
   });

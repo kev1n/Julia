@@ -1834,3 +1834,45 @@ it.effect.each(["Stop", "Force stop"] as const)(
       );
     }).pipe(Effect.provide(layerTest)),
 );
+
+it.effect(
+  "Stop that keeps subagents leaves delegated tasks, their wakes, and watches running",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sql = yield* SqlClient.SqlClient;
+      const parentThreadId = ThreadId.make("thread:stop-main-only");
+      yield* createWatchingThread(parentThreadId, 1);
+      yield* send(parentThreadId, "first", "start_immediately");
+      const childThreadId = yield* delegate(parentThreadId, "kept child task");
+      yield* send(parentThreadId, "queued", "queue_after_active");
+      const run = (yield* orchestrator.getThreadProjection(parentThreadId)).runs[0]!;
+
+      const stopCommandId = CommandId.make("stop-main-only");
+      yield* orchestrator.dispatch({
+        type: "run.interrupt",
+        commandId: stopCommandId,
+        threadId: parentThreadId,
+        runId: run.id,
+        holdQueue: true,
+        keepSubagents: true,
+      });
+
+      // The queue still waits for the user; the watch and the child's wake stay.
+      assert.deepEqual(yield* threadState(parentThreadId), {
+        runs: ["interrupted", "queued:held"],
+        watched: [1],
+      });
+      const parent = yield* orchestrator.getThreadProjection(parentThreadId);
+      assert.notEqual(parent.subagents[0]?.completionDelivery?.state, "disposed");
+      assert.notEqual(parent.runs[0]?.delegatedCompletion?.disposition, "stopped");
+      const effects = yield* sql<{ readonly effect_type: string }>`
+      SELECT effect_type FROM orchestration_v2_effect_outbox WHERE command_id = ${stopCommandId}
+    `;
+      assert.notInclude(
+        effects.map((row) => row.effect_type),
+        "delegated-tasks.stop",
+      );
+      assert.notInclude((yield* threadState(childThreadId)).runs, "interrupted");
+    }).pipe(Effect.provide(layerTest)),
+);

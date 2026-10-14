@@ -587,6 +587,8 @@ export const OrchestratorMcpThreadInterruptInput = Schema.Struct({
    * watches and stop every task it delegated. `runId` is then not used.
    */
   stop: Schema.optional(Schema.Boolean),
+  /** Stop only the main agent; its running subagents keep working and report back. */
+  keepSubagents: Schema.optional(Schema.Boolean),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpThreadInterruptInput = typeof OrchestratorMcpThreadInterruptInput.Type;
