@@ -23,9 +23,18 @@ export class HistoryBlobUnavailable extends Data.TaggedError("HistoryBlobUnavail
   readonly message: string;
 }> {}
 
-/** Any failure of a store call, as one of the two errors above. */
-export const asBlobError = (cause: unknown): HistoryBlobMissing | HistoryBlobUnavailable =>
-  cause instanceof HistoryBlobMissing || cause instanceof HistoryBlobUnavailable
+/** Azure refused this one blob (a 4xx other than sign-in); other threads may still move. */
+export class HistoryBlobRejected extends Data.TaggedError("HistoryBlobRejected")<{
+  readonly message: string;
+}> {}
+
+/** Any failure of a store call, as one of the errors above. */
+export const asBlobError = (
+  cause: unknown,
+): HistoryBlobMissing | HistoryBlobUnavailable | HistoryBlobRejected =>
+  cause instanceof HistoryBlobMissing ||
+  cause instanceof HistoryBlobUnavailable ||
+  cause instanceof HistoryBlobRejected
     ? cause
     : new HistoryBlobUnavailable({
         message: cause instanceof Error ? cause.message : String(cause),
@@ -142,8 +151,15 @@ export function azureHistoryBlobStore(secret: string): HistoryBlobStore {
         headers: { "x-ms-blob-type": "BlockBlob", "content-type": "application/gzip" },
         body,
       });
-      if (!response.ok)
-        throw new HistoryBlobUnavailable({ message: `upload failed (${response.status})` });
+      if (response.ok) return;
+      const message = `upload failed (${response.status})`;
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        ![401, 403, 408, 429].includes(response.status)
+      )
+        throw new HistoryBlobRejected({ message });
+      throw new HistoryBlobUnavailable({ message });
     },
     get: async (name) => {
       const response = await request(name, { method: "GET" });
