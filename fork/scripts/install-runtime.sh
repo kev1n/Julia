@@ -95,10 +95,11 @@ echo "Service runs $version (was $previous)."
 
 # The daily job runs ~/t3-fork/pull-deploy.sh; keep its idle check in step with
 # the release just installed (install-desktop.sh does this only where the app is).
+# That job is usually the caller: install -S puts a new file in place, so the
+# running bash keeps reading the old one (replace-running-scripts.test.sh).
 here=$(cd "$(dirname "$0")" && pwd)
 if [ -d "$HOME/t3-fork" ] && [ -f "$here/pull-deploy.sh" ]; then
-  cp "$here/pull-deploy.sh" "$HOME/t3-fork/pull-deploy.sh"
-  chmod 700 "$HOME/t3-fork/pull-deploy.sh"
+  install -S -m 700 "$here/pull-deploy.sh" "$HOME/t3-fork/pull-deploy.sh"
 fi
 
 # Keep the stock runtimes, the active fork runtime, and the one before it for rollback.
