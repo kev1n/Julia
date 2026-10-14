@@ -856,6 +856,20 @@ function worktreeSetupPending(
   );
 }
 
+/** Resume, or a message that resumed a held queue, starts the queue's earliest message. */
+function releasesHeldQueue(
+  command: OrchestrationV2ServerCommand,
+  storedEvents: ReadonlyArray<OrchestrationV2StoredEvent>,
+): boolean {
+  return (
+    command.type === "queue.resume" ||
+    (command.type === "message.dispatch" &&
+      storedEvents.some(
+        (stored) => stored.event.type === "run.updated" && stored.event.payload.queueHeld === false,
+      ))
+  );
+}
+
 function nextQueuedRun(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
 ): OrchestrationV2Run | undefined {
@@ -6490,12 +6504,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection.thread.worktreePath === null
         ? latestRun
         : undefined;
-    const queueBehindRun = activeRun ?? worktreeMissingRun;
-    const pendingMergeBackTransfers = pendingMergeBackTransfersForThread(projection);
     const startsOrQueuesRun =
       dispatchMode.type === "defer_start" ||
       dispatchMode.type === "start_immediately" ||
       dispatchMode.type === "queue_after_active";
+    // Client and MCP messages resume held queues; server continuations and scheduled tasks do not.
+    // Fork (Owner): while a usage limit holds the queue, only the limit's continuation releases it.
+    const worktreeSetupUnresolved = worktreeSetupPending(projection);
+    const resumesHeldQueue =
+      startsOrQueuesRun &&
+      !worktreeSetupUnresolved &&
+      (command.createdBy === "user" ||
+        (command.creationSource === "mcp" && activeRun === undefined)) &&
+      command.scheduledTaskId === undefined &&
+      command.notification === undefined &&
+      command.delegatedCompletion === undefined &&
+      command.manualContinuationOfRunId === undefined &&
+      command.restartContinuationOfRunId === undefined &&
+      command.capacityContinuationOfRunId === undefined &&
+      command.usageLimitContinuationOfRunId === undefined &&
+      !usageLimitHoldsQueue(projection, projection.thread.providerInstanceId);
+    const heldRunsToRelease = resumesHeldQueue
+      ? projection.runs.filter((run) => run.status === "queued" && run.queueHeld === true)
+      : [];
+    // Fork (Owner): on an idle thread the message joins the back of the
+    // released queue, which drains earliest first, instead of starting ahead.
+    const heldQueuedRun =
+      activeRun === undefined && worktreeMissingRun === undefined
+        ? heldRunsToRelease[0]
+        : undefined;
+    const queueBehindRun = activeRun ?? worktreeMissingRun ?? heldQueuedRun;
+    const pendingMergeBackTransfers = pendingMergeBackTransfersForThread(projection);
     const shouldQueue = queueBehindRun !== undefined && startsOrQueuesRun;
     // An explicit pick queued ahead reaches the thread only when its run starts. A goal or
     // restart command that stops the active run goes first, so nothing queued applies before it.
@@ -6511,17 +6550,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       modelSelection = queueTailModelSelection(projection);
     }
     yield* ensureGoalCommandSupported(command, command, modelSelection.instanceId);
-    // Client messages resume held queues; server continuations and scheduled tasks do not.
-    // Provider failure or usage limits re-hold the queue.
-    const worktreeSetupUnresolved = worktreeSetupPending(projection);
-    const sentByUserFromClient =
-      command.createdBy === "user" &&
-      (command.creationSource === "web" || command.creationSource === "mobile") &&
-      command.scheduledTaskId === undefined;
-    const heldRunsToRelease =
-      sentByUserFromClient && startsOrQueuesRun && !worktreeSetupUnresolved
-        ? projection.runs.filter((run) => run.status === "queued" && run.queueHeld === true)
-        : [];
     const releasedAt = yield* DateTime.now;
     for (const held of heldRunsToRelease) {
       yield* emit(
@@ -14100,10 +14128,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           }),
       ),
     );
-    if (command.type === "queue.resume" || command.type === "queued-run.start") {
+    if (command.type === "queued-run.start" || releasesHeldQueue(command, storedEvents)) {
       yield* mapDispatchError(command)(
         startNextQueuedRun(
-          command.threadId,
+          commandThreadId(command),
           command.type === "queued-run.start" ? { queuedRunId: command.runId } : undefined,
         ),
       );
@@ -14317,13 +14345,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     if (
-      command.type === "queue.resume" ||
       command.type === "queued-run.start" ||
+      releasesHeldQueue(command, committed.storedEvents) ||
       (command.type === "thread.runtime-mode.set" && runtimeModeCeiling !== undefined)
     ) {
       yield* mapDispatchError(command)(
         startNextQueuedRun(
-          command.threadId,
+          commandThreadId(command),
           command.type === "queued-run.start" ? { queuedRunId: command.runId } : undefined,
         ),
       );

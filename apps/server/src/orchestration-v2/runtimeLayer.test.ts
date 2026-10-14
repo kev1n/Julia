@@ -5046,6 +5046,73 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("a message sent to a held queue resumes it, earliest message first", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const threadId = ThreadId.make("runtime-layer-held-queue-send");
+      const send = (id: string, dispatchMode: "start_immediately" | "queue_after_active") =>
+        orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(id),
+          threadId,
+          messageId: MessageId.make(id),
+          text: id,
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: dispatchMode },
+        });
+
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("held-queue-send-create"),
+        threadId,
+        projectId: ProjectId.make("held-queue-send-project"),
+        title: "Held queue send",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: "/tmp/runtime-layer-held-queue-send",
+      });
+      yield* send("held-queue-send-active", "start_immediately");
+      yield* send("held-queue-send-earlier", "queue_after_active");
+
+      // The active run ends and the queued message is held, as after a failure.
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const now = yield* DateTime.now;
+      yield* eventSink.commitCommand({
+        commandId: CommandId.make("held-queue-send-hold"),
+        threadId,
+        commandType: "provider-runtime.reconcile",
+        acceptedAt: now,
+        events: before.runs.map((run) => ({
+          id: EventId.make(`held-queue-send-hold:${run.id}`),
+          type: "run.updated" as const,
+          threadId,
+          runId: run.id,
+          occurredAt: now,
+          payload:
+            run.status === "queued"
+              ? { ...run, queueHeld: true }
+              : { ...run, status: "failed" as const, completedAt: now },
+        })),
+        effects: [],
+      });
+
+      yield* send("held-queue-send-later", "start_immediately");
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      const runFor = (id: string) => after.runs.find((run) => run.userMessageId === id);
+      assert.notEqual(runFor("held-queue-send-earlier")?.status, "queued");
+      assert.equal(runFor("held-queue-send-later")?.status, "queued");
+      assert.notEqual(runFor("held-queue-send-later")?.queueHeld, true);
+    }),
+  );
+
   it.effect("cancels preparing work on archive and keeps it cancelled through replay", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -6734,7 +6801,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
-  it.effect("places held queued messages after a continuation that started first", () =>
+  // Fork (Owner): a message sent while the queue is held waits behind it and resumes it,
+  // earliest first, so the held messages run before the continuation and keep their order.
+  it.effect("places a continuation sent to a held queue after the held messages", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const eventSink = yield* EventSink.EventSinkV2;
@@ -6783,6 +6852,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         runId: (yield* runFor("active")).id,
         holdQueue: true,
       });
+      // The continuation arrives while the older messages wait in the held queue.
       yield* dispatch("continue", true);
       yield* orchestrator.dispatch({
         type: "queue.resume",
@@ -6821,12 +6891,14 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           });
         });
 
-      yield* complete("continue");
-      assert.equal(yield* Queue.take(startedRunIds), (yield* runFor("first-queued")).id);
+      assert.notEqual((yield* runFor("first-queued")).status, "queued");
+      assert.equal((yield* runFor("continue")).status, "queued");
       yield* complete("first-queued");
       assert.equal(yield* Queue.take(startedRunIds), (yield* runFor("second-queued")).id);
+      yield* complete("second-queued");
+      assert.equal(yield* Queue.take(startedRunIds), (yield* runFor("continue")).id);
 
-      const keys = ["active", "continue", "first-queued", "second-queued"];
+      const keys = ["active", "first-queued", "second-queued", "continue"];
       const runs = yield* Effect.forEach(keys, runFor);
       const ordinals = runs.map((run) => run.ordinal);
       assert.deepEqual(
