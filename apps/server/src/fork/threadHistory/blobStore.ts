@@ -32,6 +32,8 @@ export const asBlobError = (cause: unknown): HistoryBlobMissing | HistoryBlobUna
       });
 
 export interface HistoryBlobStore {
+  /** Signs in (or reuses the sign-in), so a sweep learns Azure is unusable before bundling. */
+  readonly ready: () => Promise<void>;
   readonly put: (name: string, body: Uint8Array) => Promise<void>;
   readonly get: (name: string) => Promise<Uint8Array>;
 }
@@ -133,6 +135,7 @@ export function azureHistoryBlobStore(secret: string): HistoryBlobStore {
   };
 
   return {
+    ready: async () => void (await authorize()),
     put: async (name, body) => {
       const response = await request(name, {
         method: "PUT",
