@@ -249,6 +249,37 @@ export const make = (blobs: HistoryBlobStore | null) =>
           ),
         );
 
+    // Threads offloaded before run events stayed local list as working until
+    // their runs come back; one download each puts back only those.
+    const repairOne = (threadId: ThreadId) =>
+      locks
+        .withLock(
+          threadId,
+          Effect.gen(function* () {
+            const record = yield* store.record(threadId);
+            if (record === null || record.expiredAt !== null) return "skipped";
+            const bytes = yield* download(record.blobName, record.sha256);
+            yield* store.repairRuns(HistoryStore.decodeBundle(bytes));
+            return "moved";
+          }),
+        )
+        .pipe(
+          Effect.catchTags({
+            HistoryBlobMissing: () =>
+              store.markExpired(threadId).pipe(Effect.as("skipped" as const)),
+            HistoryBlobUnavailable: (error) =>
+              Effect.logWarning("Azure Blob Storage unusable; run repair paused", {
+                threadId,
+                error: error.message,
+              }).pipe(Effect.as("azure" as const)),
+          }),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("putting back run history failed", { threadId, cause }).pipe(
+              Effect.as("skipped" as const),
+            ),
+          ),
+        );
+
     // Whether a thread may move only changes when an event commits or an effect
     // finishes, so a tick with neither since the last full pass has nothing to do.
     // After Azure fails, the same waiting threads are not tried again: retrying
@@ -260,12 +291,17 @@ export const make = (blobs: HistoryBlobStore | null) =>
       Effect.gen(function* () {
         const latest = yield* store.changeMark;
         if (latest === sweptThrough) return;
+        const repairs = yield* store.runsAway;
         const candidates = yield* store.candidates;
-        const waiting = candidates.join("\n");
+        const waiting = [...repairs, "", ...candidates].join("\n");
         if (waiting !== pausedOn) {
           pausedOn = null;
-          for (const threadId of candidates) {
-            if ((yield* offloadOne(environmentId)(threadId)) === "azure") {
+          const work = [
+            ...repairs.map((threadId) => () => repairOne(threadId)),
+            ...candidates.map((threadId) => () => offloadOne(environmentId)(threadId)),
+          ];
+          for (const step of work) {
+            if ((yield* step()) === "azure") {
               pausedOn = waiting;
               break;
             }
