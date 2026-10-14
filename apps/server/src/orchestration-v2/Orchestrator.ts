@@ -128,6 +128,7 @@ import {
   isRestartContinuationSource,
   runOutcome,
 } from "./RestartBackgroundNote.ts";
+import { isRestartWakeSource } from "../fork/restartWake.ts";
 import {
   isBufferedProviderNotification,
   isUndeliveredMailboxSteer,
@@ -6012,12 +6013,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     if (command.restartContinuationOfRunId !== undefined) {
       const source = projection.runs.find((run) => run.id === command.restartContinuationOfRunId);
+      // Fork (Owner): a restart wake for background work a settled turn lost.
+      const wake = source !== undefined && isRestartWakeSource(source, projection.providerTurns);
       if (
         !source ||
-        !(
-          isRestartContinuationSource(source, projection.providerTurns) ||
-          continuationFailedBeforePrompt(source, projection.providerTurns)
-        ) ||
+        (!wake &&
+          !(
+            isRestartContinuationSource(source, projection.providerTurns) ||
+            continuationFailedBeforePrompt(source, projection.providerTurns)
+          )) ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
         projection.thread.providerInstanceId !== source.providerInstanceId ||
@@ -6028,7 +6032,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             !cancelledBeforeStart(run) &&
             runRanAfter(run, source),
         ) ||
-        (yield* stopReachedRun(command, command.threadId, source.id))
+        (!wake && (yield* stopReachedRun(command, command.threadId, source.id)))
       ) {
         // Preserve the current row so stale automatic deliveries receive an
         // accepted receipt without changing work or repeatedly retrying.

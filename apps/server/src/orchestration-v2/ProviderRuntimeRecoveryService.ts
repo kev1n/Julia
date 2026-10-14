@@ -24,6 +24,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { restartContinuationRun } from "./RestartContinuation.ts";
+import { restartWakeSourceRun } from "../fork/restartWake.ts";
 import { isBufferedProviderNotification } from "./NotificationMailbox.ts";
 import { queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 import {
@@ -802,12 +803,16 @@ export const make = Effect.gen(function* () {
           },
         });
       }
+      // Fork (Owner): after a crash, also wake a settled turn whose background work was live.
       const continuationRun =
         continueAfterRestart && trigger === "startup"
-          ? restartContinuationRun(
-              { ...projection, providerSessions: sessionsLiveAtStart(projection, stoppedThisPass) },
-              now,
-            )
+          ? (() => {
+              const liveAtStart = {
+                ...projection,
+                providerSessions: sessionsLiveAtStart(projection, stoppedThisPass),
+              };
+              return restartContinuationRun(liveAtStart, now) ?? restartWakeSourceRun(liveAtStart);
+            })()
           : undefined;
       const effects: Array<EffectOutbox.PendingOrchestrationEffectV2> = continuationRun
         ? [
@@ -979,7 +984,10 @@ export const make = Effect.gen(function* () {
               .continueThreadsAfterServerUpdate
           )
             return;
-          const run = restartContinuationRun(projection, yield* DateTime.now);
+          // Fork (Owner): providers are still live here, so their background work is too.
+          const run =
+            restartContinuationRun(projection, yield* DateTime.now) ??
+            restartWakeSourceRun(projection);
           if (!run) return;
           const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
           yield* eventSink.writeWithEffects({
