@@ -2,9 +2,9 @@
 # Daily on every Mac (LaunchAgent com.example.t3code-fork.deploy): install the
 # newest owner/t3code release if this Mac does not run it yet. Server runtime
 # on every Mac; the desktop app too where Julia or the legacy fork app is installed.
-# Waits for a later run while any thread is working, so a deploy never cuts a
-# turn off. On the MacBook it also raises a notification while a
-# "Fork sync failed" issue is open.
+# Waits for a later run while any thread is working or has background work
+# live (live-work.sh), so a deploy never cuts either off. On the MacBook it
+# also raises a notification while a "Fork sync failed" issue is open.
 set -uo pipefail
 fork_repo="owner/t3code"
 # Build outputs served by build-mac over the tailnet (see install-jobs.sh artifacts).
@@ -40,11 +40,13 @@ scripts="$dir/scripts"
 [ -d "$scripts" ] || { mkdir -p "$scripts" && tar -xzf "$dir/fork-scripts.tar.gz" -C "$scripts"; }
 active=$(/usr/bin/python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.t3/runtime/service-state.json")))["activeVersion"])')
 
-busy=$(/usr/bin/sqlite3 -readonly "$HOME/.t3/userdata/statev2.sqlite" \
-  "select count(*) from orchestration_v2_projection_runs where status in ('preparing','starting','running')" 2>/dev/null || echo 0)
 if [ "$active" != "$version" ]; then
-  if [ "$busy" != "0" ]; then
-    echo "$busy thread(s) working; leaving $active in place until the next run."
+  # Runs, and background subagents, shells and Monitors left running after a turn ended.
+  if ! work=$("$scripts/live-work.sh"); then
+    echo "Could not read live work; leaving $active in place until the next run."
+  elif [ -n "$work" ]; then
+    echo "$(printf '%s\n' "$work" | wc -l | tr -d ' ') live item(s); leaving $active in place until the next run:"
+    printf '%s\n' "$work" | sort | uniq -c | sed 's/^/    /'
   else
     "$scripts/install-runtime.sh" "$dir/t3-$version-darwin-arm64.tar.gz"
   fi

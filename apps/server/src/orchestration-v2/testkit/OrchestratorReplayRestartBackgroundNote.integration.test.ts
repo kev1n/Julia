@@ -40,7 +40,8 @@ const NOTE = [
 ].join("\n");
 
 const readRestartTranscript = Effect.fn("readRestartTranscript")(function* (
-  resumedPrompts: ReadonlyArray<string>,
+  // The prompts of each runtime that resumes the session, in order.
+  resumedSessions: ReadonlyArray<ReadonlyArray<string>>,
 ) {
   const recorded = yield* readProviderReplayTranscript(
     new URL(`./fixtures/${SCENARIO}/claude_transcript.ndjson`, import.meta.url),
@@ -117,23 +118,31 @@ const readRestartTranscript = Effect.fn("readRestartTranscript")(function* (
     ...recorded,
     entries: [
       ...recorded.entries.slice(0, rootResult + 1),
-      // Keep the query alive until the crash snapshot is captured.
-      {
-        type: "expect_outbound",
-        label: "query.open:resume",
-        frame: { type: "query.open", options: { ...resumeOptions, resume: SESSION_ID } },
-      },
-      ...resumedPrompts.flatMap((prompt, index) => resumedTurn(String(index + 1), prompt)),
+      // Keep the query alive until the restart: a crash snapshot, or a clean shutdown
+      // that captures restart intent while the provider still runs.
+      ...resumedSessions.flatMap((prompts, session) => [
+        {
+          type: "expect_outbound" as const,
+          label: `query.open:resume:${session + 1}`,
+          frame: { type: "query.open", options: { ...resumeOptions, resume: SESSION_ID } },
+        },
+        ...prompts.flatMap((prompt, index) => resumedTurn(`${session + 1}.${index + 1}`, prompt)),
+      ]),
     ],
   });
 });
 
+/** A crash leaves a stopped session behind; a deploy's SIGTERM shuts the server down cleanly. */
+type Shutdown = "crash" | "clean";
+
 const runRestart = Effect.fn("runRestart")(function* (input: {
-  readonly resumedPrompts: ReadonlyArray<string>;
+  readonly resumedSessions: ReadonlyArray<ReadonlyArray<string>>;
   readonly userMessagesAfterRestart: ReadonlyArray<string>;
   readonly continueThreadsAfterServerUpdate: boolean;
+  readonly shutdown?: Shutdown;
 }) {
-  const transcript = yield* readRestartTranscript(input.resumedPrompts);
+  const shutdown = input.shutdown ?? "crash";
+  const transcript = yield* readRestartTranscript(input.resumedSessions);
   const workspace = yield* checkpointWorkspace(SCENARIO);
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -171,59 +180,69 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
   });
 
   const beforeScenario = scenario("before-restart", phase1Steps);
-  const before = yield* Effect.scoped(
-    Effect.gen(function* () {
-      const result = yield* runOrchestratorV2Scenario(beforeScenario);
-      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-      yield* worker.drain();
-      const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const eventSink = yield* EventSink.EventSinkV2;
-      const threadId = materialized.projectionThreadIds[0];
-      if (threadId === undefined) {
-        return yield* Effect.die("restart scenario has no projection thread");
-      }
-      const projection = yield* orchestrator.getThreadProjection(threadId);
-      const session = projection.providerSessions[0];
-      if (session === undefined) {
-        return yield* Effect.die("restart scenario has no provider session");
-      }
-      // Snapshot the legacy running task before exit cleanup settles it, then
-      // seed the stopped session that older runtimes could leave after a crash.
-      const now = yield* DateTime.now;
-      yield* eventSink.write({
-        events: [
-          {
-            id: EventId.make("event:restart-background-note:stopped-provider-session"),
-            type: "provider-session.updated",
-            threadId,
-            providerInstanceId: session.providerInstanceId,
-            occurredAt: now,
-            payload: { ...session, status: "stopped", updatedAt: now, lastError: null },
-          },
-        ],
-      });
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`VACUUM INTO ${snapshotPath}`;
-      return result;
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          ProviderReplayHarness.layerProviderReplay(beforeScenario, harness, {
-            databaseLayer: layerDatabase,
-          }),
-          layerDatabase,
-        ),
+  const crashed = Effect.gen(function* () {
+    const result = yield* runOrchestratorV2Scenario(beforeScenario);
+    const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+    yield* worker.drain();
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const eventSink = yield* EventSink.EventSinkV2;
+    const threadId = materialized.projectionThreadIds[0];
+    if (threadId === undefined) {
+      return yield* Effect.die("restart scenario has no projection thread");
+    }
+    const projection = yield* orchestrator.getThreadProjection(threadId);
+    const session = projection.providerSessions[0];
+    if (session === undefined) {
+      return yield* Effect.die("restart scenario has no provider session");
+    }
+    // Snapshot the legacy running task before exit cleanup settles it, then
+    // seed the stopped session that older runtimes could leave after a crash.
+    const now = yield* DateTime.now;
+    yield* eventSink.write({
+      events: [
+        {
+          id: EventId.make("event:restart-background-note:stopped-provider-session"),
+          type: "provider-session.updated",
+          threadId,
+          providerInstanceId: session.providerInstanceId,
+          occurredAt: now,
+          payload: { ...session, status: "stopped", updatedAt: now, lastError: null },
+        },
+      ],
+    });
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`VACUUM INTO ${snapshotPath}`;
+    return result;
+  }).pipe(
+    Effect.provide(
+      Layer.merge(
+        ProviderReplayHarness.layerProviderReplay(beforeScenario, harness, {
+          databaseLayer: layerDatabase,
+        }),
+        layerDatabase,
       ),
     ),
   );
-  const snapshotDatabase = SqlitePersistence.layerFromPath(snapshotPath).pipe(
-    Layer.provide(NodeServices.layer),
+  const before = yield* Effect.scoped(
+    shutdown === "crash"
+      ? crashed
+      : runOrchestratorV2ProviderReplayScenario(beforeScenario, harness, {
+          databaseLayer: layerDatabase,
+          shutdownLikeServer: true,
+        }),
   );
+  const snapshotDatabase =
+    shutdown === "crash"
+      ? SqlitePersistence.layerFromPath(snapshotPath).pipe(Layer.provide(NodeServices.layer))
+      : layerDatabase;
   const settled = projectionFor(before, SCENARIO);
   assert.equal(settled.runs[0]?.status, "completed");
   assert.equal(settled.subagents[0]?.status, "running");
 
-  const restartScenario = scenario("restarted", []);
+  // Fork (Owner): a clean restart wakes the thread itself when continuation is on, and that
+  // turn must settle before the user's next message.
+  const wakes = shutdown === "clean" && input.continueThreadsAfterServerUpdate;
+  const restartScenario = scenario("restarted", wakes ? [materialized.steps[firstIdle]!] : []);
   const restarted = yield* Effect.scoped(
     Effect.gen(function* () {
       const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
@@ -242,7 +261,7 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
   const recovered = projectionFor(restarted, SCENARIO);
   assert.deepEqual(
     recovered.runs.map((run) => run.status),
-    ["completed"],
+    wakes ? ["completed", "completed"] : ["completed"],
   );
   assert.equal(recovered.subagents[0]?.status, "cancelled");
   assert.equal(recovered.runs[0]?.restartCancelledBackgroundWork?.[0]?.kind, "subagent");
@@ -270,9 +289,8 @@ describe("restart-cancelled background work", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const projection = yield* runRestart({
-            resumedPrompts: [
-              `${NOTE}\n\nUser message:\n${FIRST_AFTER_RESTART}`,
-              SECOND_AFTER_RESTART,
+            resumedSessions: [
+              [`${NOTE}\n\nUser message:\n${FIRST_AFTER_RESTART}`, SECOND_AFTER_RESTART],
             ],
             userMessagesAfterRestart: [FIRST_AFTER_RESTART, SECOND_AFTER_RESTART],
             continueThreadsAfterServerUpdate,
@@ -295,5 +313,32 @@ describe("restart-cancelled background work", () => {
           Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer)),
         ),
       ),
+  );
+
+  // Fork (Owner): the agent hears about the lost subagent without waiting for the user.
+  it.effect("wakes the settled thread with the note once, by itself, after a clean restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const projection = yield* runRestart({
+          // The restart's own turn is the note; later user turns do not repeat it.
+          // (The test reopens the session for the user's turns; a live server would not.)
+          resumedSessions: [[NOTE], [FIRST_AFTER_RESTART, SECOND_AFTER_RESTART]],
+          userMessagesAfterRestart: [FIRST_AFTER_RESTART, SECOND_AFTER_RESTART],
+          continueThreadsAfterServerUpdate: true,
+          shutdown: "clean",
+        });
+        assert.deepEqual(
+          projection.runs.map((run) => run.status),
+          ["completed", "completed", "completed", "completed"],
+        );
+        assert.deepEqual(
+          projection.runs.map((run) => run.restartContinuationOfRunId),
+          [undefined, projection.runs[0]?.id, undefined, undefined],
+        );
+      }).pipe(
+        provideDeterministicTestRuntime,
+        Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer)),
+      ),
+    ),
   );
 });

@@ -3799,10 +3799,12 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
   it.effect.each([
     ["failed", "shell", false],
-    ["completed", "shell", false],
-    ["waiting", "shell", false],
-    ["cancelled", "shell", false],
-    ["completed", "watchdog-monitor", false],
+    // Fork (Owner): a settled run that lost unawaited work is woken with the note too
+    // (fork/restartWake.ts); a failed one is still never continued.
+    ["completed", "shell", true],
+    ["waiting", "shell", true],
+    ["cancelled", "shell", true],
+    ["completed", "watchdog-monitor", true],
     ["failed", "awaited-monitor", false],
     ["completed", "awaited-monitor", true],
     ["waiting", "awaited-monitor", true],
