@@ -295,6 +295,7 @@ export const layerExecutor: Layer.Layer<
                 providerSessionId: request.providerSessionId,
                 providerThreadId: request.providerThreadId,
                 providerTurnId: request.providerTurnId,
+                ...(request.keepSubagents === true ? { keepSubagents: true } : {}),
                 ...(request.subagent === undefined
                   ? {}
                   : {
@@ -355,6 +356,7 @@ export const layerExecutor: Layer.Layer<
                           threadId: effect.threadId,
                           providerThreadId: request.providerThreadId,
                           providerTurnId: request.providerTurnId,
+                          ...(request.keepSubagents === true ? { keepSubagents: true } : {}),
                         }),
                 ),
                 Effect.mapError(

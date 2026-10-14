@@ -220,6 +220,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
 export interface InterruptThreadTurnInput extends ThreadCommandInput {
   readonly runId?: RunId;
   readonly subagentId?: NodeId;
+  /** Stop only the main agent; its subagents keep running and still report back. */
+  readonly keepSubagents?: boolean;
   readonly turnId?: string;
 }
 
@@ -1002,6 +1004,7 @@ export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThrea
     threadId,
     runId,
     holdQueue: true,
+    ...(input.keepSubagents === true ? { keepSubagents: true } : {}),
   });
 });
 
