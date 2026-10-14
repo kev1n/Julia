@@ -10291,6 +10291,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
     readonly projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "subagents">;
     readonly cohortRunIds: ReadonlyArray<RunId>;
+    readonly keepSubagents?: boolean;
     readonly now: DateTime.Utc;
   }) {
     const emitEvent = emit(input.events, input.command);
@@ -10385,6 +10386,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         payload: { ...run, queueHeld: true },
       });
     }
+    if (input.keepSubagents === true) return;
     const pullRequests = thread.pullRequests ?? [];
     if (pullRequests.some((link) => link.watch !== undefined)) {
       yield* emitEvent({
@@ -10550,6 +10552,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           now,
         });
       }
+      if (command.keepSubagents === true) return;
       // A new turn may have started since Stop; its work is not this Stop's.
       if (
         projection.runs.some(
@@ -10764,6 +10767,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       (candidate) => candidate.id === run.userMessageId,
     );
     const completionCohortRunId = completionMessage?.delegatedCompletion?.parentRunId ?? run.id;
+    // Keeping subagents drops no wake: their results still reach the thread.
+    const keepSubagents = command.keepSubagents === true;
     const stopRemainingWork = () =>
       command.holdQueue === true
         ? holdStoppedThread({
@@ -10771,20 +10776,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             events,
             projection,
             cohortRunIds: [completionCohortRunId],
+            keepSubagents,
             now,
           })
-        : Effect.gen(function* () {
-            for (const parentRunId of new Set([completionCohortRunId, run.id])) {
-              yield* disposeDelegatedCompletionCohort({
-                command,
-                events,
-                projection: yield* getProjectionWithPendingEvents(command.threadId, events),
-                parentRunId,
-                disposition: "stopped",
-                now,
-              });
-            }
-          });
+        : keepSubagents
+          ? Effect.void
+          : Effect.gen(function* () {
+              for (const parentRunId of new Set([completionCohortRunId, run.id])) {
+                yield* disposeDelegatedCompletionCohort({
+                  command,
+                  events,
+                  projection: yield* getProjectionWithPendingEvents(command.threadId, events),
+                  parentRunId,
+                  disposition: "stopped",
+                  now,
+                });
+              }
+            });
 
     const emitEvent = emit(events, command);
     const interruptRequestItem: OrchestrationV2TurnItem = {
@@ -10810,7 +10818,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     };
 
     const otherProviderInterrupts: Array<PendingOrchestrationEffectV2> = [];
-    if (hasBackgroundWork || command.holdQueue === true) {
+    if (!keepSubagents && (hasBackgroundWork || command.holdQueue === true)) {
       const runOrdinals = new Map(
         projection.runs.map((candidate) => [candidate.id, candidate.ordinal]),
       );
@@ -11057,6 +11065,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerSessionId,
           providerThreadId: providerThread.id,
           providerTurnId: providerTurn.id,
+          ...(keepSubagents ? { keepSubagents: true } : {}),
         },
       } satisfies PendingOrchestrationEffectV2,
       ...otherProviderInterrupts,
@@ -12606,7 +12615,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "run.interrupt":
         cancelUnsettledEffects = yield* dispatchRunInterrupt(command, events, effects);
-        if (command.holdQueue === true) {
+        // Stop also stops every delegated task under the thread once it commits, unless
+        // it stops only the main agent.
+        if (command.holdQueue === true && command.keepSubagents !== true) {
           // Stop must still commit when a child can't be read, so a failed repair's
           // partial events are dropped.
           const repairEvents = yield* Ref.make(yield* Ref.get(events));

@@ -3178,6 +3178,12 @@ export const OrchestrationV2Command = Schema.Union([
     runId: RunId,
     reason: Schema.optional(Schema.String),
     holdQueue: Schema.optional(Schema.Boolean),
+    /**
+     * Stops only the main agent's turn. Its subagents and other background work keep
+     * running, delegated tasks still wake the thread when they finish, and pull request
+     * watches stay. Providers that cannot keep native subagents alive stop them anyway.
+     */
+    keepSubagents: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-message.promote-to-steer"),
@@ -3452,6 +3458,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
         }),
       }),
     ),
+    /** The Stop kept subagents running: repair the stopped run, leave its background work. */
+    keepSubagents: Schema.optional(Schema.Boolean),
   }),
   /**
    * Internal so no client can mark a request saved without the value being

@@ -304,6 +304,8 @@ export interface ChatComposerHandle {
   stepReasoningEffort: (direction: 1 | -1) => void;
   toggleModelPicker: () => void;
   openControl: (command: KeybindingCommand) => void;
+  /** Opens the Stop menu when subagents can outlive the main agent; false when there is none. */
+  openStopMenu: () => boolean;
   isModelPickerOpen: () => boolean;
   isCaretAtStart: () => boolean;
   compactContext: () => void;
@@ -370,6 +372,8 @@ export interface ChatComposerProps {
 
   phase: SessionPhase;
   canInterrupt: boolean;
+  /** Running subagents that can outlive the main agent; above zero, Stop asks which to stop. */
+  keptSubagentCount: number;
   isSendBusy: boolean;
   canResume: boolean;
   isRevertingCheckpoint?: boolean;
@@ -463,7 +467,7 @@ export interface ChatComposerProps {
     submissionIntent?: ComposerSubmissionIntent,
   ) => void;
   onResume: () => void;
-  onInterrupt: () => void;
+  onInterrupt: (options?: { readonly keepSubagents?: boolean }) => void;
   onImplementPlanInNewThread: () => void;
   onSelectActivePendingUserInputOption: (questionId: string, optionValue: string) => void;
   onAdvanceActivePendingUserInput: () => void;
@@ -520,6 +524,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired,
     phase,
     canInterrupt,
+    keptSubagentCount,
     isSendBusy,
     canResume,
     isRevertingCheckpoint = false,
@@ -2688,8 +2693,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     window.addEventListener("dragend", onWindowDragEnd);
     return () => window.removeEventListener("dragend", onWindowDragEnd);
   }, [isDragOverComposer]);
-  const handleInterruptPrimaryAction = () => {
-    void onInterrupt();
+  const [stopMenuOpen, setStopMenuOpen] = useState(false);
+  const canChooseStopScope = canInterrupt && keptSubagentCount > 0;
+  if (stopMenuOpen && !canChooseStopScope) setStopMenuOpen(false);
+  const handleInterruptPrimaryAction = (options?: { readonly keepSubagents?: boolean }) => {
+    setStopMenuOpen(false);
+    void onInterrupt(options);
   };
   const handleInterruptPrimaryActionStable = useStableCallback(handleInterruptPrimaryAction);
   const handleImplementPlanInNewThreadPrimaryAction = () => {
@@ -2864,6 +2873,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         trigger.click();
       },
       compactContext: compactThreadContextStable,
+      openStopMenu: () => {
+        if (!canChooseStopScope) return false;
+        setStopMenuOpen(true);
+        return true;
+      },
       isModelPickerOpen: () => isComposerModelPickerOpen,
       isCaretAtStart: () => {
         const range = composerEditorRef.current?.readSelectionRange();
@@ -3004,6 +3018,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       projectSelectionRequired,
       applyPromptReplacementStable,
       isComposerModelPickerOpen,
+      canChooseStopScope,
       openModelPickerStable,
       readComposerSnapshotStable,
       resetComposerTrigger,
@@ -3492,6 +3507,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onResume={onResume}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryActionStable}
+                    keptSubagentCount={keptSubagentCount}
+                    stopMenuOpen={stopMenuOpen}
+                    onStopMenuOpenChange={setStopMenuOpen}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryActionStable}
                     compactBeforeSendTokens={props.resumeCompactionTokens}
                     keepFullHistory={props.keepFullHistory}

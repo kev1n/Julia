@@ -4619,6 +4619,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           >(),
         );
         const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
+        // Interrupted turns whose Stop kept the CLI process, so the background
+        // subagents and work they started keep running and waking the thread.
+        const subagentKeepingInterrupts = new Set<OrchestrationV2ProviderTurn["id"]>();
         const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
         // A worktree handoff changes the project settings even within one session.
@@ -7248,7 +7251,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
           }
           input.context.compaction = null;
-          if (input.status !== "completed") {
+          // A Stop that kept subagents leaves background work as a finished turn does.
+          const keepsBackground =
+            input.status === "completed" ||
+            (input.status === "interrupted" &&
+              subagentKeepingInterrupts.has(input.context.providerTurnId));
+          if (!keepsBackground) {
             const liveQuery = yield* Ref.get(queryContext);
             for (const [taskId, subagent] of yield* Ref.get(sessionSubagentsByTaskId)) {
               if (
@@ -7275,7 +7283,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const runningChildThreadIds = new Set(
             [...(yield* Ref.get(sessionSubagentsByTaskId)).values()].flatMap((subagent) =>
               subagent.task.status === "running" &&
-              (input.status === "completed" ||
+              (keepsBackground ||
                 (liveQuery !== null && subagent.task.runId !== input.context.input.runId)) &&
               liveQuery?.subagentsFromEarlierProcesses.has(subagent) !== true
                 ? [subagent.childThreadId]
@@ -7424,7 +7432,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 const nativeThreadId =
                   input.context.input.providerThread.nativeThreadRef?.nativeId ?? null;
                 if (nativeThreadId !== null) {
-                  if (input.status !== "completed") {
+                  if (!keepsBackground) {
                     yield* clearPendingBackgroundTasksForNativeThread(nativeThreadId);
                     yield* clearNativeThreadTaskIdSet(
                       wakeEligibleBackgroundTasksByNativeThread,
@@ -7492,7 +7500,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     roster,
                     awaitedTaskIds,
                   ),
-                  status: input.status === "completed" ? "active" : "idle",
+                  status: keepsBackground ? "active" : "idle",
                   updatedAt: input.completedAt,
                 };
                 yield* rememberProviderThread(providerThread);
@@ -7509,11 +7517,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* Ref.update(activeTurn, (current) =>
             current?.providerTurnId === input.context.providerTurnId ? null : current,
           );
-          if (input.status === "completed") {
+          if (keepsBackground) {
             settledTurnByNativeThread.set(input.context.nativeThreadId, input.context);
           } else {
             settledTurnByNativeThread.delete(input.context.nativeThreadId);
           }
+          subagentKeepingInterrupts.delete(input.context.providerTurnId);
           yield* Ref.update(interruptedTurns, (current) => {
             const next = new Set(current);
             next.delete(input.context.providerTurnId);
@@ -10411,6 +10420,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const existing = yield* Ref.get(queryContext);
             const currentTurn = yield* Ref.get(activeTurn);
             const nativeThreadId = turnInput.providerThread.nativeThreadRef?.nativeId ?? null;
+            // With no root turn running there is nothing to stop but background work.
+            if (currentTurn === null && turnInput.keepSubagents === true) return;
             if (currentTurn === null && turnInput.requestRuntimeRestart === true) {
               if (nativeThreadId === null) return;
               if (existing === null || existing.nativeThreadId !== nativeThreadId) {
@@ -10447,7 +10458,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               next.add(turnInput.providerTurnId);
               return next;
             });
-            yield* existing.query.interrupt;
+            if (turnInput.keepSubagents === true) {
+              // Interrupting without closing the query ends only the root turn:
+              // background subagents and shells live in the CLI process.
+              subagentKeepingInterrupts.add(turnInput.providerTurnId);
+              yield* existing.query.interrupt;
+              const settled = yield* Effect.gen(function* () {
+                while ((yield* Ref.get(activeTurn))?.providerTurnId === turnInput.providerTurnId) {
+                  yield* Effect.sleep("20 millis");
+                }
+              }).pipe(
+                Effect.timeoutOption("10 seconds"),
+                // Real time: the result arrives on another fiber, which never
+                // advances a test clock.
+                Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+              );
+              if (Option.isSome(settled)) return;
+              // The CLI never ended the turn. Fall back to closing its process.
+              subagentKeepingInterrupts.delete(turnInput.providerTurnId);
+            } else {
+              yield* existing.query.interrupt;
+            }
             yield* existing.query.close.pipe(Effect.ignore);
             const closed = yield* Deferred.await(existing.closed).pipe(
               Effect.timeoutOption("10 seconds"),

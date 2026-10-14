@@ -236,9 +236,11 @@ export interface ThreadComposerProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
-  readonly onStopThread: () => void;
+  readonly onStopThread: (options?: { readonly keepSubagents?: boolean }) => void;
   /** Present while the thread's queue is held. */
   readonly onResumeQueue: (() => Promise<void>) | null;
+  /** Running subagents that can outlive the main agent; above zero, Stop asks which to stop. */
+  readonly keptSubagentCount?: number;
   /** `stillSendable` reports whether the draft is unchanged after any wait before sending. */
   readonly onSendMessage: (
     followUp?: ActiveTurnComposerAction,
@@ -338,6 +340,64 @@ function SendActionButton(props: {
       }
     >
       {button}
+    </Menu>
+  );
+}
+
+/** Stop; while subagents run, a menu asks whether to stop only the main agent. */
+function StopAgentButton(props: {
+  readonly size?: "large" | "regular";
+  readonly disabled: boolean;
+  readonly keptSubagentCount: number;
+  readonly onStop: (options?: { readonly keepSubagents?: boolean }) => void;
+}) {
+  if (props.keptSubagentCount === 0 || props.disabled) {
+    return (
+      <ComposerActionButton
+        {...(props.size === undefined ? {} : { size: props.size })}
+        accessibilityLabel="Stop agent"
+        icon="stop.fill"
+        variant="danger"
+        disabled={props.disabled}
+        onPress={() => props.onStop()}
+      />
+    );
+  }
+  const subagents =
+    props.keptSubagentCount === 1 ? "its subagent" : `its ${props.keptSubagentCount} subagents`;
+  return (
+    <Menu
+      accessibilityLabel="Choose which agents to stop"
+      actions={[
+        {
+          id: "all",
+          title: "Stop all agents",
+          subtitle: `Main agent and ${subagents}`,
+          image: "person.3.fill",
+          attributes: { destructive: true },
+        },
+        {
+          id: "main",
+          title: "Stop main agent",
+          subtitle:
+            props.keptSubagentCount === 1
+              ? "Its subagent keeps running"
+              : `Its ${props.keptSubagentCount} subagents keep running`,
+          image: "person.fill.xmark",
+        },
+      ]}
+      onPressAction={({ nativeEvent }) =>
+        props.onStop({ keepSubagents: nativeEvent.event === "main" })
+      }
+    >
+      <ComposerActionButton
+        {...(props.size === undefined ? {} : { size: props.size })}
+        accessibilityLabel="Stop agents"
+        icon="stop.fill"
+        variant="danger"
+        disabled={false}
+        onPress={() => {}}
+      />
     </Menu>
   );
 }
@@ -972,13 +1032,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   onCancel={voiceInput.cancel}
                 />
                 {showStopAction ? (
-                  <ComposerActionButton
+                  <StopAgentButton
                     size={usesLargeControls ? "large" : "regular"}
-                    accessibilityLabel="Stop agent"
-                    icon="stop.fill"
-                    variant="danger"
                     disabled={!props.canOperateThread}
-                    onPress={props.onStopThread}
+                    keptSubagentCount={props.keptSubagentCount ?? 0}
+                    onStop={props.onStopThread}
                   />
                 ) : showResumeAction ? (
                   <ComposerActionButton
@@ -1175,13 +1233,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     onCancel={voiceInput.cancel}
                   />
                   {showStopAction ? (
-                    <ComposerActionButton
+                    <StopAgentButton
                       size={usesLargeControls ? "large" : "regular"}
-                      accessibilityLabel="Stop agent"
-                      icon="stop.fill"
-                      variant="danger"
                       disabled={!props.canOperateThread}
-                      onPress={props.onStopThread}
+                      keptSubagentCount={props.keptSubagentCount ?? 0}
+                      onStop={props.onStopThread}
                     />
                   ) : showResumeAction && voicePresentation.showsSend ? (
                     <ComposerActionButton

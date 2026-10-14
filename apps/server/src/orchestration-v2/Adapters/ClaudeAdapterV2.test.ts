@@ -9291,6 +9291,63 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("a Stop that keeps subagents ends the root turn without closing the CLI process", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let closes = 0;
+        const harness = yield* makeWakeHarnessWithOptions({
+          close: (sdkMessages) =>
+            Effect.sync(() => {
+              closes += 1;
+            }).pipe(Effect.andThen(Queue.shutdown(sdkMessages))),
+          stopTask: () => Effect.void,
+          // The CLI answers an interrupt with the turn's result and keeps running.
+          interrupt: Effect.suspend((): Effect.Effect<boolean> =>
+            Queue.offer(
+              harness.sdkMessages,
+              makeResultFrame({
+                uuid: "00000000-0000-4000-8000-000000000117",
+                result: "Interrupted.",
+              }),
+            ),
+          ),
+        });
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const now = yield* DateTime.now;
+        const attemptId = RunAttemptId.make("attempt-claude-interrupt-keep-subagents");
+        const providerTurnId = idAllocator.derive.providerTurn({
+          driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+          nativeTurnId: `turn:${attemptId}`,
+        });
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId,
+            text: "Keep the subagents going.",
+            attachments: [],
+          }),
+        );
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId,
+          requestRuntimeRestart: true,
+          keepSubagents: true,
+        });
+
+        assert.lengthOf(harness.terminalEvents(), 1);
+        assert.equal(harness.terminalEvents()[0]?.status, "interrupted");
+        assert.equal(closes, 0);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
   // regression: #16897 a prompt whose uuid the session already holds must not hang or end early
   it.effect("keeps a started prompt running until its result", () =>
     Effect.scoped(

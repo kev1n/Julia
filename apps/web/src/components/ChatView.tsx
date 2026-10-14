@@ -108,6 +108,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { formatModelSlugName, resolveSelectableModel } from "@t3tools/shared/model";
 import { projectScriptCwd, resolveProjectScripts } from "@t3tools/shared/projectScripts";
+import { countSubagentsKeptOnStop } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
@@ -1778,7 +1779,12 @@ export default function ChatView(props: ChatViewProps) {
   const focusComposerStable = useStableCallback(focusComposer);
   const canInterruptRunningThread =
     canOperateThread && deriveCanInterruptRunningThread(activeThread !== undefined, activeRuntime);
-  const onInterrupt = async () => {
+  // Only a running main agent can be stopped apart from its subagents.
+  const keptSubagentCount =
+    activeActivityRun?.status === "running" && serverProjection !== null
+      ? countSubagentsKeptOnStop(serverProjection.subagents)
+      : 0;
+  const onInterrupt = async (options?: { readonly keepSubagents?: boolean }) => {
     if (
       !activeThread ||
       !readEnvironmentScope(activeThread.environmentId, AuthOrchestrationOperateScope)
@@ -1786,7 +1792,10 @@ export default function ChatView(props: ChatViewProps) {
       return;
     const result = await interruptThreadTurn({
       environmentId,
-      input: { threadId: activeThread.id },
+      input: {
+        threadId: activeThread.id,
+        ...(options?.keepSubagents === true ? { keepSubagents: true } : {}),
+      },
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -2681,7 +2690,10 @@ export default function ChatView(props: ChatViewProps) {
         queuedRunsControlRef.current?.editLatest(event.repeat) === true,
       "thread.stop": ({ event }) => {
         if (!canInterruptRunningThread) return false;
-        if (!event.repeat) void onInterruptStable();
+        if (event.repeat) return;
+        // With subagents running, the shortcut asks which agents to stop, like the button.
+        if (composerRef.current?.openStopMenu()) return;
+        void onInterruptStable();
       },
     },
     fallback: (command) => {
@@ -3549,6 +3561,7 @@ export default function ChatView(props: ChatViewProps) {
                               phase={phase}
                               isCompacting={isCompacting}
                               canInterrupt={canInterruptRunningThread}
+                              keptSubagentCount={keptSubagentCount}
                               isSendBusy={
                                 (isSendBusy && !sendQueuesBehindSetup) ||
                                 (setupQueueSendThreadKey !== null &&

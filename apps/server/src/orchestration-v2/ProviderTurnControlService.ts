@@ -55,6 +55,8 @@ export interface ProviderTurnControlServiceV2Shape {
     readonly providerSessionId: ProviderSessionId;
     readonly providerThreadId: ProviderThreadId;
     readonly providerTurnId: ProviderTurnId;
+    /** Stop only the root turn; see `ProviderAdapterV2InterruptInput.keepSubagents`. */
+    readonly keepSubagents?: boolean;
   }) => Effect.Effect<
     void | ProviderAdapter.ProviderAdapterV2SubagentOutcome,
     ProviderTurnControlError
@@ -222,6 +224,7 @@ export const layer: Layer.Layer<
             providerThread: loaded.providerThread,
             providerTurnId: loaded.providerTurn.id,
             requestRuntimeRestart: true,
+            ...(input.keepSubagents === true ? { keepSubagents: true } : {}),
           });
           // Use real time; ingestion fibers do not advance TestClock and would leave Stop blocked.
           yield* Effect.gen(function* () {

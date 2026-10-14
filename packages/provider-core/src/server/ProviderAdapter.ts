@@ -442,6 +442,8 @@ export interface ProviderAdapterV2InterruptInput {
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly providerTurnId: ProviderTurnId;
   readonly requestRuntimeRestart?: boolean;
+  /** Stop only the root turn; background subagents and work it started keep running. */
+  readonly keepSubagents?: boolean;
 }
 
 export interface ProviderAdapterV2RuntimeRequestResponseInput {
