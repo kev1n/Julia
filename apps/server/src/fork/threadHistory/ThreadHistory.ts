@@ -195,9 +195,10 @@ export const make = (blobs: HistoryBlobStore | null) =>
         .withLock(
           threadId,
           Effect.gen(function* () {
-            if (blobs === null || (yield* store.refusal(threadId)) !== null) return;
+            if (blobs === null || (yield* store.refusal(threadId)) !== null) return "skipped";
+            yield* Effect.tryPromise({ try: () => blobs.ready(), catch: asBlobError });
             const { bundle, localBytes, lastSequence } = yield* store.collect(threadId);
-            if (bundle.events.length === 0) return;
+            if (bundle.events.length === 0) return "skipped";
             const body = HistoryStore.encodeBundle(bundle);
             const sha256 = sha256Hex(body);
             const now = DateTime.formatIso(yield* DateTime.now);
@@ -214,7 +215,7 @@ export const make = (blobs: HistoryBlobStore | null) =>
               localBytes,
               blobBytes: body.byteLength,
             });
-            if (!removed) return;
+            if (!removed) return "skipped";
             offloaded.add(threadId);
             yield* store.releaseFreePages;
             yield* Effect.logInfo("moved settled thread history to Azure", {
@@ -223,23 +224,52 @@ export const make = (blobs: HistoryBlobStore | null) =>
               localBytes,
               blobBytes: body.byteLength,
             });
+            return "moved";
           }),
         )
         .pipe(
+          // Azure refusing or unreachable stops the pass (see `sweep`); anything else
+          // only skips this thread.
+          Effect.catchTags({
+            HistoryBlobMissing: (error) =>
+              Effect.logWarning("history upload could not be read back", { threadId, error }).pipe(
+                Effect.as("azure" as const),
+              ),
+            HistoryBlobUnavailable: (error) =>
+              Effect.logWarning("Azure Blob Storage unusable; offloading paused", {
+                threadId,
+                error: error.message,
+              }).pipe(Effect.as("azure" as const)),
+          }),
           Effect.catchCause((cause) =>
-            Effect.logWarning("offloading settled thread history failed", { threadId, cause }),
+            Effect.logWarning("offloading settled thread history failed", { threadId, cause }).pipe(
+              Effect.as("skipped" as const),
+            ),
           ),
         );
 
     // Whether a thread may move only changes when an event commits or an effect
     // finishes, so a tick with neither since the last full pass has nothing to do.
+    // After Azure fails, the same waiting threads are not tried again: retrying
+    // would rebuild bundles every tick on a Mac that cannot reach Azure. A newly
+    // settled thread, or a restart, tries again.
     let sweptThrough = "";
+    let pausedOn: string | null = null;
     const sweep = (environmentId: string) =>
       Effect.gen(function* () {
         const latest = yield* store.changeMark;
         if (latest === sweptThrough) return;
         const candidates = yield* store.candidates;
-        yield* Effect.forEach(candidates, offloadOne(environmentId), { discard: true });
+        const waiting = candidates.join("\n");
+        if (waiting !== pausedOn) {
+          pausedOn = null;
+          for (const threadId of candidates) {
+            if ((yield* offloadOne(environmentId)(threadId)) === "azure") {
+              pausedOn = waiting;
+              break;
+            }
+          }
+        }
         sweptThrough = latest;
       }).pipe(
         Effect.catchCause((cause) => Effect.logWarning("thread history sweep failed", { cause })),
