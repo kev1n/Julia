@@ -36,6 +36,7 @@ import {
 import * as Schema from "effect/Schema";
 // Fork (Owner): move a thread to another machine.
 import { ForkFleetOverlapsInput, ForkFleetOverlapsResult } from "./forkFleet.ts";
+import { ForkThreadHistoryInput, ForkThreadHistoryStatus } from "./forkThreadHistory.ts";
 import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -570,6 +571,7 @@ export const WS_METHODS = {
   serverGetHostResources: "server.getHostResources",
   forkMoveReceive: "fork.moveReceive",
   forkFleetOverlaps: "fork.fleetOverlaps",
+  forkThreadHistory: "fork.threadHistory",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
@@ -1037,6 +1039,14 @@ const WsForkFleetOverlapsRpc = Rpc.make(WS_METHODS.forkFleetOverlaps, {
   payload: ForkFleetOverlapsInput,
   success: ForkFleetOverlapsResult,
   error: EnvironmentAuthorizationError,
+});
+
+// Fork (Owner): restores a settled thread's history from Azure and reports where it is.
+const WsForkThreadHistoryRpc = Rpc.make(WS_METHODS.forkThreadHistory, {
+  payload: ForkThreadHistoryInput,
+  success: ForkThreadHistoryStatus,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 const WsServerGetProcessResourceHistoryRpc = Rpc.make(WS_METHODS.serverGetProcessResourceHistory, {
@@ -2330,6 +2340,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetHostResourcesRpc,
   WsForkMoveReceiveRpc,
   WsForkFleetOverlapsRpc,
+  WsForkThreadHistoryRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,

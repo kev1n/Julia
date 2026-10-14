@@ -45,6 +45,7 @@ import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.log
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
+import { useThreadHistoryBanner } from "../fork/threadHistory/useThreadHistoryBanner";
 import { useComposerAutoAccount } from "../fork/autoPlacement/useAutoAccount";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
@@ -1342,7 +1343,7 @@ export default function ChatView(props: ChatViewProps) {
     (!draftThread?.branch || draftThread.environmentSelection === "auto") &&
     !draftThread?.worktreePath,
   );
-  const systemComposerBannerItems = useSystemComposerBanners({
+  const machineComposerBannerItems = useSystemComposerBanners({
     activeEnvironment,
     activeEnvironmentUnavailable,
     activeEnvironmentUnavailableState,
@@ -1350,6 +1351,10 @@ export default function ChatView(props: ChatViewProps) {
     movedThreadRef: isServerThread ? activeThreadRef : null,
     fleetOverlapRef: isServerThread ? activeThreadRef : null,
   });
+  const threadHistoryBanner = useThreadHistoryBanner(isServerThread ? activeThreadRef : null);
+  const systemComposerBannerItems = threadHistoryBanner
+    ? [...machineComposerBannerItems, threadHistoryBanner]
+    : machineComposerBannerItems;
   const providerInstanceEntries = providerInstanceEntriesFor(
     providerStatuses,
     settings,
@@ -3842,7 +3847,10 @@ export default function ChatView(props: ChatViewProps) {
                                 compactDisabled={compactDisabled}
                                 contextWindow={activeContextWindow}
                                 contextWindowLoading={
-                                  !activeEnvironmentUnavailable && threadSyncPhase === "loading"
+                                  // Fork (Owner): a history restore says why the thread is syncing.
+                                  !activeEnvironmentUnavailable &&
+                                  threadHistoryBanner?.group !== "environment" &&
+                                  threadSyncPhase === "loading"
                                 }
                                 compactDisabledReason={compactDisabledReason}
                                 resolvedTheme={resolvedTheme}
