@@ -396,10 +396,27 @@ export const make = Effect.gen(function* () {
   `.pipe(Effect.map((rows) => `${rows[0]?.last ?? 0}:${rows[0]?.pending ?? 0}`));
 
   /**
-   * Gives freed pages back to the disk. A no-op until the database uses
-   * incremental vacuum, which install-runtime.sh switches on once per machine.
+   * Gives freed pages back to the disk once install-runtime.sh enabled incremental vacuum. Each
+   * step of `incremental_vacuum` frees one page and the client steps a statement once, so it runs
+   * once per free page, 2,000 pages (8 MB) per transaction.
    */
-  const releaseFreePages = sql`PRAGMA incremental_vacuum`;
+  const freePages = sql<{ readonly freelist_count: number }>`PRAGMA freelist_count`.pipe(
+    Effect.map((rows) => Number(rows[0]?.freelist_count ?? 0)),
+  );
+  const releaseFreePages = Effect.gen(function* () {
+    const mode = yield* sql<{ readonly auto_vacuum: number }>`PRAGMA auto_vacuum`;
+    if (Number(mode[0]?.auto_vacuum) !== 2) return;
+    for (let free = yield* freePages, before = Infinity; free > 0 && free < before;) {
+      const pages = Math.min(free, 2_000);
+      yield* sql.withTransaction(
+        Effect.forEach(Array.from({ length: pages }), () => sql`PRAGMA incremental_vacuum`, {
+          discard: true,
+        }),
+      );
+      before = free;
+      free = yield* freePages;
+    }
+  });
 
   return {
     records,

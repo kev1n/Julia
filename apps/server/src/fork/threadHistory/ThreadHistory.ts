@@ -202,7 +202,8 @@ export const make = (blobs: HistoryBlobStore | null) =>
             const body = HistoryStore.encodeBundle(bundle);
             const sha256 = sha256Hex(body);
             const now = DateTime.formatIso(yield* DateTime.now);
-            const blobName = `${environmentId}/${threadId}/${now}.json.gz`;
+            // Hashed: thread ids can run past Azure's 1,024-character blob name limit.
+            const blobName = `${environmentId}/${sha256Hex(new TextEncoder().encode(threadId))}/${now}.json.gz`;
             // Verify-then-delete: read the upload back before anything local goes.
             yield* Effect.tryPromise({ try: () => blobs.put(blobName, body), catch: asBlobError });
             yield* download(blobName, sha256);
