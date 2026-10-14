@@ -161,7 +161,7 @@ const FleetThreadReadTool = Tool.make("t3_fleet_thread_read", {
 const FleetThreadSendTool = Tool.make("t3_fleet_thread_send", {
   ...shared,
   description:
-    "Send a message to a thread on any of Owner's machines. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
+    "Send a message to a thread on any of Owner's machines about that thread's own work. It is not for handing a new task to another machine, and the sender gets no notice when the thread finishes; for a new task there, use delegate_task with machine. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
   parameters: Schema.Struct({
     environmentId: Schema.String,
     threadId: Schema.String,
