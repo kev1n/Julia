@@ -29,11 +29,11 @@ import {
   isAwaitedWork,
   isRestartContinuationSource,
   cancelledBeforeStart,
-  isRestartNoteSource,
   neverStarted,
   restartCancelledBackgroundWorkNote,
   restartContinuationNote,
 } from "./RestartBackgroundNote.ts";
+import { isRestartWakeSource } from "../fork/restartWake.ts";
 
 const CONTINUE_PROMPT =
   "Continue where you left off. Your last turn was cut short, so a command or other action it started may have finished or may still be running. Before you repeat one that changes state, confirm it did not take effect and is not still running; if you cannot tell, say so instead of repeating it.";
@@ -99,13 +99,18 @@ export const restartStopRequested = Effect.fn("RestartContinuation.restartStopRe
     ) => Effect.Effect<ProjectionRecords<K>, E>,
     thread: Pick<ProjectionRuntimeRecoveryState["thread"], "id" | "lineage" | "forkedFrom">,
     source: Pick<OrchestrationV2Run, "id" | "delegatedTaskId">,
+    options?: { readonly ignoreOwnStop?: boolean },
   ) {
-    const { turnItems } = yield* getThreadRecords(thread.id, ["turnItems"], {
-      turnItemRunIds: [source.id],
-      turnItemTypes: ["run_interrupt_request"],
-    });
-    if (turnItems.some((item) => item.runId === source.id && item.type === "run_interrupt_request"))
-      return true;
+    if (options?.ignoreOwnStop !== true) {
+      const { turnItems } = yield* getThreadRecords(thread.id, ["turnItems"], {
+        turnItemRunIds: [source.id],
+        turnItemTypes: ["run_interrupt_request"],
+      });
+      if (
+        turnItems.some((item) => item.runId === source.id && item.type === "run_interrupt_request")
+      )
+        return true;
+    }
     const { lineage, forkedFrom } = thread;
     const taskId =
       source.delegatedTaskId ?? (forkedFrom?.type === "node" ? forkedFrom.nodeId : undefined);
@@ -256,18 +261,18 @@ export const continueRestartedRun = Effect.fn("RestartContinuation.continueResta
       return;
     if (projection.messages.some((message) => message.id === messageId)) return;
     const source = projection.runs.find((run) => run.id === input.sourceRunId);
+    if (!source) return;
+    // Fork (Owner): a settled turn whose live background work the restart cancelled is
+    // woken with the note (`fork/restartWake.ts` decided liveness when it queued this),
+    // including work upstream does not wait on, such as background shells.
+    const wake = isRestartWakeSource(source, projection.providerTurns);
     if (
-      !source ||
-      !(
-        isRestartContinuationSource(source, projection.providerTurns) ||
-        continuationFailedBeforePrompt(source, projection.providerTurns)
-      ) ||
-      restartContinuationBlocked(
-        projection,
-        source,
-        yield* DateTime.now,
-        isRestartNoteSource(source, projection.providerTurns),
-      )
+      (!wake &&
+        !(
+          isRestartContinuationSource(source, projection.providerTurns) ||
+          continuationFailedBeforePrompt(source, projection.providerTurns)
+        )) ||
+      restartContinuationBlocked(projection, source, yield* DateTime.now, wake)
     )
       return;
     if (
@@ -305,7 +310,14 @@ export const continueRestartedRun = Effect.fn("RestartContinuation.continueResta
       });
       return;
     }
-    if (yield* restartStopRequested(threads.getThreadRecords, projection.thread, source)) return;
+    // A woken run may have been stopped with "stop only the main agent", which kept its
+    // subagents running, so only a parent's Stop blocks it.
+    if (
+      yield* restartStopRequested(threads.getThreadRecords, projection.thread, source, {
+        ignoreOwnStop: wake,
+      })
+    )
+      return;
     const sourceMessage = (yield* threads.getThreadRecords(input.threadId, ["messages"], {
       messageIds: [source.userMessageId],
     })).messages.find((message) => message.id === source.userMessageId);
@@ -318,10 +330,11 @@ export const continueRestartedRun = Effect.fn("RestartContinuation.continueResta
     );
     const noteText =
       note.work.length === 0 ? undefined : restartCancelledBackgroundWorkNote(note.work);
+    if (wake && noteText === undefined) return;
     const text =
       noteText === undefined
         ? CONTINUE_PROMPT
-        : note.settled
+        : note.settled || wake
           ? noteText
           : `${noteText}\n\n${CONTINUE_PROMPT}`;
     yield* threads
@@ -334,9 +347,10 @@ export const continueRestartedRun = Effect.fn("RestartContinuation.continueResta
         notification: {
           source: { kind: "system" },
           outcome: "updated",
-          summary: note.settled
-            ? "T3 Code restarted and stopped background work"
-            : "T3 Code restarted and resumed this turn",
+          summary:
+            note.settled || wake
+              ? "T3 Code restarted and stopped background work"
+              : "T3 Code restarted and resumed this turn",
           detail: text,
         },
         attachments: [],

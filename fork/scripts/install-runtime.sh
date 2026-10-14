@@ -93,6 +93,14 @@ if ! wait_for "$version"; then
 fi
 echo "Service runs $version (was $previous)."
 
+# The daily job runs ~/t3-fork/pull-deploy.sh; keep its idle check in step with
+# the release just installed (install-desktop.sh does this only where the app is).
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -d "$HOME/t3-fork" ] && [ -f "$here/pull-deploy.sh" ]; then
+  cp "$here/pull-deploy.sh" "$HOME/t3-fork/pull-deploy.sh"
+  chmod 700 "$HOME/t3-fork/pull-deploy.sh"
+fi
+
 # Keep the stock runtimes, the active fork runtime, and the one before it for rollback.
 for dir in "$versions"/*+owner.*; do
   [ -d "$dir" ] || continue
