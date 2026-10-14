@@ -24,7 +24,12 @@ import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
-import { HistoryBlobMissing, HistoryBlobUnavailable, type HistoryBlobStore } from "./blobStore.ts";
+import {
+  HistoryBlobMissing,
+  HistoryBlobRejected,
+  HistoryBlobUnavailable,
+  type HistoryBlobStore,
+} from "./blobStore.ts";
 import { MOVED_EVENT_TYPES } from "./historyStore.ts";
 import * as ThreadHistory from "./ThreadHistory.ts";
 
@@ -43,16 +48,24 @@ const projectId = ProjectId.make("project:history");
 /**
  * A blob container in memory. `failNext` makes the next download fail like
  * Azure being down; `down` makes signing in fail, and `signIns` counts tries.
+ * Like Azure, it refuses names over 1,024 characters; `rejectNext` refuses the
+ * next upload.
  */
 function memoryBlobs() {
   const blobs = new Map<string, Uint8Array>();
-  const state = { failNext: false, down: false, signIns: 0 };
+  const state = { failNext: false, down: false, signIns: 0, rejectNext: false };
   const store: HistoryBlobStore = {
     ready: async () => {
       state.signIns += 1;
       if (state.down) throw new HistoryBlobUnavailable({ message: "Azure sign-in failed" });
     },
-    put: async (name, body) => void blobs.set(name, Uint8Array.from(body)),
+    put: async (name, body) => {
+      if (name.length > 1024 || state.rejectNext) {
+        state.rejectNext = false;
+        throw new HistoryBlobRejected({ message: "upload failed (400)" });
+      }
+      blobs.set(name, Uint8Array.from(body));
+    },
     get: async (name) => {
       if (state.failNext) {
         state.failNext = false;
@@ -438,6 +451,38 @@ it.layer(layerTest)("ThreadHistory", (it) => {
       yield* history.sweep("env");
       assert.equal(yield* movedEventCount(first), 0);
       assert.equal(blobs.blobs.size, 2);
+    }),
+  );
+
+  it.effect(
+    "a thread id longer than a blob name moves; a refused upload skips only its thread",
+    () =>
+      Effect.gen(function* () {
+        const blobs = memoryBlobs();
+        const history = yield* ThreadHistory.make(blobs.store);
+        const long = yield* settledThread(`long-${"x".repeat(1_100)}`);
+        yield* history.sweep("env");
+        assert.equal(yield* movedEventCount(long), 0);
+
+        blobs.state.rejectNext = true;
+        const refused = yield* settledThread("refused-a");
+        const next = yield* settledThread("refused-b");
+        yield* history.sweep("env");
+        const left = [yield* movedEventCount(refused), yield* movedEventCount(next)];
+        assert.equal(left.filter((n) => n === 0).length, 1);
+      }),
+  );
+
+  it.effect("gives the freed pages back to the disk", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`PRAGMA auto_vacuum = INCREMENTAL`;
+      yield* sql`VACUUM`;
+      const history = yield* ThreadHistory.make(memoryBlobs().store);
+      yield* settledThread("pages");
+      yield* history.sweep("env");
+      const rows = yield* sql<{ readonly freelist_count: number }>`PRAGMA freelist_count`;
+      assert.equal(rows[0]!.freelist_count, 0);
     }),
   );
 });
