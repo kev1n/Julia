@@ -29,6 +29,7 @@ import {
   restartContinuationRun,
   restartStopRequested,
 } from "./RestartContinuation.ts";
+import { restartWakeSourceRun } from "../fork/restartWake.ts";
 import { isBufferedProviderNotification } from "./NotificationMailbox.ts";
 import { queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
 import {
@@ -1003,12 +1004,16 @@ export const make = Effect.gen(function* () {
           },
         });
       }
+      // Fork (Owner): after a crash, also wake a settled turn whose background work was live.
       const continuationRun =
         continueAfterRestart && trigger === "startup"
-          ? restartContinuationRun(
-              { ...projection, providerSessions: sessionsLiveAtStart(projection, stoppedThisPass) },
-              now,
-            )
+          ? (() => {
+              const liveAtStart = {
+                ...projection,
+                providerSessions: sessionsLiveAtStart(projection, stoppedThisPass),
+              };
+              return restartContinuationRun(liveAtStart, now) ?? restartWakeSourceRun(liveAtStart);
+            })()
           : undefined;
       let processLossCount = 1;
       // Normal upgrades must not exhaust an unfinished turn's crash allowance.
@@ -1220,10 +1225,11 @@ export const make = Effect.gen(function* () {
               .continueThreadsAfterServerUpdate
           )
             return;
-          const run = restartContinuationRun(
-            yield* rewindUnacceptedRuns(projection),
-            yield* DateTime.now,
-          );
+          // Fork (Owner): providers are still live here, so their background work is too.
+          const recovered = yield* rewindUnacceptedRuns(projection);
+          const run =
+            restartContinuationRun(recovered, yield* DateTime.now) ??
+            restartWakeSourceRun(recovered);
           if (!run) return;
           const commandId = CommandId.make(`command:restart-prepare:${run.id}`);
           yield* eventSink.writeWithEffects({

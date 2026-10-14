@@ -280,6 +280,35 @@ blob per query. Attachments stay on disk (17 MB in all on mac-a).
   stopped, 42 s for mac-a's 2.8 GB), and the server runs `PRAGMA incremental_vacuum` after each
   offload.
 
+**Restarts keep background work** (`apps/server/src/fork/restartWake.ts`, `fork/scripts/live-work.sh`,
+`fork/scripts/deploy-when-idle.sh`). A thread whose turn has ended can still have work running:
+Claude subagents, background shells and Monitors, which report back by waking the thread. A T3
+restart kills them, and upstream only tells the agent on the user's next message (#15604 stopped
+waking settled threads because stale "running" rows under stopped sessions woke long-finished
+ones). On 2026-10-14 two deploys and a restart on mac-a killed "Discuss Email with Chief of
+Staff"'s subagents and nothing resumed them for an hour.
+
+- Planned restarts wait. `live-work.sh` lists what a restart would cut off: runs that are working
+  or about to start, the provider's background roster (shells, Monitors), running
+  subagent/shell/tool items, and a wake turn Claude started for a finished task. Background work
+  counts only while its provider session is live. `deploy-when-idle.sh` and the daily
+  `pull-deploy.sh` install only when it prints nothing. There is no timeout: every 30 s check logs
+  what it waits for and since when (`~/t3-fork/logs/deploy-when-idle-<sha>.log`). A dev server
+  left running holds the deploy until it stops, which is the same rule. Restarts started by hand
+  (`rollback.sh`, the in-app Update) do not wait.
+- Any restart wakes the thread. When the server stops (SIGTERM from launchd or a deploy) it records
+  each settled thread whose background work is live; after a crash, startup recovery does the same,
+  since nothing marked the session stopped. The thread then gets a turn by itself whose prompt is
+  the same note upstream used to prepend to the next message ("Note: the T3 server restarted, and
+  this background work was cancelled before it finished. It will not report back: ..."), so the
+  agent can relaunch or check on it. It runs as upstream's restart continuation does: once (its
+  message id is derived from the run, and the next user turn no longer repeats the note), before a
+  held queue, in the thread's own mode, and at most three automatic continuations in a row. A
+  message the user sends first carries the note instead. Settled and snoozed threads are woken
+  (sending unsettles them, as any message does); archived and deleted ones are not, since the user
+  put them away. A run stopped with "stop only the main agent" is woken too, since its subagents
+  were kept on purpose. It follows Settings > "Continue threads after server update" (on by default).
+
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
 `fork/scripts/artifacts-server.py`). An Android build, **T3 Code (Owner)**
 (`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
@@ -444,6 +473,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `packages/client-runtime/src/rpc/client.ts`, `state/server.ts`: its subscription atom.
 - `apps/web/src/components/ChatView.tsx`: the history notice, in place of "Syncing messages" while
   it restores or fails; `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`: the phone's notice.
+- `apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts`: shutdown intent and crash
+  recovery also queue a restart continuation for `fork/restartWake.ts`'s settled run;
+  `RestartContinuation.ts` and `Orchestrator.ts` admit that continuation with the note as its prompt.
+  Their tests (`RestartContinuation.test.ts`, `runtimeLayer.test.ts`,
+  `testkit/OrchestratorReplayRestartBackgroundNote.integration.test.ts`) expect the wake;
+  `testkit/ProviderReplayHarness.ts` gains `shutdownLikeServer` to close as the server does.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -481,8 +516,17 @@ phone  every launch  T3 Code (Owner) asks /mobile/manifest for its runtime; down
 every Mac 05:45 com.example.t3code-fork.deploy ~/t3-fork/pull-deploy.sh
              newest release not yet running -> download its artifacts from build-mac, check
              SHA256SUMS -> install-runtime.sh (and install-desktop.sh on the MacBook);
-             waits for the next day while any thread is working
+             waits for the next day while live-work.sh reports anything
+any Mac, on demand  com.example.t3code-fork.deploy-when-idle-<sha>  ~/t3-fork/deploy-when-idle.sh
+             fork/scripts/deploy-when-idle.sh --schedule <release tag> installs that release
+             as soon as live-work.sh reports nothing (checked every 30 s, logged), then
+             removes itself; a newer release supersedes it
 ```
+
+To ship a release to a Mac without waiting for 05:45, schedule it with
+`fork/scripts/deploy-when-idle.sh --schedule owner-<version>-<sha>`. Do not copy an older
+`~/t3-fork/deploy-when-idle-<sha>.sh`: those check runs only and restart over background work.
+`install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` from the release it installs.
 
 **Why build-mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's macOS
 runners bill private-repo minutes at ten times the Linux rate, a daily ~10-minute build would
