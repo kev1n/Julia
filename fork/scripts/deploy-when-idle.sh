@@ -19,9 +19,9 @@ if [ "${1:-}" = --schedule ]; then
   tag="${2:?usage: deploy-when-idle.sh --schedule <release tag>}"
   label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
   plist="$HOME/Library/LaunchAgents/$label.plist"
-  # A copy outside any checkout, so the job survives a worktree being removed.
-  cp "$0" "$state/deploy-when-idle.sh"
-  chmod 700 "$state/deploy-when-idle.sh"
+  # A copy outside any checkout, so the job survives a worktree being removed;
+  # a new file, so a job of an earlier tag running the old copy is not disturbed.
+  install -S -m 700 "$0" "$state/deploy-when-idle.sh"
   /usr/bin/python3 - "$plist" "$label" "$state" "$tag" <<'PY'
 import os, plistlib, sys
 path, label, state, tag = sys.argv[1:]

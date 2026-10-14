@@ -36,7 +36,7 @@ for job in "$@"; do
   case "$job" in
     sync) install_job com.example.t3code-fork.sync "$HOME/src/t3code-fork/fork/scripts/sync.sh" 5 0 ;;
     deploy)
-      cp "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
+      install -S -m 700 "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
       install_job com.example.t3code-fork.deploy "$state/pull-deploy.sh" 5 45 ;;
     artifacts)
       # A static file server on localhost (plus the phone app's update manifest),
