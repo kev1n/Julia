@@ -65,6 +65,23 @@ wait_for() {
   return 1
 }
 
+# Once per machine: switch the state database to incremental vacuum, so the
+# history of settled threads moved to Azure (FORK.md, "Settled threads in
+# Azure") gives its disk back as it leaves. VACUUM needs the server stopped and,
+# per SQLite's documentation, up to twice the file's size free; 42 s for
+# mac-a's 2.8 GB on 2026-10-14. Without the room it is left for a later deploy.
+db="$home/userdata/statev2.sqlite"
+if [ -f "$db" ] && [ "$(/usr/bin/sqlite3 -readonly "$db" 'PRAGMA auto_vacuum')" != 2 ]; then
+  if [ "$(df -k "$db" | awk 'NR == 2 { print $4 }')" -gt $(($(stat -f %z "$db") * 2 / 1024)) ]; then
+    launchctl bootout "gui/$(id -u)/$label" || true
+    /usr/bin/sqlite3 "$db" 'PRAGMA auto_vacuum = INCREMENTAL; VACUUM;' ||
+      echo "Could not compact $db; it stays as it was." >&2
+    launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$label.plist" || true
+  else
+    echo "Not enough free disk to compact $db; leaving it for a later deploy." >&2
+  fi
+fi
+
 if [ "$previous" != "$version" ]; then
   switch_to "$version"
 fi
