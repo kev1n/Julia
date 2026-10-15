@@ -59,6 +59,15 @@ const MOVED_TABLES = [
 ];
 
 const ACTIVE_RUN = ["preparing", "queued", "starting", "running", "waiting"];
+/** Points a put-back event's stored-prompt reference at its anchor's new sequence. */
+const withMovedPrompt = (payloadJson: string, sequences: ReadonlyMap<number, number>) => {
+  const payload = JSON.parse(payloadJson) as { promptSequence?: unknown };
+  const moved =
+    typeof payload.promptSequence === "number" ? sequences.get(payload.promptSequence) : undefined;
+  return moved === undefined ? payloadJson : JSON.stringify({ ...payload, promptSequence: moved });
+};
+/** How long a settled or archived thread keeps its history on disk before it may move. */
+export const OFFLOAD_GRACE_MS = 60 * 60 * 1000;
 
 interface EventRow {
   readonly sequence: number;
@@ -163,13 +172,18 @@ export const make = Effect.gen(function* () {
     AND NOT ${sql.literal(listedNodeEvent("orchestration_events"))}
   `;
 
-  /** Settled or archived threads with history still on this disk. */
-  const candidates = sql<{ readonly thread_id: string }>`
+  /** Settled or archived threads, quiet for the grace period, with history still on this disk. */
+  const candidates = (nowMs: number) =>
+    sql<{ readonly thread_id: string }>`
     SELECT threads.thread_id
     FROM orchestration_v2_projection_threads AS threads
     WHERE threads.deleted_at IS NULL
       AND (json_extract(threads.payload_json, '$.settledOverride') = 'settled'
         OR threads.archived_at IS NOT NULL)
+      AND max(
+        COALESCE(json_extract(threads.payload_json, '$.settledAt'), ''),
+        COALESCE(threads.archived_at, '')
+      ) <= ${DateTime.formatIso(DateTime.makeUnsafe(nowMs - OFFLOAD_GRACE_MS))}
       AND NOT EXISTS (
         SELECT 1 FROM fork_thread_history AS history
         WHERE history.thread_id = threads.thread_id
@@ -194,6 +208,13 @@ export const make = Effect.gen(function* () {
     const shell = yield* projections.getThreadShell(threadId);
     if (shell === null || shell.deletedAt !== null) return "deleted";
     if (shell.settledOverride !== "settled" && shell.archivedAt === null) return "not settled";
+    const settledMs = Math.max(
+      ...[shell.settledAt, shell.archivedAt].flatMap((value) =>
+        value == null ? [] : [DateTime.toEpochMillis(value)],
+      ),
+    );
+    if ((yield* Clock.currentTimeMillis) - settledMs < OFFLOAD_GRACE_MS)
+      return "settled less than an hour ago";
     if (shell.activeRunId !== null) return "a turn is running";
     if (shell.pendingRuntimeRequest !== null) return "a request is waiting for an answer";
     if ((shell.pendingBackgroundTasks ?? []).length > 0) return "background work is pending";
@@ -278,17 +299,16 @@ export const make = Effect.gen(function* () {
     return { bundle, localBytes, lastSequence: events.at(-1)?.sequence ?? 0 };
   });
 
-  const deleteMovedRows = (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      for (const table of MOVED_TABLES) {
-        yield* sql`
+  const deleteMovedRows = Effect.fn("historyStore.deleteMovedRows")(function* (threadId: ThreadId) {
+    for (const table of MOVED_TABLES) {
+      yield* sql`
           DELETE FROM ${sql(`orchestration_v2_projection_${table}`)} WHERE thread_id = ${threadId}
           ${table === "nodes" ? sql`AND NOT (kind = 'root_turn' AND run_id IS NULL)` : sql``}
         `;
-      }
-      yield* sql`DELETE FROM orchestration_v2_projection_context_transfers WHERE target_thread_id = ${threadId}`;
-      yield* sql`DELETE FROM orchestration_v2_turn_item_positions WHERE thread_id = ${threadId}`;
-    });
+    }
+    yield* sql`DELETE FROM orchestration_v2_projection_context_transfers WHERE target_thread_id = ${threadId}`;
+    yield* sql`DELETE FROM orchestration_v2_turn_item_positions WHERE thread_id = ${threadId}`;
+  });
 
   /**
    * Drops the moved part locally, once the uploaded copy is verified. Returns
@@ -334,20 +354,23 @@ export const make = Effect.gen(function* () {
    * Inserts bundled events this machine does not have and projects them,
    * leaving the thread row as it was. Inside the caller's transaction.
    */
-  const putBack = (
+  const putBack = Effect.fn("historyStore.putBack")(function* (
     threadId: ThreadId,
     events: ReadonlyArray<EventRow>,
     positions: HistoryBundle["positions"],
-  ) =>
-    Effect.gen(function* () {
-      const [threadRow] = yield* sql<Record<string, unknown>>`
+  ) {
+    const [threadRow] = yield* sql<Record<string, unknown>>`
         SELECT * FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}
       `;
-      const [before] = yield* sql<{ readonly last: number | null }>`
+    const [before] = yield* sql<{ readonly last: number | null }>`
         SELECT max(sequence) AS last FROM orchestration_events
       `;
-      for (const row of events) {
-        yield* sql`
+    // appendAgentEvents stores a subagent prompt once and points later events
+    // at it by sequence; put back, every event gets a new sequence.
+    const sequences = new Map<number, number>();
+    for (const row of events) {
+      const payloadJson = withMovedPrompt(row.payload_json, sequences);
+      yield* sql`
           INSERT INTO orchestration_events (
             event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
             command_id, causation_event_id, correlation_id, actor_kind, payload_json,
@@ -359,34 +382,38 @@ export const make = Effect.gen(function* () {
               WHERE aggregate_kind = ${row.aggregate_kind} AND stream_id = ${row.stream_id}),
             ${row.event_type}, ${row.occurred_at}, ${row.command_id},
             ${row.causation_event_id}, ${row.correlation_id}, ${row.actor_kind},
-            ${row.payload_json}, ${row.metadata_json}, ${row.application_event_version}
+            ${payloadJson}, ${row.metadata_json}, ${row.application_event_version}
           WHERE NOT EXISTS (SELECT 1 FROM orchestration_events WHERE event_id = ${row.event_id})
         `;
-      }
-      for (const position of positions) {
-        yield* sql`
+      const [stored] = yield* sql<{ readonly sequence: number }>`
+          SELECT sequence FROM orchestration_events WHERE event_id = ${row.event_id}
+        `;
+      if (stored !== undefined) sequences.set(row.sequence, stored.sequence);
+    }
+    for (const position of positions) {
+      yield* sql`
           INSERT INTO orchestration_v2_turn_item_positions (thread_id, turn_item_id, ordinal)
           VALUES (${threadId}, ${position.turn_item_id}, ${position.ordinal})
         `;
-      }
-      const restored = yield* eventStore
-        .read({ threadId, afterSequence: before?.last ?? 0 })
-        .pipe(Stream.runCollect);
-      for (const stored of restored) yield* projections.apply(stored.event);
-      if (threadRow !== undefined) {
-        yield* sql`
+    }
+    const restored = yield* eventStore
+      .read({ threadId, afterSequence: before?.last ?? 0 })
+      .pipe(Stream.runCollect);
+    for (const stored of restored) yield* projections.apply(stored.event);
+    if (threadRow !== undefined) {
+      yield* sql`
           UPDATE orchestration_v2_projection_threads SET ${sql.update(threadRow, ["thread_id"])}
           WHERE thread_id = ${threadId}
         `;
-      }
-      const last = Array.from(restored).at(-1)?.sequence;
-      if (last !== undefined) {
-        yield* sql`
+    }
+    const last = Array.from(restored).at(-1)?.sequence;
+    if (last !== undefined) {
+      yield* sql`
           UPDATE orchestration_v2_projection_metadata SET last_sequence = ${last}
           WHERE projection_name = 'thread-projections' AND last_sequence < ${last}
         `;
-      }
-    });
+    }
+  });
 
   /** Puts a verified bundle back and rebuilds its projection rows. */
   const restoreLocal = Effect.fn("ThreadHistoryStore.restoreLocal")(function* (
@@ -425,11 +452,10 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const markExpired = (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      const now = DateTime.formatIso(yield* DateTime.now);
-      yield* sql`UPDATE fork_thread_history SET expired_at = ${now} WHERE thread_id = ${threadId}`;
-    });
+  const markExpired = Effect.fn("historyStore.markExpired")(function* (threadId: ThreadId) {
+    const now = DateTime.formatIso(yield* DateTime.now);
+    yield* sql`UPDATE fork_thread_history SET expired_at = ${now} WHERE thread_id = ${threadId}`;
+  });
 
   /** Changes whenever an event commits or an effect finishes. */
   const changeMark = sql<{ readonly last: number | null; readonly pending: number }>`
