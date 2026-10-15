@@ -53,6 +53,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { endOrphanedNativeSubagentTree } from "@t3tools/provider-core/server/subagentProjection";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
@@ -276,6 +277,10 @@ function releasedRuntimeRequestStatusFor(
 ): OrchestrationV2RuntimeRequest["status"] {
   return reason === "manual_shutdown" || reason === "server_shutdown" ? "cancelled" : "expired";
 }
+
+/** Turn item types whose work can outlive its turn and dies with the provider process. */
+const BACKGROUND_TURN_ITEM_TYPES = ["command_execution", "dynamic_tool", "subagent"] as const;
+const OPEN_TURN_ITEM_STATUSES = ["pending", "running", "waiting"] as const;
 
 function sessionKey(providerSessionId: ProviderSessionId): string {
   return String(providerSessionId);
@@ -645,12 +650,23 @@ export const layerWithOptions = (
         }
       });
 
+      // A detach removes its thread before releasing, but that thread's records still need releasing.
+      const releasedThreadIds = (input: {
+        readonly entry: LiveSessionEntry;
+        readonly detachedThreadId?: ThreadId;
+      }) => {
+        const threadIds = new Set(input.entry.attachedThreadIds);
+        if (input.detachedThreadId !== undefined) threadIds.add(input.detachedThreadId);
+        return threadIds;
+      };
+
       const writeReleasedSessionEvents = Effect.fn(
         "ProviderSessionManager.writeReleasedSessionEvents",
       )(function* (input: {
         readonly entry: LiveSessionEntry;
         readonly reason: ProviderSessionReleaseReason;
         readonly detail?: string;
+        readonly detachedThreadId?: ThreadId;
       }) {
         const now = yield* DateTime.now;
         const payload: OrchestrationV2ProviderSession = {
@@ -665,21 +681,11 @@ export const layerWithOptions = (
         };
         yield* writeProviderSessionEvents({
           runtime: input.entry.runtime,
-          threadIds: input.entry.attachedThreadIds,
+          threadIds: releasedThreadIds(input),
           type: "provider-session.updated",
           payload,
         });
       });
-
-      // A detach removes its thread before releasing, but that thread's records still need releasing.
-      const releasedThreadIds = (input: {
-        readonly entry: LiveSessionEntry;
-        readonly detachedThreadId?: ThreadId;
-      }) => {
-        const threadIds = new Set(input.entry.attachedThreadIds);
-        if (input.detachedThreadId !== undefined) threadIds.add(input.detachedThreadId);
-        return threadIds;
-      };
 
       const writeReleasedRuntimeRequestEvents = Effect.fn(
         "ProviderSessionManager.writeReleasedRuntimeRequestEvents",
@@ -819,19 +825,54 @@ export const layerWithOptions = (
           const providerSessionId = input.entry.runtime.providerSessionId;
           const released = [];
           for (const threadId of releasedThreadIds(input)) {
-            const projection = yield* projectionStore.getThreadRecords(threadId, [
-              "providerThreads",
-            ]);
-            for (const providerThread of projection.providerThreads) {
-              const tasks = providerThread.pendingBackgroundTasks ?? [];
-              if (providerThread.providerSessionId !== providerSessionId || tasks.length === 0) {
-                continue;
+            const projection = yield* projectionStore.getThreadRecords(
+              threadId,
+              ["providerThreads", "turnItems"],
+              {
+                turnItemTypes: BACKGROUND_TURN_ITEM_TYPES,
+                turnItemStatuses: OPEN_TURN_ITEM_STATUSES,
+              },
+            );
+            const sessionProviderThreadIds = new Set(
+              projection.providerThreads
+                .filter((thread) => thread.providerSessionId === providerSessionId)
+                .map((thread) => thread.id),
+            );
+            // An item belongs to the provider thread it names, or else to its
+            // run's: a native subagent can name a provider thread of its own.
+            const runIds = [...new Set(projection.turnItems.flatMap((item) => item.runId ?? []))];
+            const runs =
+              runIds.length === 0
+                ? []
+                : (yield* projectionStore.getThreadRecords(threadId, ["runs"], { runIds })).runs;
+            const itemProviderThreadId = (item: (typeof projection.turnItems)[number]) => {
+              if (
+                item.providerThreadId != null &&
+                sessionProviderThreadIds.has(item.providerThreadId)
+              ) {
+                return item.providerThreadId;
               }
+              return runs.find((run) => run.id === item.runId)?.providerThreadId ?? null;
+            };
+            for (const providerThread of projection.providerThreads) {
+              if (!sessionProviderThreadIds.has(providerThread.id)) continue;
+              const tasks = providerThread.pendingBackgroundTasks ?? [];
+              const items = projection.turnItems.filter(
+                (item) =>
+                  // A delegate_task child runs as its own thread and reports through the app.
+                  !(
+                    item.type === "subagent" &&
+                    item.origin === "app_owned" &&
+                    item.childThreadId !== null
+                  ) && itemProviderThreadId(item) === providerThread.id,
+              );
+              if (tasks.length === 0 && items.length === 0) continue;
               released.push({
                 threadId,
                 providerSessionId,
                 providerThreadId: providerThread.id,
                 taskIds: new Set(tasks.map((task) => task.taskId)),
+                itemIds: new Set(items.map((item) => item.id)),
               });
             }
           }
@@ -859,6 +900,7 @@ export const layerWithOptions = (
           released,
           ({ threadId, providerSessionId, providerThreadId, taskIds }) =>
             Effect.gen(function* () {
+              if (taskIds.size === 0) return;
               for (let attempt = 0; attempt < 3; attempt++) {
                 const projection = yield* projectionStore.getThreadRecords(threadId, [
                   "providerThreads",
@@ -901,6 +943,114 @@ export const layerWithOptions = (
           { discard: true },
         );
 
+      // Ends the open background items `readReleasedBackgroundTasks` found: their process is gone, and
+      // an open item would count as live work forever. A native subagent's record, node and thread work
+      // end with it; items that settled since the read are left alone.
+      const writeReleasedBackgroundItemEvents = (input: {
+        readonly entry: LiveSessionEntry;
+        readonly reason: ProviderSessionReleaseReason;
+        readonly detail?: string;
+        readonly releasedBackgroundTasks: ReadonlyArray<ReleasedBackgroundTasks>;
+      }) =>
+        Effect.forEach(
+          input.releasedBackgroundTasks.filter((released) => released.itemIds.size > 0),
+          ({ threadId, providerSessionId, itemIds }) =>
+            Effect.gen(function* () {
+              const projection = yield* projectionStore.getThreadRecords(
+                threadId,
+                ["nodes", "subagents", "turnItems"],
+                {
+                  turnItemTypes: BACKGROUND_TURN_ITEM_TYPES,
+                  turnItemStatuses: OPEN_TURN_ITEM_STATUSES,
+                  omitSettledLeafNodes: true,
+                },
+              );
+              const now = yield* DateTime.now;
+              const status = input.reason === "runtime_error" ? "failed" : "cancelled";
+              const note = `Stopped because its provider session ended${
+                input.detail === undefined ? "." : `: ${input.detail}`
+              }`;
+              const allocateEventId = () =>
+                idAllocator.allocate.event({ threadId, providerSessionId });
+              const scope = {
+                threadId,
+                driver: input.entry.runtime.driver,
+                providerInstanceId: input.entry.runtime.instanceId,
+                occurredAt: now,
+              };
+              const visitedChildThreadIds = new Set<ThreadId>();
+              const events: Array<OrchestrationV2DomainEvent> = [];
+              for (const item of projection.turnItems) {
+                if (!itemIds.has(item.id)) continue;
+                const result = item.type === "subagent" && item.result === null ? note : undefined;
+                events.push({
+                  ...scope,
+                  id: yield* allocateEventId(),
+                  type: "turn-item.updated",
+                  ...(item.runId === null ? {} : { runId: item.runId }),
+                  ...(item.nodeId === null ? {} : { nodeId: item.nodeId }),
+                  payload: {
+                    ...item,
+                    status,
+                    completedAt: now,
+                    updatedAt: now,
+                    ...(result === undefined ? {} : { result }),
+                  },
+                });
+                // The item's own node; a run's root turn ends with its run.
+                const node = projection.nodes.find((candidate) => candidate.id === item.nodeId);
+                if (
+                  node !== undefined &&
+                  node.kind !== "root_turn" &&
+                  isOrchestrationV2WorkActive(node.status) &&
+                  !events.some(
+                    (event) => event.type === "node.updated" && event.payload.id === node.id,
+                  )
+                ) {
+                  events.push({
+                    ...scope,
+                    id: yield* allocateEventId(),
+                    type: "node.updated",
+                    ...(node.runId === null ? {} : { runId: node.runId }),
+                    nodeId: node.id,
+                    payload: { ...node, status, completedAt: now },
+                  });
+                }
+                if (item.type !== "subagent") continue;
+                events.push(
+                  ...(yield* endOrphanedNativeSubagentTree({
+                    projection,
+                    subagent: item,
+                    status,
+                    ...(result === undefined ? {} : { result }),
+                    now,
+                    emitted: events,
+                    allocateEventId,
+                    readChild: (childThreadId) =>
+                      projectionStore
+                        .getThreadRecords(childThreadId, ["nodes", "providerTurns", "subagents", "turnItems"], {
+                          // Runless items are the subagent's; any run there is the user's own.
+                          turnItemRunIds: [null],
+                          turnItemStatuses: OPEN_TURN_ITEM_STATUSES,
+                        })
+                        .pipe(
+                          Effect.catchTags({
+                            ProjectionStoreThreadNotFoundError: () => Effect.succeed(null),
+                          }),
+                        ),
+                    visitedChildThreadIds,
+                  })),
+                );
+              }
+              if (events.length > 0) yield* eventSink.write({ events });
+            }),
+          { discard: true },
+        );
+
+      // requests, background-task rosters and background items it left. Each
+      // write runs even if another fails. Once a replacement session opens
+      // with the same id, it owns the session status, so only the work the
+      // released process left is settled.
       const writeReleaseRecords = (input: {
         readonly entry: LiveSessionEntry;
         readonly reason: ProviderSessionReleaseReason;
@@ -921,6 +1071,7 @@ export const layerWithOptions = (
               ),
             ),
             Effect.exit(writeReleasedBackgroundWorkEvents(input.releasedBackgroundTasks)),
+            Effect.exit(writeReleasedBackgroundItemEvents(input)),
           ],
           { concurrency: 1 },
         ).pipe(Effect.flatMap(Exit.asVoidAll));
