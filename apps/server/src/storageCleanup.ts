@@ -295,6 +295,23 @@ function worktreeSettlementChain(
   return chain;
 }
 
+/**
+ * The thread a shared worktree is judged by: its subagent owner, or else its
+ * most recently active thread, so it ages from the last activity of any thread.
+ */
+function worktreeCandidate(threads: ReadonlyArray<OrchestrationV2ThreadShell>) {
+  return (
+    worktreeOwner(threads) ??
+    threads.reduce<OrchestrationV2ThreadShell | undefined>(
+      (latest, thread) =>
+        latest === undefined || storageCleanupActivityAt(thread) > storageCleanupActivityAt(latest)
+          ? thread
+          : latest,
+      undefined,
+    )
+  );
+}
+
 /** Squash/rebase merges require the merged PR to name this exact head commit. */
 export function storageCleanupPullRequestMerged(
   pullRequest: Pick<
@@ -1391,9 +1408,7 @@ const make = Effect.gen(function* () {
               (deleted) =>
                 resolveWorktreeCleanup(serverSettings, deleted.projectId).worktreeOnDelete &&
                 worktreeOwner([deleted, ...group]) === deleted,
-            ) ??
-          worktreeOwner(group) ??
-          group[0]!,
+            ) ?? worktreeCandidate(group)!,
       ),
       ...deletedThreads.filter((_thread, index) => !groups.has(deletedKeys[index]!)),
     ];
@@ -1457,14 +1472,25 @@ const make = Effect.gen(function* () {
         );
         if (!exists) return;
         if (deleted && !settings.worktreeOnDelete) return keep("no rules apply");
-        if (members.length > 1 && worktreeOwner(members) === undefined)
-          return keep(`shared by ${members.length} threads`);
+        // Fork (Owner): threads sharing a worktree without a subagent lineage,
+        // such as helper threads, are judged together instead of always kept.
+        const owner = worktreeOwner(members);
         if (project === undefined) return keep("project is unavailable");
         if (!group.every((member) => storageCleanupThreadIdle(member, now, serverSettings)))
-          return keep(waitForStop("thread is running or has pending work"));
+          return keep(
+            waitForStop(
+              group.length > 1 && owner === undefined
+                ? "a thread using it is running or has pending work"
+                : "thread is running or has pending work",
+            ),
+          );
         if (thread.branch === null && !scratch) return keep("thread has no branch");
         if (group.some((member) => member.branch !== thread.branch))
-          return keep("a subagent thread's branch differs from this worktree's branch");
+          return keep(
+            owner === undefined
+              ? "threads using it are on different branches"
+              : "a subagent thread's branch differs from this worktree's branch",
+          );
         if (yield* hasTerminal(guardedPaths)) return keep(waitForStop("open terminal"));
         if (members.some((member) => pendingSettleScripts.has(member.id)))
           return keep(waitForStop("settle script is queued"));
@@ -1558,7 +1584,9 @@ const make = Effect.gen(function* () {
           const latestKeys = yield* Effect.forEach(latestGroup, (shell) =>
             shell.worktreePath === null ? Effect.succeed(null) : canonical(shell.worktreePath),
           );
-          const latestOwner = worktreeOwner(deleted ? [thread, ...latestGroup] : latestGroup);
+          const latestOwner = deleted
+            ? worktreeOwner([thread, ...latestGroup])
+            : worktreeCandidate(latestGroup);
           if (
             latestGroup.length !== group.length ||
             latestOwner?.id !== thread.id ||
@@ -1936,9 +1964,12 @@ const make = Effect.gen(function* () {
               execute: git.execute,
               run: (args, cwd) => cleanupGit(cwd, [...args], "git worktree remove"),
             }).pipe(Effect.tapError(() => noteLeftover(adminDir, entry)));
+            if (group.length > 1 && worktreeOwner(group) === undefined)
+              removalReason += ` (used by ${group.length} threads)`;
             entries.push({ ...entry, outcome: "removed", reason: sentence(removalReason), bytes });
             yield* gitManager.invalidateStatus(project.workspaceRoot);
-            // Preserve branch/path so ProviderTurnStartService can recreate the checkout on resume.
+            // Preserve branch and path: WorktreeRestore recreates the checkout from
+            // that branch and reruns setup when a thread using it starts a turn.
             yield* Effect.logInfo("storage cleanup removed worktree", { threadId: thread.id });
           }),
         );
