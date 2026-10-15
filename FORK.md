@@ -463,6 +463,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/server/src/scheduledTasks/ScheduledTaskService.ts`: a new-thread run goes through
   `scheduledRunModelSelection`.
 - `apps/web/src/components/ChatView.tsx` (again): `useLimitedAccountSwitch` outside Auto.
+- `apps/web/src/components/ChatView.tsx` (again): the unavailable-machine banner says whether this
+  device's network or that server is at fault (`fork/outageCause/`): every machine unreachable
+  means the network, another machine connected means the server.
 - `apps/web/src/components/chat/ModelPickerContent.tsx`, `ModelPickerSidebar.tsx`: dims limited
   instances in the rail.
 - `apps/server/src/provider/CodexProvider.ts`: the Codex default model and effort from
@@ -530,12 +533,16 @@ any Mac, on demand  com.example.t3code-fork.deploy-when-idle-<sha>  ~/t3-fork/de
              fork/scripts/deploy-when-idle.sh --schedule <release tag> installs that release
              as soon as live-work.sh reports nothing (checked every 30 s, logged), then
              removes itself; a newer release supersedes it
+every Mac every 60 s com.example.t3code-fork.watchdog ~/t3-fork/watchdog.sh
+             restarts the T3 service after 3 failed localhost health checks or above 12 GB
+             RSS, first saving a 5 s `sample` to ~/t3-fork/logs/watchdog-sample-*.txt
 ```
 
 To ship a release to a Mac without waiting for 05:45, schedule it with
 `fork/scripts/deploy-when-idle.sh --schedule owner-<version>-<sha>`. Do not copy an older
 `~/t3-fork/deploy-when-idle-<sha>.sh`: those check runs only and restart over background work.
-`install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` from the release it installs.
+`install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` and installs or refreshes the
+watchdog from the release it installs.
 
 **Why build-mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's macOS
 runners bill private-repo minutes at ten times the Linux rate, a daily ~10-minute build would
