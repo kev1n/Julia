@@ -230,11 +230,14 @@ merging, or when they have no commits beyond the default branch. Set settled ret
 to remove a worktree at the next cleanup after settlement. In repositories without remotes,
 unchanged-worktree cleanup compares against the branch checked out in the project workspace;
 if that checkout has a detached HEAD, the worktree is kept. Only T3-managed worktrees are eligible.
-Active sessions and shared worktrees prevent removal. **Keep worktrees with local changes** defaults
+Active sessions prevent removal, and a worktree several threads use is removed only once every one
+of them qualifies. A worktree no thread uses, such as one an agent made with git directly, appears
+in the cleanup report but is never removed. **Keep worktrees with local changes** defaults
 to **Uncommitted changes**, which protects tracked edits and untracked files but deletes ignored
 files such as `.env` and build output. **Any local files** also protects ignored files other than
 `node_modules`. **Edited tracked files** protects only tracked edits and allows untracked and
-ignored files to be deleted. Branches and thread history stay; starting another turn recreates the checkout.
+ignored files to be deleted. Branches and thread history stay; starting another turn recreates the checkout and runs the
+project's setup script before the agent starts.
 Merge cleanup requires a merged pull request whose commits are included in the remote default
 branch. A squash or rebase merge on GitHub also counts when the pull request targeted the default
 branch and the worktree is still at the pull request's last commit.
