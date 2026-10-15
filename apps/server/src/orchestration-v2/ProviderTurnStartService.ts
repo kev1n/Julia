@@ -29,7 +29,6 @@ import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import * as ServerConfig from "../config.ts";
 import {
   CLAUDE_PROVIDER,
   CLAUDE_QUERY_ENDED_BEFORE_TURN_DETAIL,
@@ -38,8 +37,14 @@ import { withTurnStartReservation, withWorkspaceLease } from "../workspace/works
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
+import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
+import {
+  makeRestoreMissingWorktree,
+  type WorktreeRecreateError,
+  type WorktreeRecreateNoBaseError,
+} from "../workspace/restoreMissingWorktree.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -219,13 +224,14 @@ export const layer: Layer.Layer<
   | EventSink.EventSinkV2
   | ContextHandoffService.ContextHandoffServiceV2
   | IdAllocator.IdAllocatorV2
-  | FileSystem.FileSystem
   | Path.Path
+  | FileSystem.FileSystem
   | ServerConfig.ServerConfig
   | ServerSettings.ServerSettingsService
+  | ProviderAuthService.ProviderAuthService
+  | WorktreeRestore.WorktreeRestore
   | GitWorkflowService.GitWorkflowService
   | ProjectService.ProjectService
-  | ProviderAuthService.ProviderAuthService
   | ProjectionStore.ProjectionStoreV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | RunExecutionService.RunExecutionServiceV2
@@ -238,9 +244,10 @@ export const layer: Layer.Layer<
     const turnAnalytics = yield* ProviderUsageAnalytics.ProviderTurnAnalytics;
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
-    const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const fileSystem = yield* FileSystem.FileSystem;
     const projects = yield* ProjectService.ProjectService;
+    const worktreeRestore = yield* WorktreeRestore.WorktreeRestore;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -693,7 +700,22 @@ export const layer: Layer.Layer<
           return;
         }
       }
-      const recreateResult = yield* Effect.result(restoreMissingWorktree(projection.thread));
+      const { worktreePath, branch } = projection.thread;
+      // Fork: a branch worktree comes back through WorktreeRestore, which also reruns the
+      // project's setup script; other folders use upstream's restore alone.
+      const restoreWorktree: Effect.Effect<
+        unknown,
+        WorktreeRestore.WorktreeRestoreError | WorktreeRecreateError | WorktreeRecreateNoBaseError
+      > =
+        worktreePath !== null && branch !== null
+          ? worktreeRestore.ensure({
+              threadId: projection.thread.id,
+              projectId: projection.thread.projectId,
+              worktreePath,
+              branch,
+            })
+          : restoreMissingWorktree(projection.thread);
+      const recreateResult = yield* Effect.result(restoreWorktree);
       if (recreateResult._tag === "Failure") {
         if (input.willRetry === true) return yield* recreateResult.failure;
         yield* settleStartFailure({
