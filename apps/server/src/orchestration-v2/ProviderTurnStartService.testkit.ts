@@ -21,6 +21,7 @@ import * as Layer from "effect/Layer";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as TaskFolders from "../workspace/TaskFolders.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 
 // No project in these tests tracks a repository, so no thread works in a task folder.
 export const layerNoTaskFolders = Layer.mock(TaskFolders.TaskFolders)({
@@ -36,6 +37,10 @@ export const layer = Layer.mergeAll(
   }),
   Layer.mock(ProjectService.ProjectService)({
     getById: () => Effect.succeedNone,
+  }),
+  // Threads in these harnesses never lose their worktree.
+  Layer.mock(WorktreeRestore.WorktreeRestore)({
+    ensure: () => Effect.succeed("present"),
   }),
 );
 
