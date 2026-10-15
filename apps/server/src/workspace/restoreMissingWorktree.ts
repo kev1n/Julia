@@ -36,7 +36,7 @@ export class WorktreeRecreateError extends Schema.TaggedError<WorktreeRecreateEr
   }
 }
 
-class WorktreeRecreateNoBaseError extends Schema.TaggedError<WorktreeRecreateNoBaseError>()(
+export class WorktreeRecreateNoBaseError extends Schema.TaggedError<WorktreeRecreateNoBaseError>()(
   "WorktreeRecreateNoBaseError",
   { worktreePath: Schema.String, branch: Schema.String },
 ) {
@@ -193,6 +193,16 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
     });
   });
 
+  const recreatedFor = (thread: WorktreeThread, worktreePath: string) =>
+    projects.getById(thread.projectId).pipe(
+      Effect.map(Option.getOrUndefined),
+      Effect.orElseSucceed(() => undefined),
+      Effect.map((project): RecreatedWorktree | undefined =>
+        project === undefined ? undefined : { project, worktreePath },
+      ),
+    );
+
+  /** Succeeds with the git checkout it recreated, if any. */
   return Effect.fn("restoreMissingWorktree")(function* (thread: WorktreeThread) {
     const { worktreePath, branch } = thread;
     if (worktreePath === null) return;
@@ -200,6 +210,7 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
     // A task folder can miss one repository's worktree while the thread's own folder is there.
     const taskFolder = yield* taskFolders.find(worktreePath).pipe(Effect.orElseSucceed(() => null));
     if (taskFolder !== null) {
+      let recreated = false;
       return yield* taskFolders
         .restore({
           taskFolder,
@@ -211,6 +222,7 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
               worktreePath: checkout.worktreePath,
               branch,
             }).pipe(
+              Effect.tap(() => Effect.sync(() => void (recreated = true))),
               Effect.andThen(isLeftoverFolder(checkout.worktreePath)),
               Effect.flatMap((leftover) =>
                 leftover ? clearLeftovers(checkout.worktreePath) : Effect.void,
@@ -229,6 +241,9 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
             cause._tag === "WorktreeRecreateNoBaseError"
               ? cause
               : new WorktreeRecreateError({ worktreePath, branch, cause }),
+          ),
+          Effect.flatMap(() =>
+            recreated ? recreatedFor(thread, worktreePath) : Effect.succeed(undefined),
           ),
         );
     }

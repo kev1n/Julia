@@ -14,6 +14,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
@@ -176,6 +177,9 @@ const layerRuntime = (dbPath: string) => {
     ),
     Layer.provide(Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({})),
     Layer.provide(layerNoTaskFolders),
+    Layer.provide(
+      Layer.mock(WorktreeRestore.WorktreeRestore)({ ensure: () => Effect.succeed("present") }),
+    ),
     Layer.provide(layerPlatform),
   );
 };
