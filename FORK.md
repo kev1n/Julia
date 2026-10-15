@@ -698,6 +698,11 @@ Each series is independent of the packaging and tooling commits.
   is shown in binary units and disk in decimal ones, as Activity Monitor and Finder do. The web and
   phone hooks are two small copies because a file under `apps/web` imported by the phone must not
   import `@effect/atom-react` (a second copy would miss the phone's registry context).
+- Disk: worktree `node_modules` are APFS clones that share blocks, so `du` and Finder count each
+  copy in full (about 250 GB for 70 GB actually used on mac-a on 2026-10-14).
+  `fork/scripts/disk-usage.py <dirs> --context <other dirs> --skip-git` reports what a folder really
+  uses and what deleting it would free. Never run `pnpm store prune` here: with clones every store
+  file has one link, so prune deletes the whole store and the next install downloads it again.
 
 ## Deviations
 
