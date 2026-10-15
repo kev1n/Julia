@@ -17,6 +17,7 @@ import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as CheckpointCaptureService from "./CheckpointCaptureService.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -102,6 +103,14 @@ export const layerProjectService = ProjectService.layer.pipe(
       layerLegacyV1ThreadImporterProvided,
     ),
   ),
+);
+export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
+  Layer.provide(layerProjectService),
+  // Whether a thread came from a linked environment, which skips setup.
+  Layer.provide(ProjectionStore.layer),
+);
+const layerWorktreeRestoreProvided = WorktreeRestore.layer.pipe(
+  Layer.provide(Layer.merge(layerProjectSetupScriptRunner, layerProjectService)),
 );
 
 const layerProviderEventIngestorProvided = ProviderEventIngestor.layer.pipe(
@@ -262,11 +271,6 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
     ),
   ),
 );
-export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
-  Layer.provide(layerProjectService),
-  // Whether a thread came from a linked environment, which skips setup.
-  Layer.provide(ProjectionStore.layer),
-);
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
@@ -367,7 +371,7 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
-  layer.pipe(Layer.provide(layerProjectService)),
+  layer.pipe(Layer.provide(Layer.merge(layerProjectService, layerWorktreeRestoreProvided))),
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,

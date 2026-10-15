@@ -18,14 +18,19 @@ import * as Layer from "effect/Layer";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 
-export const layer = Layer.merge(
+export const layer = Layer.mergeAll(
   Layer.mock(GitWorkflow.GitWorkflowService)({
     pruneWorktrees: () => Effect.void,
     createWorktree: () => Effect.succeed({} as never),
   }),
   Layer.mock(ProjectService.ProjectService)({
     getById: () => Effect.succeedNone,
+  }),
+  // Threads in these harnesses never lose their worktree.
+  Layer.mock(WorktreeRestore.WorktreeRestore)({
+    ensure: () => Effect.succeed("present"),
   }),
 );
 
