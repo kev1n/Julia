@@ -785,7 +785,9 @@ describe("subagent worktree ownership", () => {
           : scenario === "running" || scenario === "pending"
             ? "Thread is running or has pending work"
             : shared
-              ? "Shared by 2 threads"
+              ? // Fork (Owner): threads sharing a worktree without one subagent owner are
+                // judged by the most recently active of them, here the unsettled child.
+                "Not settled"
               : scenario === "null-branch" || scenario === "stale-branch"
                 ? "A subagent thread's branch differs from this worktree's branch"
                 : scenario === "recent-activity"
@@ -1499,6 +1501,80 @@ describe("storage cleanup reports and local file policies", () => {
         expect(report.bytesFreed).toBe(0);
         expect(yield* fs.exists(worktree)).toBe(true);
         expect(yield* fs.readFileString(`${worktree}/notes.txt`)).toBe("untracked\n");
+      }),
+    ),
+  );
+  it.live("removes a worktree shared by threads that are all idle and old", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, fs, worktree, setThreads } = yield* cleanupFixture();
+        setThreads([
+          shell({ branch: "feature", worktreePath: worktree }),
+          shell({ id: ThreadId.make("thread-2"), branch: "feature", worktreePath: worktree }),
+        ]);
+        const report = yield* service.runNow;
+        expect(report.entries[0]).toMatchObject({ outcome: "removed" });
+        expect(report.entries[0]?.reason).toMatch(/\(used by 2 threads\)$/);
+        expect(yield* fs.exists(worktree)).toBe(false);
+      }),
+    ),
+  );
+  it.live("keeps a shared worktree while any thread using it is busy or recent", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const { service, fs, worktree, setThreads } = yield* cleanupFixture();
+        const helper = (overrides: Partial<OrchestrationV2ThreadShell>) =>
+          shell({
+            id: ThreadId.make("thread-2"),
+            branch: "feature",
+            worktreePath: worktree,
+            ...overrides,
+          });
+        setThreads([
+          shell({ branch: "feature", worktreePath: worktree }),
+          helper({ status: "running" }),
+        ]);
+        expect((yield* service.runNow).entries[0]).toMatchObject({
+          outcome: "kept",
+          reason: "A thread using it is running or has pending work",
+        });
+        setThreads([
+          shell({ branch: "feature", worktreePath: worktree }),
+          helper({ latestRunCompletedAt: yield* DateTime.now }),
+        ]);
+        expect((yield* service.runNow).entries[0]).toMatchObject({ outcome: "kept" });
+        expect((yield* service.runNow).entries[0]?.reason).toMatch(/^Inactive for 0 of 8 days/);
+        setThreads([
+          shell({ branch: "feature", worktreePath: worktree }),
+          helper({ branch: "other" }),
+        ]);
+        expect((yield* service.runNow).entries[0]).toMatchObject({
+          outcome: "kept",
+          reason: "Threads using it are on different branches",
+        });
+        expect(yield* fs.exists(worktree)).toBe(true);
+      }),
+    ),
+  );
+  it.live("keeps a shared worktree when one of its threads starts during measurement", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const fixture = yield* pausedMeasurementFixture();
+        const { fs, worktree } = fixture;
+        const threads = [
+          shell({ branch: "feature", worktreePath: worktree }),
+          shell({ id: ThreadId.make("thread-2"), branch: "feature", worktreePath: worktree }),
+        ];
+        fixture.setThreads(threads);
+        const cleanup = yield* fixture.service.runNow.pipe(Effect.forkChild);
+        yield* Deferred.await(fixture.measuring);
+        fixture.setThreads([threads[0]!, { ...threads[1]!, status: "running" }]);
+        yield* Deferred.succeed(fixture.resume, undefined);
+        expect((yield* Fiber.join(cleanup)).entries[0]).toMatchObject({
+          outcome: "kept",
+          reason: "Thread activity or shared worktree changed since check",
+        });
+        expect(yield* fs.exists(worktree)).toBe(true);
       }),
     ),
   );
