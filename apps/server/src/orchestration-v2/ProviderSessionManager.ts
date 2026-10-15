@@ -850,6 +850,15 @@ export const layerWithOptions = (
           });
         },
       );
+      // A detach removes its thread before releasing, but that thread's records still need releasing.
+      const releasedThreadIds = (input: {
+        readonly entry: LiveSessionEntry;
+        readonly detachedThreadId?: ThreadId;
+      }) => {
+        const threadIds = new Set(input.entry.attachedThreadIds);
+        if (input.detachedThreadId !== undefined) threadIds.add(input.detachedThreadId);
+        return threadIds;
+      };
 
       const writeReleasedSessionEvents = Effect.fn(
         "ProviderSessionManager.writeReleasedSessionEvents",
@@ -857,6 +866,7 @@ export const layerWithOptions = (
         readonly entry: LiveSessionEntry;
         readonly reason: ProviderSessionReleaseReason;
         readonly detail?: string;
+        readonly detachedThreadId?: ThreadId;
       }) {
         const now = yield* DateTime.now;
         const {
@@ -874,21 +884,11 @@ export const layerWithOptions = (
         };
         yield* writeProviderSessionEvents({
           runtime: input.entry.runtime,
-          threadIds: input.entry.attachedThreadIds,
+          threadIds: releasedThreadIds(input),
           type: "provider-session.updated",
           payload,
         });
       });
-
-      // A detach removes its thread before releasing, but that thread's records still need releasing.
-      const releasedThreadIds = (input: {
-        readonly entry: LiveSessionEntry;
-        readonly detachedThreadId?: ThreadId;
-      }) => {
-        const threadIds = new Set(input.entry.attachedThreadIds);
-        if (input.detachedThreadId !== undefined) threadIds.add(input.detachedThreadId);
-        return threadIds;
-      };
 
       const writeReleasedRuntimeRequestEvents = Effect.fn(
         "ProviderSessionManager.writeReleasedRuntimeRequestEvents",
@@ -1018,6 +1018,7 @@ export const layerWithOptions = (
         function* (input: {
           readonly entry: LiveSessionEntry;
           readonly reason: ProviderSessionReleaseReason;
+          readonly detail?: string;
           readonly detachedThreadId?: ThreadId;
         }) {
           if (
@@ -1062,6 +1063,10 @@ export const layerWithOptions = (
                         (item.type !== "subagent" || item.origin === "provider_native"),
                     )
                   : [],
+                // Fork: a cut-off subagent's result says why it stopped.
+                subagentResult: `Stopped because its provider session ended${
+                  input.detail === undefined ? "." : `: ${input.detail}`
+                }`,
               });
             }
           }
@@ -1199,7 +1204,7 @@ export const layerWithOptions = (
       const writeReleasedSubagentEvents = Effect.fn(
         "ProviderSessionManager.writeReleasedSubagentEvents",
       )(function* (released: ReleasedProviderThread, releasedAt: DateTime.Utc) {
-        const { threadId, providerSessionId, providerThreadId, driver } = released;
+        const { threadId, providerSessionId, providerThreadId, driver, subagentResult } = released;
         const readCutOff = Effect.gen(function* () {
           const { subagents, turnItems } = yield* projectionStore.getThreadRecords(
             threadId,
@@ -1241,6 +1246,7 @@ export const layerWithOptions = (
               projection,
               subagentId: subagent.id,
               status: "interrupted",
+              ...(subagent.result === null ? { result: subagentResult } : {}),
               now,
               emitted: [],
               allocateEventId,
@@ -1573,6 +1579,7 @@ export const layerWithOptions = (
                   const releasedProviderThreads = yield* readReleasedProviderThreads({
                     entry,
                     reason: input.reason,
+                    ...(input.detail === undefined ? {} : { detail: input.detail }),
                     ...detachedThread,
                   });
                   if (input.cancelIdleFiber !== false) {
