@@ -8,11 +8,13 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShell,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   RunId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -33,7 +35,7 @@ import {
   type HistoryBlobStore,
   sha256Hex,
 } from "./blobStore.ts";
-import { decodeBundle, encodeBundle, MOVED_EVENT_TYPES } from "./historyStore.ts";
+import { decodeBundle, encodeBundle, MOVED_EVENT_TYPES, OFFLOAD_GRACE_MS } from "./historyStore.ts";
 import * as ThreadHistory from "./ThreadHistory.ts";
 
 const layerStores = Layer.mergeAll(EventStore.layer, ProjectionStore.layer).pipe(
@@ -221,6 +223,37 @@ const settledThread = (
         },
       },
       message("done", "assistant", "Fixed it."),
+      // Progress repeats the prompt, so the event store keeps it once (promptSequence).
+      ...(["running", "completed"] as const).map(
+        (subagentStatus) =>
+          ({
+            id: EventId.make(`event:${name}:helper:${subagentStatus}`),
+            type: "subagent.updated",
+            threadId,
+            occurredAt: at,
+            payload: {
+              id: NodeId.make(`node:${name}:helper`),
+              threadId,
+              runId,
+              parentNodeId: NodeId.make(`node:${name}:root`),
+              origin: "provider_native",
+              createdBy: "agent",
+              driver: ProviderDriverKind.make("claudeAgent"),
+              providerInstanceId,
+              providerThreadId: null,
+              childThreadId: null,
+              nativeTaskRef: null,
+              prompt: `Check the ${name} ledger for rounding drift.`,
+              title: "Ledger check",
+              model: null,
+              status: subagentStatus,
+              result: subagentStatus === "completed" ? "Half-cents round down." : null,
+              startedAt: at,
+              completedAt: subagentStatus === "completed" ? at : null,
+              updatedAt: at,
+            },
+          }) satisfies OrchestrationV2DomainEvent,
+      ),
     ];
     if (options.settled !== false) {
       events.push({
@@ -232,6 +265,9 @@ const settledThread = (
       });
     }
     yield* sink.write({ events });
+    // Past the hour a settled thread keeps its history on disk.
+    const graceOver = DateTime.toEpochMillis(at) + OFFLOAD_GRACE_MS;
+    if ((yield* Clock.currentTimeMillis) < graceOver) yield* TestClock.setTime(graceOver);
     return threadId;
   });
 
@@ -252,11 +288,12 @@ const snapshot = (threadId: ThreadId) =>
       tables[table] =
         yield* sql`SELECT * FROM ${sql(table)} WHERE thread_id = ${threadId} ORDER BY 1`;
     }
-    const events = yield* sql<{ readonly event_id: string; readonly payload_json: string }>`
-      SELECT event_id, payload_json FROM orchestration_events
-      WHERE stream_id = ${threadId} AND event_type IN ${sql.in(MOVED_EVENT_TYPES)}
-      ORDER BY sequence
-    `;
+    // As readers see them: a prompt stored once is resolved, whatever its sequence now.
+    const events = Array.from(
+      yield* (yield* EventStore.EventStoreV2).read({ threadId }).pipe(Stream.runCollect),
+    )
+      .map((stored) => stored.event)
+      .filter((event) => (MOVED_EVENT_TYPES as ReadonlyArray<string>).includes(event.type));
     return { tables, events };
   });
 
@@ -303,6 +340,25 @@ it.layer(layerTest)("ThreadHistory", (it) => {
 
       assert.deepEqual(yield* snapshot(threadId), before);
       assert.equal((yield* firstStatus(history, threadId))?.state, "local");
+    }),
+  );
+
+  it.effect("a settled thread stays on disk for an hour, then moves with no new activity", () =>
+    Effect.gen(function* () {
+      const blobs = memoryBlobs();
+      const history = yield* ThreadHistory.make(blobs.store);
+      const threadId = yield* settledThread("grace");
+      yield* TestClock.setTime(DateTime.toEpochMillis(at) + 50 * 60 * 1000);
+
+      yield* history.sweep("env");
+      assert.equal(blobs.blobs.size, 0);
+      assert.isAbove(yield* movedEventCount(threadId), 0);
+
+      // Nothing else happens; the next 10-minute sweep after the hour moves it.
+      yield* TestClock.adjust("20 minutes");
+      yield* history.sweep("env");
+      assert.equal(blobs.blobs.size, 1);
+      assert.equal(yield* movedEventCount(threadId), 0);
     }),
   );
 
