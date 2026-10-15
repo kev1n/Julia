@@ -237,7 +237,8 @@ environment and thread id plus the repository's canonical key; paths are reposit
 **Settled threads in Azure** (`apps/server/src/fork/threadHistory/`,
 `apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). A thread that
 is settled (`settledOverride = "settled"`) or archived, and not deleted, moves its history off the
-machine a few seconds later (upstream's 5-second due-work scheduler): every event except its
+machine once it has been settled or archived for an hour (Owner's choice, so a thread just settled
+opens instantly; the sweep rechecks at least every 10 minutes): every event except its
 `thread.*` events, its `message.updated` events, its `run.*` events and its `provider-session.*`
 events, plus the projection rows those events wrote (nodes, turn items, tool output,
 checkpoints...). Runs stay because a thread's status in every list comes from its latest run;
@@ -263,6 +264,8 @@ blob per query. Attachments stay on disk (17 MB in all on mac-a).
   cached the stub receives them) and their rows are rebuilt with the current projection code. A
   thread opened to read stays local until it is settled or archived again; each offload is a new
   blob, so re-settling restarts its 60 days.
+  Restoring re-inserts events with new sequences, so a subagent prompt that upstream's event store
+  keeps once (later events point at it with `promptSequence`) is re-pointed as it is put back.
 - `fork.threadHistory` (stream RPC, read scope) reports `restoring`, `expired` or `unavailable`,
   shown in the composer's activity slot on web and desktop and above the composer on the phone.
   Expired (the blob is gone) leaves the stub readable; unavailable fails the read, so the client
