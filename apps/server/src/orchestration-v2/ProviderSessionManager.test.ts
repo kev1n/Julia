@@ -14,8 +14,10 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  NodeId,
   type ProviderSessionId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -29,6 +31,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
 import { TestClock } from "effect/testing";
 import { HttpServer } from "effect/http";
 
@@ -2329,6 +2332,156 @@ it.effect(
       yield* effect.pipe(
         Effect.provide(
           layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
+        ),
+      );
+    }),
+);
+
+// The deploy idle check (fork/scripts/live-work.sh) runs this query on the state database.
+const liveWorkQuery = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const script = yield* fs.readFileString(
+    `${import.meta.dirname}/../../../../fork/scripts/live-work.sh`,
+  );
+  return script.slice(script.indexOf("<<'SQL'\n") + "<<'SQL'\n".length, script.lastIndexOf("SQL"));
+}).pipe(Effect.provide(NodeServices.layer));
+
+it.effect(
+  "ProviderSessionManagerV2 ends the subagents and background commands of a session a settle releases",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const effect = Effect.gen(function* () {
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const sql = yield* SqlClient.SqlClient;
+        const { threadId, providerSessionId, providerThreads } =
+          yield* openSessionWithBackgroundCommand("provider-session-manager-settle-subagents");
+        const now = yield* DateTime.now;
+        const providerThreadId = providerThreads[0]!.id;
+        const subagentId = NodeId.make("node:settle-subagent");
+        const itemBase = {
+          threadId,
+          runId: null,
+          nodeId: null,
+          providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          status: "running",
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+        } as const;
+        // A completed turn left a Claude subagent and a background command
+        // running, the shape of "Orchestrator task ANY-570" on mac-a on 2026-10-14.
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "subagent.updated",
+              threadId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: {
+                id: subagentId,
+                threadId,
+                runId: null,
+                parentNodeId: NodeId.make("node:settle-root"),
+                origin: "provider_native",
+                createdBy: "agent",
+                driver: CODEX_DRIVER,
+                providerInstanceId: modelSelection.instanceId,
+                providerThreadId,
+                childThreadId: null,
+                nativeTaskRef: null,
+                prompt: "Maps prod metrics + demand",
+                title: "Maps prod metrics + demand",
+                model: null,
+                status: "running",
+                result: null,
+                startedAt: now,
+                completedAt: null,
+                updatedAt: now,
+              },
+            },
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "turn-item.updated",
+              threadId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: {
+                ...itemBase,
+                id: TurnItemId.make("turn-item:settle-subagent"),
+                ordinal: 1,
+                title: "Maps prod metrics + demand",
+                type: "subagent",
+                subagentId,
+                origin: "provider_native",
+                driver: CODEX_DRIVER,
+                providerInstanceId: modelSelection.instanceId,
+                childThreadId: null,
+                prompt: "Maps prod metrics + demand",
+                result: null,
+              },
+            },
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "turn-item.updated",
+              threadId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: {
+                ...itemBase,
+                id: TurnItemId.make("turn-item:settle-command"),
+                ordinal: 2,
+                title: "vp run dev",
+                type: "command_execution",
+                input: "vp run dev",
+              },
+            },
+          ],
+        });
+        const query = yield* liveWorkQuery;
+        assert.isNotEmpty(yield* sql.unsafe(query));
+
+        yield* manager.detach({ providerSessionId, threadId, detail: "Thread settled." });
+
+        assert.deepStrictEqual(yield* sql.unsafe(query), []);
+        const projection = yield* projectionStore.getThreadProjection(threadId);
+        assert.equal(
+          (yield* sql<{ status: string }>`
+            SELECT status FROM orchestration_v2_projection_provider_sessions
+            WHERE provider_session_id = ${providerSessionId}`)[0]?.status,
+          "stopped",
+        );
+        const subagentItem = projection.turnItems.find(
+          (item) => item.id === "turn-item:settle-subagent",
+        );
+        assert.equal(subagentItem?.status, "cancelled");
+        assert.equal(
+          subagentItem?.type === "subagent" ? subagentItem.result : undefined,
+          "Stopped because its provider session ended: Thread settled.",
+        );
+        assert.equal(
+          projection.turnItems.find((item) => item.id === "turn-item:settle-command")?.status,
+          "cancelled",
+        );
+        assert.equal(
+          projection.subagents.find((subagent) => subagent.id === subagentId)?.status,
+          "cancelled",
+        );
+      });
+
+      yield* effect.pipe(
+        Effect.provide(
+          Layer.merge(
+            layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
+            layerTestDatabase,
+          ),
         ),
       );
     }),
