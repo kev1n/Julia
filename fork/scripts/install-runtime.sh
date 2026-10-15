@@ -101,6 +101,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 if [ -d "$HOME/t3-fork" ] && [ -f "$here/pull-deploy.sh" ]; then
   install -S -m 700 "$here/pull-deploy.sh" "$HOME/t3-fork/pull-deploy.sh"
 fi
+# Same for the watchdog that restarts a hung service; this also installs it on
+# a Mac that does not have it yet.
+if [ -d "$HOME/t3-fork" ] && [ -f "$here/watchdog.sh" ]; then
+  "$here/install-jobs.sh" watchdog || echo "Could not install the watchdog." >&2
+fi
 
 # Keep the stock runtimes, the active fork runtime, and the one before it for rollback.
 for dir in "$versions"/*+owner.*; do

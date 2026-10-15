@@ -1,6 +1,8 @@
 #!/bin/bash
 # Install the fork's LaunchAgents on this Mac (idempotent).
 #   fork/scripts/install-jobs.sh deploy        every Mac: daily pull of the newest release
+#   fork/scripts/install-jobs.sh watchdog      every Mac: restart a hung T3 service (each
+#                                              release's installer refreshes it)
 #   fork/scripts/install-jobs.sh sync artifacts deploy
 #                                              the build Mac (build-mac): daily sync + build, and
 #                                              its build outputs served to the tailnet on :8444
@@ -38,6 +40,26 @@ for job in "$@"; do
     deploy)
       install -S -m 700 "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
       install_job com.example.t3code-fork.deploy "$state/pull-deploy.sh" 5 45 ;;
+    watchdog)
+      install -S -m 700 "$here/watchdog.sh" "$state/"
+      plist="$HOME/Library/LaunchAgents/com.example.t3code-fork.watchdog.plist"
+      cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.t3code-fork.watchdog</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>$state/watchdog.sh</string></array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>$state/logs/watchdog.log</string>
+  <key>StandardErrorPath</key><string>$state/logs/watchdog.log</string>
+</dict>
+</plist>
+PLIST
+      launchctl bootout "gui/$(id -u)/com.example.t3code-fork.watchdog" 2>/dev/null || true
+      launchctl bootstrap "gui/$(id -u)" "$plist"
+      echo "installed com.example.t3code-fork.watchdog (every 60 s) -> $state/watchdog.sh" ;;
     artifacts)
       # A static file server on localhost (plus the phone app's update manifest),
       # published to the tailnet only by Tailscale Serve (the macOS Tailscale app
