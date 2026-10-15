@@ -484,3 +484,102 @@ export const endRunlessRootTurns = Effect.fn("subagentProjection.endRunlessRootT
   }
   return events;
 });
+
+type NativeSubagentProjection = Pick<
+  OrchestrationV2ThreadProjection,
+  "nodes" | "subagents" | "turnItems"
+>;
+// A child thread's runless root turns end with its provider turns.
+type NativeSubagentChildProjection = NativeSubagentProjection &
+  Pick<OrchestrationV2ThreadProjection, "providerTurns">;
+
+/**
+ * Ends an orphaned provider-native subagent, its thread's runless root turn, and subagents it
+ * started there. `readChild` returns null for a gone thread; threads in `visitedChildThreadIds`
+ * are skipped and the ones ended here are added.
+ */
+export const endOrphanedNativeSubagentTree = Effect.fn(
+  "subagentProjection.endOrphanedNativeSubagentTree",
+)(function* <E, ReadError>(input: {
+  readonly projection: NativeSubagentProjection;
+  readonly subagent: Pick<
+    Extract<OrchestrationV2TurnItem, { readonly type: "subagent" }>,
+    "subagentId" | "origin" | "childThreadId" | "providerInstanceId"
+  >;
+  readonly status: "completed" | "failed" | "interrupted" | "cancelled";
+  /** Recorded on the top subagent only; its descendants keep their own results. */
+  readonly result?: string;
+  readonly now: DateTime.Utc;
+  readonly emitted: ReadonlyArray<OrchestrationV2DomainEvent>;
+  readonly allocateEventId: () => Effect.Effect<EventId, E>;
+  readonly readChild: (
+    threadId: ThreadId,
+  ) => Effect.Effect<NativeSubagentChildProjection | null, ReadError>;
+  readonly visitedChildThreadIds: Set<ThreadId>;
+}) {
+  const events: Array<OrchestrationV2DomainEvent> = [];
+  const dying: Array<{
+    readonly projection: NativeSubagentProjection;
+    readonly subagent: typeof input.subagent;
+    readonly result?: string;
+  }> = [
+    {
+      projection: input.projection,
+      subagent: input.subagent,
+      ...(input.result === undefined ? {} : { result: input.result }),
+    },
+  ];
+  for (const { projection, subagent, result } of dying) {
+    events.push(
+      ...(yield* endOrphanedNativeSubagent({
+        projection,
+        subagentId: subagent.subagentId,
+        status: input.status,
+        ...(result === undefined ? {} : { result }),
+        now: input.now,
+        emitted: [...input.emitted, ...events],
+        allocateEventId: input.allocateEventId,
+      })),
+    );
+    const childThreadId = subagent.childThreadId;
+    if (
+      subagent.origin !== "provider_native" ||
+      childThreadId === null ||
+      input.visitedChildThreadIds.has(childThreadId)
+    ) {
+      continue;
+    }
+    input.visitedChildThreadIds.add(childThreadId);
+    const child = yield* input.readChild(childThreadId);
+    if (child === null) continue;
+    events.push(
+      ...(yield* endRunlessRootTurns({
+        threadId: childThreadId,
+        providerInstanceId: subagent.providerInstanceId,
+        projection: child,
+        status: input.status,
+        now: input.now,
+        emitted: [...input.emitted, ...events],
+        allocateEventId: input.allocateEventId,
+      })),
+    );
+    for (const nested of child.turnItems) {
+      if (nested.type === "subagent") dying.push({ projection: child, subagent: nested });
+    }
+    // Workflow members have records and child roots without subagent turn items.
+    for (const nested of child.subagents) {
+      if (nested.origin === "provider_native" && nested.runId === null) {
+        dying.push({
+          projection: child,
+          subagent: {
+            subagentId: nested.id,
+            origin: nested.origin,
+            childThreadId: nested.childThreadId,
+            providerInstanceId: nested.providerInstanceId,
+          },
+        });
+      }
+    }
+  }
+  return events;
+});
