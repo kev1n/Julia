@@ -18,13 +18,14 @@ import {
   useEnvironmentStateHeldFor,
 } from "../../hooks/useEnvironmentDisconnectDelay";
 import { serverEnvironment } from "../../state/server";
-import { type EnvironmentPresentation } from "../../state/environments";
+import { type EnvironmentPresentation, useEnvironments } from "../../state/environments";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ENVIRONMENT_RECONNECT_WARNING_GRACE_MS } from "../ChatView.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { useFleetOverlapBanner } from "../../fork/fleetOverlaps/useFleetOverlapBanner";
 import { useMovedThreadBanner } from "../../fork/moveThread/movedThreads";
+import { outageBannerText, outageCause } from "../../fork/outageCause/outageCause";
 
 export type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
@@ -55,6 +56,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     fleetOverlapRef,
   } = input;
   const navigate = useNavigate();
+  const { environments, networkStatus } = useEnvironments();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
   const setEnvironmentEnabled = useAtomCommand(environmentCatalog.setEnabled, {
     reportFailure: false,
@@ -154,13 +156,25 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
       unavailableConnection !== null &&
       !suppressUnavailableBanner;
     if (showUnavailableBanner) {
+      const outageText = outageBannerText({
+        label: activeEnvironmentUnavailableState.label,
+        reconnecting: environmentReconnecting,
+        cause: outageCause({
+          networkStatus,
+          unavailableEnvironmentId: activeEnvironmentUnavailableState.environmentId,
+          environments,
+        }),
+      });
       items.push({
         id: `environment-unavailable:${activeEnvironmentUnavailableState.environmentId}`,
         variant: unavailableConnection.phase === "error" ? "error" : "warning",
         group: "environment",
         icon: <WifiOffIcon />,
-        title: `${activeEnvironmentUnavailableState.label} is ${environmentReconnecting ? "reconnecting" : "offline"}`,
-        description: activeEnvironment ? (
+        title: outageText.title,
+        // Fork (Owner): a cause on this device's side replaces the server's diagnosis.
+        description: outageText.description ? (
+          outageText.description
+        ) : activeEnvironment ? (
           <ConnectionDiagnosisHeadline environment={activeEnvironment} />
         ) : undefined,
         actions: (
