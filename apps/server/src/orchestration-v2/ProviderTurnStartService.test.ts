@@ -40,6 +40,8 @@ import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { layerRealGit } from "./ProviderTurnStartService.testkit.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as WorktreeRestore from "../workspace/WorktreeRestore.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -54,6 +56,20 @@ import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
+
+// The real restore runs over each harness's git, project and file system; no setup script.
+const layerWorktreeRestore = <R>(dependencies: Layer.Layer<R>) =>
+  WorktreeRestore.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        dependencies,
+        Path.layer,
+        Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+          runForThread: () => Effect.succeed({ status: "no-script" } as never),
+        }),
+      ),
+    ),
+  );
 
 const isDomainEvent = Schema.is(OrchestrationV2DomainEvent);
 
@@ -131,36 +147,49 @@ function startWithMissingWorktree(
   const pruneWorktrees = vi.fn(() => Effect.void);
   const createWorktree = vi.fn(() => Effect.succeed({} as never));
   const listLocalBranchNames = vi.fn(() => Effect.succeed(["feature/restore"]));
+  const restoreDependencies = Layer.mergeAll(
+    Layer.succeed(FileSystem.FileSystem, {
+      exists: () => Effect.succeed(false),
+      readFileString: (target: string) =>
+        Effect.fail(
+          PlatformError.systemError({
+            _tag: "NotFound",
+            module: "FileSystem",
+            method: "readFileString",
+            pathOrDescriptor: target,
+          }),
+        ),
+      realPath: (target: string) =>
+        normalize(target) in realPaths
+          ? Effect.succeed(realPaths[normalize(target)])
+          : Effect.fail(
+              PlatformError.systemError({
+                _tag: "NotFound",
+                module: "FileSystem",
+                method: "realPath",
+                pathOrDescriptor: target,
+              }),
+            ),
+    } as never),
+    Layer.mock(GitWorkflow.GitWorkflowService)({
+      pruneWorktrees,
+      createWorktree,
+      listLocalBranchNames,
+    }),
+    Layer.mock(ProjectService.ProjectService)({
+      getById: () =>
+        Effect.succeedSome({ workspaceRoot: "/tmp/provider-turn-start-project" } as never),
+    }),
+  );
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
         IdAllocator.layer,
-        Layer.succeed(FileSystem.FileSystem, {
-          exists: () => Effect.succeed(false),
-          realPath: (target: string) =>
-            normalize(target) in realPaths
-              ? Effect.succeed(realPaths[normalize(target)])
-              : Effect.fail(
-                  PlatformError.systemError({
-                    _tag: "NotFound",
-                    module: "FileSystem",
-                    method: "realPath",
-                    pathOrDescriptor: target,
-                  }),
-                ),
-        } as never),
         layerWorktreeLocation(),
-        Layer.mock(GitWorkflow.GitWorkflowService)({
-          pruneWorktrees,
-          createWorktree,
-          listLocalBranchNames,
-        }),
-        Layer.mock(ProjectService.ProjectService)({
-          getById: () =>
-            Effect.succeedSome({ workspaceRoot: "/tmp/provider-turn-start-project" } as never),
-        }),
+        restoreDependencies,
+        layerWorktreeRestore(restoreDependencies),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadRecords: () => {
             projectionReadCount += 1;
@@ -931,6 +960,24 @@ function makeLocalCommandHarness(input: {
       ),
     }),
   );
+  const restoreDependencies = Layer.mergeAll(
+    input.fileSystem === undefined
+      ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
+      : Layer.succeed(FileSystem.FileSystem, input.fileSystem),
+    input.gitWorkflow === undefined
+      ? Layer.mock(GitWorkflow.GitWorkflowService)({
+          pruneWorktrees: () => Effect.void,
+          listLocalBranchNames: () => Effect.succeed(["feature/restore"]),
+          createWorktree,
+        })
+      : Layer.succeed(GitWorkflow.GitWorkflowService, input.gitWorkflow),
+    Layer.mock(ProjectService.ProjectService)({
+      getById: () =>
+        Effect.succeedSome({
+          workspaceRoot: input.workspaceRoot ?? "/tmp/native-account-project",
+        } as never),
+    }),
+  );
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -961,22 +1008,8 @@ function makeLocalCommandHarness(input: {
         }),
         IdAllocator.layer,
         layerWorktreeLocation(input.worktreesDir),
-        input.fileSystem === undefined
-          ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
-          : Layer.succeed(FileSystem.FileSystem, input.fileSystem),
-        input.gitWorkflow === undefined
-          ? Layer.mock(GitWorkflow.GitWorkflowService)({
-              pruneWorktrees: () => Effect.void,
-              listLocalBranchNames: () => Effect.succeed(["feature/restore"]),
-              createWorktree,
-            })
-          : Layer.succeed(GitWorkflow.GitWorkflowService, input.gitWorkflow),
-        Layer.mock(ProjectService.ProjectService)({
-          getById: () =>
-            Effect.succeedSome({
-              workspaceRoot: input.workspaceRoot ?? "/tmp/native-account-project",
-            } as never),
-        }),
+        restoreDependencies,
+        layerWorktreeRestore(restoreDependencies),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadRecords,
           getTurnStartContext,
