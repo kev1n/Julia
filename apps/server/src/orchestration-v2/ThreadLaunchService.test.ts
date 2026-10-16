@@ -554,6 +554,51 @@ it.effect("retains automation and sender attribution while a message waits in th
   }).pipe(Effect.provide(harness.layer));
 });
 
+// A caller that runs unattended work (Owner's Orchestrator bridge) starts its thread snoozed, so it
+// never shows in the inbox while its worktree is prepared or its first message waits in the queue.
+it.effect(
+  "launches a thread already snoozed and keeps it snoozed through its first messages",
+  () => {
+    const harness = makeHarness({ runSetup: () => Effect.never });
+    const snoozedUntil = "2099-07-25T09:00:00.000Z";
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const withMessage = yield* launches.launch({
+        ...launchInput({ command: "command:snoozed", thread: "thread:snoozed", message: "Run it" }),
+        snoozedUntil,
+      });
+      assert.equal(withMessage.projection.runs[0]?.status, "preparing");
+      assert.equal(DateTime.formatIso(withMessage.projection.thread.snoozedUntil!), snoozedUntil);
+      assert.deepEqual(
+        withMessage.projection.thread.snoozedAt,
+        withMessage.projection.thread.createdAt,
+      );
+
+      const empty = yield* launches.launch({
+        ...launchInput({ command: "command:snoozed:empty", thread: "thread:snoozed:empty" }),
+        snoozedUntil,
+      });
+      yield* threads.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("command:snoozed:empty:message"),
+        threadId: empty.threadId,
+        messageId: MessageId.make("message:snoozed:empty"),
+        text: "Run it later",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "server",
+        dispatchMode: { type: "queue_after_active" },
+        keepSnoozed: true,
+      });
+      const queued = yield* threads.getThreadProjection(empty.threadId);
+      assert.lengthOf(queued.runs, 1);
+      assert.equal(DateTime.formatIso(queued.thread.snoozedUntil!), snoozedUntil);
+      assert.deepEqual(queued.thread.snoozedAt, empty.projection.thread.createdAt);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
 it.effect("provisions independent launches concurrently instead of behind a global semaphore", () =>
   Effect.gen(function* () {
     const setupCount = yield* Ref.make(0);
