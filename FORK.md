@@ -318,6 +318,14 @@ Staff"'s subagents and nothing resumed them for an hour.
   put them away. A run stopped with "stop only the main agent" is woken too, since its subagents
   were kept on purpose. It follows Settings > "Continue threads after server update" (on by default).
 
+**Start a thread snoozed** (`snoozedUntil` on `orchestration.launchThread` and `thread.create`,
+`keepSnoozed` on `message.dispatch`). A caller running unattended work (the Orchestrator bridge's
+routine runs) creates its thread already snoozed, so it never shows in the inbox while its
+worktree is prepared and its first message waits. Upstream refuses to snooze a thread with a
+queued run and wakes a thread on every new message; a launch's initial message, or a later
+message sent with `keepSnoozed`, leaves the snooze in place. The wake rules are upstream's: the
+run completing or failing after creation brings the thread back.
+
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
 `fork/scripts/artifacts-server.py`). An Android build, **T3 Code (Owner)**
 (`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
@@ -485,6 +493,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `packages/client-runtime/src/rpc/client.ts`, `state/server.ts`: its subscription atom.
 - `apps/web/src/components/ChatView.tsx`: the history notice, in place of "Syncing messages" while
   it restores or fails; `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`: the phone's notice.
+- `packages/contracts/src/orchestrationV2.ts`, `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
+  `Orchestrator.ts`: start a thread snoozed (`snoozedUntil`, `keepSnoozed`); test in
+  `ThreadLaunchService.test.ts`.
 - `apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts`: shutdown intent and crash
   recovery also queue a restart continuation for `fork/restartWake.ts`'s settled run;
   `RestartContinuation.ts` and `Orchestrator.ts` admit that continuation with the note as its prompt.
