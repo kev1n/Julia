@@ -1,23 +1,10 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics globalDateInEffect:off
 /**
- * Fork (Owner): the fleet's HTTP routes, all under /fork/fleet and all
- * requiring the fleet secret (Authorization: Bearer). Reached over the
- * tailnet through each Mac's Tailscale Serve.
- *
- * - POST hub/publish, GET hub/index: the hub (only where fork-fleet.json says "hub": true).
- * - POST move/pack: another server taking a moved thread's branch as a git
- *   bundle (../moveThread.ts).
- * - POST peer/read, peer/send: another server's agent reading or messaging a
- *   thread here. The source server vouches for the calling thread; this server
- *   acts for it as a client whose permission ceiling is that thread's runtime
- *   mode, so the existing rule applies here, at the destination: a target may
- *   not run with broader modes than its caller. Idempotency keys are
- *   namespaced per source thread.
- * - POST peer/delegate, peer/task, peer/task-cancel, peer/task-result, peer/providers:
- *   delegate_task and orchestrator_capabilities with a `machine` (remoteTasks.ts).
- * - POST drain: deploy-when-idle.sh on this Mac starting, checking or cancelling
- *   the drain before a planned restart (../drain.ts).
+ * Fork (Owner): the fleet's HTTP routes under /fork/fleet, all requiring the fleet secret, reached
+ * over the tailnet. A peer read or send acts for the calling thread as a client capped at that
+ * thread's runtime mode, so a target never runs with broader modes than its caller; idempotency
+ * keys are namespaced per source thread.
  */
 import {
   OrchestratorMcpFailure,
@@ -63,7 +50,7 @@ const MovePack = Schema.Struct({
 
 const decodeDrain = Schema.decodeUnknownEffect(
   Schema.Struct({
-    action: Schema.Literals(["start", "cancel"]),
+    action: Schema.Literals(["peek", "start", "cancel"]),
     release: Schema.String,
     requester: Schema.optional(Schema.String),
   }),
@@ -131,9 +118,10 @@ const handle = (
       return json(
         yield* action === "cancel"
           ? ForkDrain.cancel(release)
-          : ForkDrain.start(release, requester ?? null).pipe(
-              Effect.provideService(SqlClient.SqlClient, sql.value),
-            ),
+          : (action === "peek"
+              ? ForkDrain.peek(requester ?? null)
+              : ForkDrain.start(release, requester ?? null)
+            ).pipe(Effect.provideService(SqlClient.SqlClient, sql.value)),
       );
     }
     if (path === "hub/suggestions" && config.hub && request.method === "POST") {
