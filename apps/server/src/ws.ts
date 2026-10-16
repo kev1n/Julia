@@ -241,6 +241,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 // Fork (Owner): move a thread to another machine.
 import { receiveMove } from "./fork/moveThread.ts";
+import * as ForkDrain from "./fork/drain.ts";
 import * as FleetSuggestions from "./fork/fleet/threadOverlaps.ts";
 import { ForkMoveError } from "@t3tools/contracts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -2321,7 +2322,8 @@ export const layerWsRpc = (
                       new OrchestrationV2ThreadLaunchError({
                         commandId: input.commandId,
                         projectId: input.projectId,
-                        message: "Failed to launch thread",
+                        // Fork (Owner): say why a draining server refused it (fork/drain.ts).
+                        message: ForkDrain.refusalIn(cause.cause) ?? "Failed to launch thread",
                         cause,
                       }),
                     ServerRuntimeStartupError: (cause) =>

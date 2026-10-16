@@ -16,6 +16,8 @@
  *   namespaced per source thread.
  * - POST peer/delegate, peer/task, peer/task-cancel, peer/task-result, peer/providers:
  *   delegate_task and orchestrator_capabilities with a `machine` (remoteTasks.ts).
+ * - POST drain: deploy-when-idle.sh on this Mac starting, checking or cancelling
+ *   the drain before a planned restart (../drain.ts).
  */
 import {
   OrchestratorMcpFailure,
@@ -24,11 +26,14 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
+import * as ForkDrain from "../drain.ts";
 import { MoveFailure, packBranch } from "../moveThread.ts";
 import { FleetOperationError, authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
@@ -56,6 +61,13 @@ const MovePack = Schema.Struct({
   haves: Schema.Array(Schema.String),
 });
 
+const decodeDrain = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    action: Schema.Literals(["start", "cancel"]),
+    release: Schema.String,
+    requester: Schema.optional(Schema.String),
+  }),
+);
 const decodeSuggestionRequest = Schema.decodeUnknownEffect(
   Schema.Struct({ environmentId: Schema.String, threadId: Schema.String }),
 );
@@ -88,10 +100,13 @@ export const layer = Layer.unwrap(
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
     const suggestions = yield* FleetSuggestions.FleetSuggestions;
     const remoteTasks = yield* RemoteTasks.makePeerHandlers;
+    // Optional, so a layer built without the database (tests) still builds; the
+    // server provides it, and without it the drain answers 404 like an old server.
+    const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
     return HttpRouter.add(
       "*",
       "/fork/fleet/*",
-      handle(environment, service, suggestions, remoteTasks),
+      handle(environment, service, suggestions, remoteTasks, sql),
     );
   }),
 );
@@ -101,6 +116,7 @@ const handle = (
   service: OrchestratorMcpService.OrchestratorMcpService["Service"],
   suggestions: FleetSuggestions.FleetSuggestions["Service"],
   remoteTasks: RemoteTasks.PeerHandlers,
+  sql: Option.Option<SqlClient.SqlClient>,
 ) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -109,6 +125,18 @@ const handle = (
       return HttpServerResponse.text("Not Found", { status: 404 });
     }
     const path = new URL(request.url, "http://local").pathname.slice("/fork/fleet/".length);
+    if (path === "drain" && request.method === "POST" && Option.isSome(sql)) {
+      const decoded = yield* decodeDrain(yield* request.json).pipe(Effect.result);
+      if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
+      const { action, release, requester } = decoded.success;
+      return json(
+        yield* action === "cancel"
+          ? ForkDrain.cancel(release)
+          : ForkDrain.start(release, requester ?? null).pipe(
+              Effect.provideService(SqlClient.SqlClient, sql.value),
+            ),
+      );
+    }
     if (path === "hub/suggestions" && config.hub && request.method === "POST") {
       const decoded = yield* decodeSuggestionRequest(yield* request.json).pipe(Effect.result);
       if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
