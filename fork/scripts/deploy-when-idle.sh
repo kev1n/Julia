@@ -84,10 +84,16 @@ if [ "$active" = "$target" ] && [ "$reported" = "$target" ]; then
   finish
   exit 0
 fi
-# Logs what the restart would cut off and since when; returns 1 while anything is live.
+# Logs what the restart would cut off and since when; returns 1 while anything is live
+# or live-work.sh fails.
 idle() {
-  local work
-  work=$("$dir/scripts/live-work.sh")
+  local work code=0
+  # Called as `idle || exit 0`, so errexit is off here: check the status ourselves.
+  work=$("$dir/scripts/live-work.sh") || code=$?
+  if [ "$code" != 0 ]; then
+    echo "$(date -u): live-work.sh failed (exit $code); no restart, trying again at the next run."
+    return 1
+  fi
   if [ -z "$work" ]; then
     rm -f "$waiting_since"
     return 0
