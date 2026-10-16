@@ -101,52 +101,74 @@ const finishBusyRun = Effect.flatMap(
     sql`UPDATE orchestration_v2_projection_runs SET status = 'completed' WHERE run_id = 'run-busy'`,
 );
 
-it.effect("a drain refuses new work and becomes idle when live work ends", () => {
+const finishAudit = Effect.flatMap(
+  SqlClient.SqlClient,
+  (sql) =>
+    sql`UPDATE orchestration_v2_projection_turn_items SET status = 'completed' WHERE turn_item_id = 'item-audit'`,
+);
+
+it.effect("while work is live the deploy waits without draining: new work is admitted", () => {
   const dispatched: Array<string> = [];
   return Effect.gen(function* () {
     yield* seed;
     const threads = yield* ThreadManagementService.ThreadManagementService;
 
-    const draining = yield* ForkDrain.start(RELEASE, null);
-    assert.isFalse(draining.idle);
+    const waiting = yield* ForkDrain.peek(null);
+    assert.isFalse(waiting.idle);
     assert.deepEqual(
-      draining.waitingFor.map((item) => item.title),
+      waiting.waitingFor.map((item) => item.title),
       ["Busy", "Deploys"],
     );
-
-    // A person's message and an agent's tool call are refused, and say why.
-    for (const command of [message("from-web", "web"), message("from-agent", "mcp")]) {
-      const error = yield* Effect.flip(threads.dispatch(command));
-      assert.instanceOf(error, Orchestrator.OrchestratorCommandRejectedError);
-      assert.include(String(ForkDrain.refusalIn(error)), "waiting for Busy, Deploys");
-    }
-    // The server's own continuation of live work still runs.
-    yield* threads.dispatch(message("wake", "server"));
-    assert.deepEqual(dispatched, ["wake"]);
+    yield* threads.dispatch(message("from-web", "web"));
+    yield* threads.dispatch(message("from-agent", "mcp"));
+    assert.deepEqual(dispatched, ["from-web", "from-agent"]);
 
     yield* finishBusyRun;
-    assert.isFalse((yield* ForkDrain.start(RELEASE, null)).idle);
+    yield* finishAudit;
+    assert.isTrue((yield* ForkDrain.peek(null)).idle);
+  }).pipe(Effect.provide(layerTest(dispatched)));
+});
+
+it.effect("a drain started on idle that finds new work refuses work until cancelled", () => {
+  const dispatched: Array<string> = [];
+  return Effect.gen(function* () {
+    yield* seed;
+    yield* finishBusyRun;
+    yield* finishAudit;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    assert.isTrue((yield* ForkDrain.peek(null)).idle);
+
+    // Work starts between the idle peek and the drain.
     yield* SqlClient.SqlClient.pipe(
       Effect.flatMap(
         (sql) =>
-          sql`UPDATE orchestration_v2_projection_turn_items SET status = 'completed' WHERE turn_item_id = 'item-audit'`,
+          sql`UPDATE orchestration_v2_projection_runs SET status = 'running' WHERE run_id = 'run-busy'`,
       ),
     );
-    const drained = yield* ForkDrain.start(RELEASE, null);
-    assert.isTrue(drained.idle);
-    assert.deepEqual(drained.waitingFor, []);
+    const draining = yield* ForkDrain.start(RELEASE, null);
+    assert.isFalse(draining.idle);
+    assert.deepEqual(draining.waitingFor, [{ kind: "run running", title: "Busy", what: "" }]);
 
-    // Cancelled (the install will not happen): new work is admitted again.
+    // While it drains, a person's message and an agent's tool call are refused and
+    // say why; the server's own continuation of live work still runs.
+    for (const command of [message("from-web", "web"), message("from-agent", "mcp")]) {
+      const error = yield* Effect.flip(threads.dispatch(command));
+      assert.instanceOf(error, Orchestrator.OrchestratorCommandRejectedError);
+      assert.include(String(ForkDrain.refusalIn(error)), "waiting for Busy");
+    }
+    yield* threads.dispatch(message("wake", "server"));
+
+    // The script cancels a drain that is not idle: new work is admitted again.
     yield* ForkDrain.cancel(RELEASE);
     yield* threads.dispatch(message("after-cancel", "web"));
     assert.deepEqual(dispatched, ["wake", "after-cancel"]);
   }).pipe(Effect.provide(layerTest(dispatched)));
 });
 
-it.effect("the requesting thread does not hold up its own drain", () =>
+it.effect("the requesting thread does not hold up its own deploy", () =>
   Effect.gen(function* () {
     yield* seed;
-    const waiting = yield* ForkDrain.start(RELEASE, "claude-session-1");
+    const waiting = yield* ForkDrain.peek("claude-session-1");
     assert.deepEqual(waiting.waitingFor, [{ kind: "run running", title: "Busy", what: "" }]);
     assert.deepEqual(waiting.notWaitingFor, [
       { kind: "subagent", title: "Deploys", what: "Audit" },
@@ -154,6 +176,7 @@ it.effect("the requesting thread does not hold up its own drain", () =>
 
     yield* finishBusyRun;
     // Its own subagent still runs; the restart may cut it off.
+    assert.isTrue((yield* ForkDrain.peek("claude-session-1")).idle);
     assert.isTrue((yield* ForkDrain.start(RELEASE, "claude-session-1")).idle);
     yield* ForkDrain.cancel(RELEASE);
   }).pipe(Effect.provide(layerTest([]))),
