@@ -6,10 +6,13 @@
 #
 # --schedule copies this script to ~/t3-fork and starts a LaunchAgent that runs it
 # every 30 s (log: ~/t3-fork/logs/deploy-when-idle-<sha>.log). Each run downloads and
-# checks the release, then asks the running server to drain (apps/server/src/fork/drain.ts):
-# it stops taking new threads, messages and delegated tasks, and answers what the
-# restart would still cut off: runs, and background subagents, shells and Monitors a
-# thread left running after its turn ended. Once that is nothing, the run installs.
+# checks the release, then asks the running server what a restart would cut off (runs,
+# and background subagents, shells and Monitors a thread left running after its turn
+# ended) without changing anything, and waits while that is anything. Once it is
+# nothing, the run starts the server's drain (apps/server/src/fork/drain.ts), which
+# refuses new threads, messages and delegated tasks, and installs if the drain also
+# answers idle; if work began meanwhile it cancels the drain and waits again. So new
+# work is refused only for the seconds between idle and the restart.
 # Scheduled from an agent's shell, the agent's own thread is left out, so an agent
 # can wait for its deploy. A server without the drain (a release before it, or no
 # ~/.t3/userdata/fork-fleet.json) is checked with live-work.sh instead.
@@ -164,21 +167,10 @@ idle() {
   fi
   report "$1" "$work"
 }
-# Asks the server to drain; returns 0 once it reports nothing left to cut off.
-drained() {
-  local answer work code=0
-  answer=$(drain start) || code=$?
-  if [ "$code" = 2 ]; then
-    fallback=1
-    echo "$(date -u): The running server has no drain; checking live-work.sh instead."
-    idle "Waiting for"
-    return
-  fi
-  if [ "$code" != 0 ]; then
-    echo "$(date -u): Drain request failed; no restart, trying again at the next run."
-    return 1
-  fi
-  work=$(printf '%s' "$answer" | /usr/bin/python3 -c '
+# Logs a drain answer ($2) and returns 0 when it reports nothing left to cut off.
+answered() {
+  local work
+  work=$(printf '%s' "$2" | /usr/bin/python3 -c '
 import json, sys
 answer = json.load(sys.stdin)
 for item in answer["notWaitingFor"]:
@@ -189,13 +181,40 @@ for item in answer["waitingFor"]:
     echo "$(date -u): Unreadable drain answer; no restart, trying again at the next run."
     return 1
   }
-  report "Draining (no new work taken):" "$work"
+  report "$1" "$work"
+}
+# Asks the server, without draining, whether anything is live; returns 0 when not.
+quiet() {
+  local answer code=0
+  answer=$(drain peek) || code=$?
+  if [ "$code" = 2 ]; then
+    fallback=1
+    echo "$(date -u): The running server has no drain; checking live-work.sh instead."
+    idle "Waiting for"
+    return
+  fi
+  if [ "$code" != 0 ]; then
+    echo "$(date -u): Live work request failed; no restart, trying again at the next run."
+    return 1
+  fi
+  answered "Waiting for" "$answer"
+}
+# Starts the drain once idle; returns 0 when its answer is idle too. Otherwise
+# work began meanwhile: cancel the drain at once, so new work is taken again.
+drain_started() {
+  local answer
+  if answer=$(drain start) && answered "Work started as the drain began:" "$answer"; then
+    return 0
+  fi
+  cancel_drain
+  echo "$(date -u): Drain cancelled; new work is taken again until the next run."
+  return 1
 }
 fallback=0
 if [ "$now" = 1 ]; then
   echo "$(date -u): Forced deploy (--now): not waiting for running work."
 else
-  drained || exit 0
+  quiet || exit 0
 fi
 # Check again just before restarting: another release may have arrived during download.
 latest=$(gh release view -R owner/t3code --json tagName -q .tagName)
@@ -205,9 +224,12 @@ if [ "$latest" != "$tag" ]; then
   finish
   exit 0
 fi
-# The drain refuses new work, so only the fallback can see work start meanwhile.
-if [ "$fallback" = 1 ]; then
-  idle "Work started during preflight:" || exit 0
+if [ "$now" != 1 ]; then
+  if [ "$fallback" = 1 ]; then
+    idle "Work started during preflight:" || exit 0
+  else
+    drain_started || exit 0
+  fi
 fi
 if [ "$now" = 1 ]; then
   echo "$(date -u): Installing $target now (--now), cutting off whatever runs."
