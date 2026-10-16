@@ -79,6 +79,7 @@ import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 import { checkOutput, outputRequestProblem } from "./runOutput.ts";
 import { routineSpan } from "@t3tools/shared/observability";
 import * as ThreadHistory from "../fork/threadHistory/ThreadHistory.ts";
+import * as ForkDrain from "../fork/drain.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -862,10 +863,24 @@ const make = Effect.gen(function* () {
     }
   };
 
+  // Fork (Owner): a drain before a planned restart refuses new work (fork/drain.ts).
+  // A message already in its thread (a replay, a steer re-sent as a follow-up) is not new.
+  const acceptedBefore = (command: OrchestrationV2ServerCommand) =>
+    command.type === "message.dispatch"
+      ? orchestrator
+          .getThreadRecords(command.threadId, ["messages"], { messageIds: [command.messageId] })
+          .pipe(
+            Effect.map((records) => records.messages.length > 0),
+            Effect.orElseSucceed(() => false),
+          )
+      : hasReceipt(command.commandId);
+
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
       Effect.andThen(assertDispatchTargetEnabled(command)),
-      Effect.andThen(orchestrator.dispatch(command)),
+      Effect.andThen(
+        ForkDrain.admit(command, acceptedBefore(command), orchestrator.dispatch(command)),
+      ),
     );
 
   const getProjectThreadRecords: ThreadManagementServiceShape["getProjectThreadRecords"] = (

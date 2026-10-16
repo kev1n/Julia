@@ -286,25 +286,48 @@ blob per query. Attachments stay on disk (17 MB in all on mac-a).
   stopped, 42 s for mac-a's 2.8 GB), and the server runs `PRAGMA incremental_vacuum` after each
   offload.
 
-**Restarts keep background work** (`apps/server/src/fork/restartWake.ts`, `fork/scripts/live-work.sh`,
-`fork/scripts/deploy-when-idle.sh`). A thread whose turn has ended can still have work running:
+**Restarts keep background work** (`apps/server/src/fork/restartWake.ts`, `apps/server/src/fork/drain.ts`,
+`apps/server/src/fork/liveWork.ts`, `fork/scripts/live-work.sh`, `fork/scripts/deploy-when-idle.sh`). A thread whose turn has ended can still have work running:
 Claude subagents, background shells and Monitors, which report back by waking the thread. A T3
 restart kills them, and upstream only tells the agent on the user's next message (#15604 stopped
 waking settled threads because stale "running" rows under stopped sessions woke long-finished
 ones). On 2026-10-14 two deploys and a restart on mac-a killed "Discuss Email with Chief of
 Staff"'s subagents and nothing resumed them for an hour.
 
-- Planned restarts wait. `live-work.sh` lists what a restart would cut off: runs that are working
-  or about to start, the provider's background roster (shells, Monitors), running
-  subagent/shell/tool items, and a wake turn Claude started for a finished task. Background work
-  counts only while its provider session is live. A held queued message (after Stop, a provider
-  failure or a restart) does not count: it waits for a person and survives a restart. Sending a
-  message to that thread, from the user or over MCP, resumes the held queue, earliest message first;
-  upstream starts the user's new message ahead and leaves the hold to anything an agent sends. `deploy-when-idle.sh` and the daily
-  `pull-deploy.sh` install only when it prints nothing. There is no timeout: every 30 s check logs
-  what it waits for and since when (`~/t3-fork/logs/deploy-when-idle-<sha>.log`). A dev server
-  left running holds the deploy until it stops, which is the same rule. Restarts started by hand
-  (`rollback.sh`, the in-app Update) do not wait.
+- Planned restarts drain the server first. Live work is what a restart would cut off: runs
+  that are working or about to start, the provider's background roster (shells, Monitors),
+  running subagent/shell/tool items, and a wake turn Claude started for a finished task.
+  Background work counts only while its provider session is live. A held queued message (after
+  Stop, a provider failure or a restart) does not count: it waits for a person and survives a
+  restart. Sending a message to that thread, from the user or over MCP, resumes the held queue,
+  earliest message first; upstream starts the user's new message ahead and leaves the hold to
+  anything an agent sends. The server reads live work
+  from its own projections (`liveWork.ts`, the same query as `live-work.sh`; `liveWork.test.ts`
+  checks that they agree).
+- The drain (`drain.ts`). Every 30 s run of a `deploy-when-idle.sh` job POSTs
+  `/fork/fleet/drain` on its own Mac (`{"action": "start", "release", "requester"}`, the fleet
+  secret as bearer) and installs only when the answer is `idle`. From the first request until the
+  restart, the server refuses new threads, messages and delegated tasks from clients and agents'
+  tools (`ThreadManagementService.dispatch`), scheduled runs included, with "Not taking new work:
+  this machine restarts for an update as soon as its running work finishes (waiting for <thread
+  titles>). Send this to another machine, or again after the restart." Its own continuations and
+  wakes still run, since they finish the work it waits for. It refuses rather than queues because
+  startup recovery holds every queued message until a person resumes it. The answer lists what it
+  waits for (logged as `Draining (no new work taken): ...`); idle also needs no command between
+  the drain check and its commit. A job scheduled from an agent's shell passes that agent's
+  provider session (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`) as `requester`, and the drain
+  leaves that thread's own work out (logged as `Not waiting for the thread that scheduled this
+deploy`), so an agent can wait for its own deploy; the restart cuts that work off and wakes the
+  thread. The drain is held in memory: the restart ends it, the job cancels it when it will not
+  install (superseded, installer failed), and a server restarted for another reason is asked
+  again at the next run. A server without the drain (a release before it, or no
+  `fork-fleet.json`) is checked with `live-work.sh` instead. The daily `pull-deploy.sh` still
+  waits for the next day while `live-work.sh` prints anything; when it prints nothing it
+  schedules the `deploy-when-idle.sh` job, which drains before installing. There is no timeout:
+  every check logs what it waits for and since when (`~/t3-fork/logs/deploy-when-idle-<sha>.log`).
+  A dev server left running holds the deploy until it stops, which is the same rule. Restarts
+  started by hand (`rollback.sh`, the in-app Update, `deploy-when-idle.sh --now`) and the
+  watchdog's (a hung or runaway server cannot drain) do not wait.
 - Any restart wakes the thread. When the server stops (SIGTERM from launchd or a deploy) it records
   each settled thread whose background work is live; after a crash, startup recovery does the same,
   since nothing marked the session stopped. The thread then gets a turn by itself whose prompt is
@@ -496,6 +519,8 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `packages/contracts/src/orchestrationV2.ts`, `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
   `Orchestrator.ts`: start a thread snoozed (`snoozedUntil`, `keepSnoozed`); test in
   `ThreadLaunchService.test.ts`.
+- `apps/server/src/orchestration-v2/ThreadManagementService.ts` (again): `dispatch` goes through
+  `fork/drain.ts`'s `admit`; `apps/server/src/ws.ts`: a launch the drain refused says why.
 - `apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts`: shutdown intent and crash
   recovery also queue a restart continuation for `fork/restartWake.ts`'s settled run;
   `RestartContinuation.ts` and `Orchestrator.ts` admit that continuation with the note as its prompt.
@@ -538,20 +563,22 @@ phone  every launch  T3 Code (Owner) asks /mobile/manifest for its runtime; down
              update in the background and applies it at the next backgrounding
 every Mac 05:45 com.example.t3code-fork.deploy ~/t3-fork/pull-deploy.sh
              newest release not yet running -> download its artifacts from build-mac, check
-             SHA256SUMS -> install-runtime.sh (and install-desktop.sh on the MacBook);
-             waits for the next day while live-work.sh reports anything
+             SHA256SUMS -> deploy-when-idle.sh --schedule (and install-desktop.sh on the
+             MacBook); waits for the next day while live-work.sh reports anything
 any Mac, on demand  com.example.t3code-fork.deploy-when-idle-<sha>  ~/t3-fork/deploy-when-idle.sh
-             fork/scripts/deploy-when-idle.sh --schedule <release tag> installs that release
-             as soon as live-work.sh reports nothing (checked every 30 s, logged), then
-             removes itself; a newer release supersedes it
+             fork/scripts/deploy-when-idle.sh --schedule <release tag> drains the server and
+             installs that release once the drain reports nothing live (checked every 30 s,
+             logged), then removes itself; a newer release supersedes it
 every Mac every 60 s com.example.t3code-fork.watchdog ~/t3-fork/watchdog.sh
              restarts the T3 service after 3 failed localhost health checks or above 12 GB
              RSS, first saving a 5 s `sample` to ~/t3-fork/logs/watchdog-sample-*.txt
 ```
 
 To ship a release to a Mac without waiting for 05:45, schedule it with
-`fork/scripts/deploy-when-idle.sh --schedule owner-<version>-<sha>`. Do not copy an older
-`~/t3-fork/deploy-when-idle-<sha>.sh`: those check runs only and restart over background work.
+`fork/scripts/deploy-when-idle.sh --schedule owner-<version>-<sha>`. Add `--now` to install
+without waiting, cutting off whatever runs. `--cancel owner-<version>-<sha>` removes a waiting
+job and ends its drain. Do not copy an older `~/t3-fork/deploy-when-idle-<sha>.sh`: those check
+runs only and restart over background work.
 `install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` and installs or refreshes the
 watchdog from the release it installs.
 

@@ -1,44 +1,71 @@
 #!/bin/bash
 # Installs one owner/t3code release on this Mac as soon as nothing would be cut off.
 #
-#   fork/scripts/deploy-when-idle.sh --schedule <release tag>
+#   fork/scripts/deploy-when-idle.sh --schedule <release tag> [--now]
+#   fork/scripts/deploy-when-idle.sh --cancel <release tag>
 #
-# copies this script to ~/t3-fork and starts a LaunchAgent that runs it every 30 s
-# (log: ~/t3-fork/logs/deploy-when-idle-<sha>.log). Each run downloads and checks the
-# release, then waits while live-work.sh (from that release) reports any work: runs, and
-# background subagents, shells and Monitors a thread left running after its turn ended.
+# --schedule copies this script to ~/t3-fork and starts a LaunchAgent that runs it
+# every 30 s (log: ~/t3-fork/logs/deploy-when-idle-<sha>.log). Each run downloads and
+# checks the release, then asks the running server to drain (apps/server/src/fork/drain.ts):
+# it stops taking new threads, messages and delegated tasks, and answers what the
+# restart would still cut off: runs, and background subagents, shells and Monitors a
+# thread left running after its turn ended. Once that is nothing, the run installs.
+# Scheduled from an agent's shell, the agent's own thread is left out, so an agent
+# can wait for its deploy. A server without the drain (a release before it, or no
+# ~/.t3/userdata/fork-fleet.json) is checked with live-work.sh instead.
 # There is no timeout: work that stays live keeps the old version running, and every
 # check logs what it waits for and since when. A newer release supersedes this one.
+# --now installs without waiting, cutting off whatever runs. --cancel removes the job
+# and ends its drain, so the server takes new work again.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 export GODEBUG=netdns=go # gh misreads DNS failures as a bad token without it
 unset T3CODE_HOME T3_SERVICE_LAUNCHER_CONTEXT T3_BOOT_SERVICE_UNIT
+usage="usage: deploy-when-idle.sh [--schedule | --cancel] <release tag> [--now] [--requester <provider session id>]"
+action=run now=0 requester="" tag=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --schedule) action=schedule ;;
+    --cancel) action=cancel ;;
+    --now) now=1 ;;
+    --requester) requester="${2:?$usage}"; shift ;;
+    -*) echo "$usage" >&2; exit 2 ;;
+    *) tag="$1" ;;
+  esac
+  shift
+done
+[ -n "$tag" ] || { echo "$usage" >&2; exit 2; }
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
-if [ "${1:-}" = --schedule ]; then
-  tag="${2:?usage: deploy-when-idle.sh --schedule <release tag>}"
-  label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
-  plist="$HOME/Library/LaunchAgents/$label.plist"
+label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
+plist="$HOME/Library/LaunchAgents/$label.plist"
+if [ "$action" = schedule ]; then
+  # The agent scheduling this, if any: Claude and Codex give their shells their own id.
+  requester="${CLAUDE_CODE_SESSION_ID:-${CODEX_THREAD_ID:-}}"
   # A copy outside any checkout, so the job survives a worktree being removed;
   # a new file, so a job of an earlier tag running the old copy is not disturbed.
   install -S -m 700 "$0" "$state/deploy-when-idle.sh"
-  /usr/bin/python3 - "$plist" "$label" "$state" "$tag" <<'PY'
+  /usr/bin/python3 - "$plist" "$label" "$state" "$tag" "$now" "$requester" <<'PY'
 import os, plistlib, sys
-path, label, state, tag = sys.argv[1:]
+path, label, state, tag, now, requester = sys.argv[1:]
 log = os.path.join(state, "logs", label.removeprefix("com.example.t3code-fork.") + ".log")
-data = {"Label": label, "ProgramArguments": ["/bin/bash", os.path.join(state, "deploy-when-idle.sh"), tag], "RunAtLoad": True, "StartInterval": 30, "StandardOutPath": log, "StandardErrorPath": log}
+args = ["/bin/bash", os.path.join(state, "deploy-when-idle.sh"), tag]
+args += ["--now"] if now == "1" else []
+args += ["--requester", requester] if requester else []
+data = {"Label": label, "ProgramArguments": args, "RunAtLoad": True, "StartInterval": 30, "StandardOutPath": log, "StandardErrorPath": log}
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "wb") as f:
     plistlib.dump(data, f)
 os.chmod(path, 0o600)
 PY
   launchctl bootstrap "gui/$(id -u)" "$plist"
-  echo "Scheduled $tag; installation waits until nothing is running, including background work."
+  if [ "$now" = 1 ]; then
+    echo "Scheduled $tag to install now, cutting off whatever runs."
+  else
+    echo "Scheduled $tag; the server stops taking new work and installs once nothing is running${requester:+ but this thread}."
+  fi
   exit 0
 fi
-tag="${1:?usage: deploy-when-idle.sh <release tag>}"
-label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
-plist="$HOME/Library/LaunchAgents/$label.plist"
 waiting_since="$state/$label.waiting-since"
 finish() {
   rm -f "$waiting_since"
@@ -47,9 +74,35 @@ finish() {
     launchctl bootout "gui/$(id -u)/$label" || true
   fi
 }
+# POSTs one drain action ($1: start or cancel) to the server on this Mac and prints its
+# JSON answer. Exits 2 when the server has no drain, 1 when the request failed.
+drain() {
+  local secret answer body
+  secret=$(/usr/bin/python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.t3/userdata/fork-fleet.json")))["secret"])' 2>/dev/null) || return 2
+  body=$(/usr/bin/python3 -c 'import json,sys; print(json.dumps({"action": sys.argv[1], "release": sys.argv[2], **({"requester": sys.argv[3]} if sys.argv[3] else {})}))' "$1" "$tag" "$requester")
+  # The secret goes in on stdin, never in an argument other processes can read.
+  answer=$(printf 'Authorization: Bearer %s\n' "$secret" |
+    curl -sS --max-time 5 -H @- -H 'Content-Type: application/json' --data "$body" \
+      -w '\n%{http_code}' http://127.0.0.1:3773/fork/fleet/drain) || return 1
+  case "${answer##*$'\n'}" in
+    200) printf '%s\n' "${answer%$'\n'*}" ;;
+    404) return 2 ;;
+    *) return 1 ;;
+  esac
+}
+cancel_drain() {
+  drain cancel > /dev/null || true
+}
+if [ "$action" = cancel ]; then
+  finish
+  cancel_drain
+  echo "Cancelled $tag; the server takes new work again."
+  exit 0
+fi
 latest=$(gh release view -R owner/t3code --json tagName -q .tagName)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag; not overwriting it."
+  cancel_drain
   finish
   exit 0
 fi
@@ -84,7 +137,22 @@ if [ "$active" = "$target" ] && [ "$reported" = "$target" ]; then
   finish
   exit 0
 fi
-# Logs what the restart would cut off and since when; returns 1 while anything is live
+# Logs what the restart would cut off ($2, one item per line) and since when;
+# returns 1 while there is anything.
+report() {
+  if [ -z "$2" ]; then
+    rm -f "$waiting_since"
+    return 0
+  fi
+  [ -f "$waiting_since" ] || date -u +%s > "$waiting_since"
+  local since minutes
+  since=$(cat "$waiting_since")
+  minutes=$(( ($(date -u +%s) - since) / 60 ))
+  echo "$(date -u): $1 $(printf '%s\n' "$2" | wc -l | tr -d ' ') live item(s), waiting since $(date -u -r "$since" +%H:%MZ) (${minutes} min); no restart:"
+  printf '%s\n' "$2" | sort | uniq -c | sed 's/^/    /'
+  return 1
+}
+# The fallback for a server without the drain. Returns 1 while anything is live
 # or live-work.sh fails.
 idle() {
   local work code=0
@@ -94,31 +162,62 @@ idle() {
     echo "$(date -u): live-work.sh failed (exit $code); no restart, trying again at the next run."
     return 1
   fi
-  if [ -z "$work" ]; then
-    rm -f "$waiting_since"
-    return 0
-  fi
-  [ -f "$waiting_since" ] || date -u +%s > "$waiting_since"
-  local since minutes
-  since=$(cat "$waiting_since")
-  minutes=$(( ($(date -u +%s) - since) / 60 ))
-  echo "$(date -u): $1 $(printf '%s\n' "$work" | wc -l | tr -d ' ') live item(s), waiting since $(date -u -r "$since" +%H:%MZ) (${minutes} min); no restart:"
-  printf '%s\n' "$work" | sort | uniq -c | sed 's/^/    /'
-  return 1
+  report "$1" "$work"
 }
-idle "Waiting for" || exit 0
+# Asks the server to drain; returns 0 once it reports nothing left to cut off.
+drained() {
+  local answer work code=0
+  answer=$(drain start) || code=$?
+  if [ "$code" = 2 ]; then
+    fallback=1
+    echo "$(date -u): The running server has no drain; checking live-work.sh instead."
+    idle "Waiting for"
+    return
+  fi
+  if [ "$code" != 0 ]; then
+    echo "$(date -u): Drain request failed; no restart, trying again at the next run."
+    return 1
+  fi
+  work=$(printf '%s' "$answer" | /usr/bin/python3 -c '
+import json, sys
+answer = json.load(sys.stdin)
+for item in answer["notWaitingFor"]:
+    print("Not waiting for the thread that scheduled this deploy: %s %s %s" % (item["kind"], item["title"], item["what"]), file=sys.stderr)
+for item in answer["waitingFor"]:
+    print("\t".join((item["kind"], item["title"], item["what"])))
+') || {
+    echo "$(date -u): Unreadable drain answer; no restart, trying again at the next run."
+    return 1
+  }
+  report "Draining (no new work taken):" "$work"
+}
+fallback=0
+if [ "$now" = 1 ]; then
+  echo "$(date -u): Forced deploy (--now): not waiting for running work."
+else
+  drained || exit 0
+fi
 # Check again just before restarting: another release may have arrived during download.
 latest=$(gh release view -R owner/t3code --json tagName -q .tagName)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag during download; not overwriting it."
+  cancel_drain
   finish
   exit 0
 fi
-idle "Work started during preflight:" || exit 0
-echo "$(date -u): Machine is idle (no runs and no background work); installing $target."
+# The drain refuses new work, so only the fallback can see work start meanwhile.
+if [ "$fallback" = 1 ]; then
+  idle "Work started during preflight:" || exit 0
+fi
+if [ "$now" = 1 ]; then
+  echo "$(date -u): Installing $target now (--now), cutting off whatever runs."
+else
+  echo "$(date -u): Nothing left to cut off; installing $target."
+fi
 if "$dir/scripts/install-runtime.sh" "$dir/t3-$target-darwin-arm64.tar.gz"; then
   echo "$(date -u): Installer verified $target."
 else
   echo "$(date -u): Installer failed; its rollback was attempted. Disabling this job for review."
+  cancel_drain
 fi
 finish

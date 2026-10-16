@@ -3,7 +3,9 @@
 # newest owner/t3code release if this Mac does not run it yet. Server runtime
 # on every Mac; the desktop app too where Julia or the legacy fork app is installed.
 # Waits for a later run while any thread is working or has background work
-# live (live-work.sh), so a deploy never cuts either off. On the MacBook it
+# live (live-work.sh); when there is none it hands the install to a
+# deploy-when-idle.sh job, which drains the server first, so a deploy never
+# cuts either off. On the MacBook it
 # also raises a notification while a "Fork sync failed" issue is open.
 set -uo pipefail
 fork_repo="owner/t3code"
@@ -48,7 +50,9 @@ if [ "$active" != "$version" ]; then
     echo "$(printf '%s\n' "$work" | wc -l | tr -d ' ') live item(s); leaving $active in place until the next run:"
     printf '%s\n' "$work" | sort | uniq -c | sed 's/^/    /'
   else
-    "$scripts/install-runtime.sh" "$dir/t3-$version-darwin-arm64.tar.gz"
+    # Idle now: the deploy-when-idle job drains the server first, so work that
+    # starts before the restart is refused instead of cut off.
+    "$scripts/deploy-when-idle.sh" --schedule "$tag"
   fi
 fi
 

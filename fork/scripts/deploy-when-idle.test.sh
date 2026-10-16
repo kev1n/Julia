@@ -1,29 +1,89 @@
 #!/bin/bash
-# A live-work.sh that fails (SQLite busy, say) and prints nothing must read as
-# "not idle": deploy-when-idle.sh logs the failure and does not install.
+# deploy-when-idle.sh installs only once the server's drain reports nothing left
+# to cut off (or with --now), and falls back to live-work.sh, failing closed, on a
+# server without the drain.
 #   fork/scripts/deploy-when-idle.test.sh
-# Runs the real script against a scratch HOME; gh and curl are stubbed as
-# exported functions, which take precedence over the script's fixed PATH.
+# Runs the real script against a scratch HOME; gh, curl and launchctl are stubbed
+# as exported functions, which take precedence over the script's fixed PATH.
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 tag=owner-1.0.0-abc1234
 dir="$tmp/t3-fork/releases/$tag"
-mkdir -p "$dir/scripts" "$tmp/.t3/runtime"
+mkdir -p "$dir/scripts" "$tmp/.t3/runtime" "$tmp/.t3/userdata"
 echo 1.0.0+new > "$dir/VERSION"
 echo '{"activeVersion": "1.0.0+old"}' > "$tmp/.t3/runtime/service-state.json"
+echo '{"secret": "fleet-secret"}' > "$tmp/.t3/userdata/fork-fleet.json"
 touch "$tmp/t3-fork/desktop-local-build"
-printf '#!/bin/bash\nexit 3\n' > "$dir/scripts/live-work.sh"
 printf '#!/bin/bash\ntouch "%s/installed"\n' "$tmp" > "$dir/scripts/install-runtime.sh"
-chmod +x "$dir/scripts/"*.sh
+chmod +x "$dir/scripts/install-runtime.sh"
+# live-work.sh, exiting with $1 after printing nothing (the old "idle").
+live_work() {
+  printf '#!/bin/bash\nexit %s\n' "$1" > "$dir/scripts/live-work.sh"
+  chmod +x "$dir/scripts/live-work.sh"
+}
 gh() { echo "$STUB_TAG"; }
-curl() { echo '{"serverVersion": "1.0.0+old"}'; }
-export -f gh curl
-export STUB_TAG="$tag"
-out=$(HOME="$tmp" /bin/bash "$here/deploy-when-idle.sh" "$tag" 2>&1)
+# The drain answers $STUB_DRAIN with HTTP $STUB_DRAIN_CODE and records each request.
+curl() {
+  case "$*" in
+    *fork/fleet/drain*)
+      { cat; printf '%s\n' "$*"; } >> "$STUB_LOG"
+      printf '%s\n%s' "$STUB_DRAIN" "$STUB_DRAIN_CODE"
+      ;;
+    *) echo '{"serverVersion": "1.0.0+old"}' ;;
+  esac
+}
+launchctl() { :; }
+export -f gh curl launchctl
+export STUB_TAG="$tag" STUB_LOG="$tmp/drain-requests"
 status=0
-[ ! -e "$tmp/installed" ] || { echo "FAIL: installed while live-work.sh failed"; status=1; }
-grep -q 'live-work.sh failed (exit 3)' <<<"$out" || { echo "FAIL: no log of the failed live-work check"; status=1; }
-[ "$status" = 0 ] && echo ok || printf 'output:\n%s\n' "$out"
+fail() { echo "FAIL: $1"; printf 'output:\n%s\n' "$out"; status=1; }
+run() {
+  rm -f "$tmp/installed" "$STUB_LOG"
+  out=$(HOME="$tmp" /bin/bash "$here/deploy-when-idle.sh" "$@" 2>&1)
+}
+waiting='{"idle": false, "waitingFor": [{"kind": "subagent", "title": "Audit", "what": "review"}], "notWaitingFor": []}'
+drained='{"idle": true, "waitingFor": [], "notWaitingFor": [{"kind": "monitor", "title": "Deploys", "what": "watch install"}]}'
+
+# The drain still waits: no install, even though live-work.sh would call it idle.
+live_work 0
+STUB_DRAIN="$waiting" STUB_DRAIN_CODE=200 run "$tag" --requester claude-session-1
+[ ! -e "$tmp/installed" ] || fail "installed while the drain waits for work"
+grep -q 'Draining (no new work taken): 1 live item' <<<"$out" || fail "no log of what the drain waits for"
+grep -q '"action": "start", "release": "owner-1.0.0-abc1234", "requester": "claude-session-1"' "$STUB_LOG" ||
+  fail "the drain request did not carry the release and the requesting session"
+grep -q 'Authorization: Bearer fleet-secret' "$STUB_LOG" || fail "the drain request was not authorized"
+
+# The drain reports nothing left: install, and log the requester's work it left out.
+STUB_DRAIN="$drained" STUB_DRAIN_CODE=200 run "$tag" --requester claude-session-1
+[ -e "$tmp/installed" ] || fail "did not install once drained"
+grep -q 'Not waiting for the thread that scheduled this deploy: monitor Deploys' <<<"$out" ||
+  fail "no log of the requester's work left out"
+
+# A drain answer that cannot be read is not idle.
+STUB_DRAIN='not json' STUB_DRAIN_CODE=200 run "$tag"
+[ ! -e "$tmp/installed" ] || fail "installed on an unreadable drain answer"
+
+# --now installs without asking for a drain.
+STUB_DRAIN="$waiting" STUB_DRAIN_CODE=200 run "$tag" --now
+[ -e "$tmp/installed" ] || fail "--now did not install"
+[ ! -e "$STUB_LOG" ] || fail "--now asked for a drain"
+
+# A server without the drain falls back to live-work.sh, whose failure is not idle.
+live_work 3
+STUB_DRAIN='Not Found' STUB_DRAIN_CODE=404 run "$tag"
+[ ! -e "$tmp/installed" ] || fail "installed while live-work.sh failed"
+grep -q 'live-work.sh failed (exit 3)' <<<"$out" || fail "no log of the failed live-work check"
+live_work 0
+STUB_DRAIN='Not Found' STUB_DRAIN_CODE=404 run "$tag"
+[ -e "$tmp/installed" ] || fail "the live-work.sh fallback did not install when idle"
+
+# --schedule from an agent's shell names that agent's session in the job.
+CLAUDE_CODE_SESSION_ID=claude-session-1 run --schedule "$tag"
+plist="$tmp/Library/LaunchAgents/com.example.t3code-fork.deploy-when-idle-abc1234.plist"
+/usr/bin/python3 -c 'import plistlib,sys; a=plistlib.load(open(sys.argv[1],"rb"))["ProgramArguments"]; sys.exit(a[-2:] != ["--requester", "claude-session-1"])' "$plist" ||
+  fail "the scheduled job does not pass the requesting session"
+
+[ "$status" = 0 ] && echo ok
 exit "$status"
