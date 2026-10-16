@@ -8,6 +8,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../persistence/Migrations.ts";
+import { liveWork as serverLiveWork } from "./liveWork.ts";
 
 /** The deploy idle check's output for a migrated state database. */
 const liveWork = (databasePath: string) =>
@@ -61,10 +62,17 @@ const databaseWith = (sessionStatus: string) =>
       yield* fs.makeTempDirectoryScoped({ prefix: "live-work-" }),
       "statev2.sqlite",
     );
-    yield* seed(sessionStatus).pipe(
+    const server = yield* seed(sessionStatus).pipe(
+      Effect.andThen(serverLiveWork),
       Effect.provide(NodeSqliteClient.layer({ filename: databasePath })),
     );
-    return yield* liveWork(databasePath);
+    const script = yield* liveWork(databasePath);
+    // The server's drain (drain.ts) and the script fallback agree on what is live.
+    assert.deepEqual(
+      server.map((item) => `${item.kind}\t${item.title}\t${item.what}`).toSorted(),
+      script.toSorted(),
+    );
+    return script;
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 it.effect("counts background work a completed turn left running as live", () =>
