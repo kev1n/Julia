@@ -457,6 +457,14 @@ function wakeWorkStartedAt(
   return previous === undefined ? {} : { workStartedAt: orchestrationV2RunWorkStartedAt(previous) };
 }
 
+/** A thread created with a future wake time starts snoozed, as if snoozed at creation (fork). */
+function createdSnooze(snoozedUntil: string | undefined, now: DateTime.Utc) {
+  const wakeAt = snoozedUntil === undefined ? Option.none() : DateTime.make(snoozedUntil);
+  return Option.isSome(wakeAt) && DateTime.toEpochMillis(wakeAt.value) > DateTime.toEpochMillis(now)
+    ? { snoozedUntil: wakeAt.value, snoozedAt: now }
+    : { snoozedUntil: null, snoozedAt: null };
+}
+
 const threadPullRequestLinksEqual = Schema.toEquivalence(Schema.NullOr(ThreadLinkedPullRequest));
 
 function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
@@ -2558,8 +2566,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       archivedAt: null,
       settledOverride: null,
       settledAt: null,
-      snoozedUntil: null,
-      snoozedAt: null,
+      ...createdSnooze(command.snoozedUntil, now),
       lastVisitedAt: null,
       deletedAt: null,
     };
@@ -5166,7 +5173,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     // only a message someone actually sent ends the snooze.
     const automaticWake =
       command.notification !== undefined || command.delegatedCompletion !== undefined;
-    if (projection.thread.snoozedUntil != null && !automaticWake) {
+    if (projection.thread.snoozedUntil != null && !automaticWake && command.keepSnoozed !== true) {
       const now = yield* DateTime.now;
       const thread: OrchestrationV2AppThread = {
         ...projection.thread,
