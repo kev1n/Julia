@@ -3368,6 +3368,8 @@ export const OrchestrationV2Command = Schema.Union([
     /** Only the server sets this, for a thread that is a workflow run's agent step. */
     workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
     chatGroupId: Schema.optional(ThreadId),
+    /** Create the thread already snoozed until this time (fork). */
+    snoozedUntil: Schema.optional(IsoDateTime),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
@@ -3651,6 +3653,8 @@ export const OrchestrationV2Command = Schema.Union([
     steerFollowUpOfRunId: Schema.optional(RunId),
     steerFollowUpAfterRunOrdinal: Schema.optional(NonNegativeInt),
     usageLimitRecoveryRequestId: Schema.optional(CommandId),
+    /** Leave a snoozed thread snoozed instead of waking it (fork). */
+    keepSnoozed: Schema.optional(Schema.Boolean),
     deliveryIntent: Schema.optional(Schema.Literals(["auto", "steer", "restart"])),
     explicitQueue: Schema.optional(Schema.Literal(true)),
     delegatedCompletion: Schema.optional(
@@ -4215,6 +4219,8 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  /** Start the thread snoozed until this time; its initial message keeps it snoozed (fork). */
+  snoozedUntil: Schema.optional(IsoDateTime),
   initialMessage: Schema.optional(
     Schema.Struct({
       messageId: Schema.optional(MessageId),

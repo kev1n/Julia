@@ -115,6 +115,8 @@ export interface ThreadLaunchInput {
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
+  /** Start the thread snoozed; its initial message keeps it snoozed (fork). */
+  readonly snoozedUntil?: string;
   readonly initialMessage?: ThreadLaunchInitialMessage;
   readonly importedNativeThread?: {
     readonly ref: {
@@ -1579,6 +1581,7 @@ const make = Effect.gen(function* () {
                 branch: initialBranch,
                 worktreePath: initialWorktreePath,
                 ...(input.chatGroupId === undefined ? {} : { chatGroupId: input.chatGroupId }),
+                ...(input.snoozedUntil === undefined ? {} : { snoozedUntil: input.snoozedUntil }),
                 ...(input.importedNativeThread === undefined
                   ? {}
                   : { importedNativeThread: input.importedNativeThread }),
@@ -1630,6 +1633,7 @@ const make = Effect.gen(function* () {
                 threadId,
                 modelSelection: input.modelSelection,
                 dispatchMode: { type: "defer_start", workspaceStrategy },
+                ...(input.snoozedUntil === undefined ? {} : { keepSnoozed: true }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               })
