@@ -304,23 +304,25 @@ Staff"'s subagents and nothing resumed them for an hour.
   anything an agent sends. The server reads live work
   from its own projections (`liveWork.ts`, the same query as `live-work.sh`; `liveWork.test.ts`
   checks that they agree).
-- The drain (`drain.ts`). Every 30 s run of a `deploy-when-idle.sh` job POSTs
-  `/fork/fleet/drain` on its own Mac (`{"action": "start", "release", "requester"}`, the fleet
-  secret as bearer) and installs only when the answer is `idle`. From the first request until the
-  restart, the server refuses new threads, messages and delegated tasks from clients and agents'
-  tools (`ThreadManagementService.dispatch`), scheduled runs included, with "Not taking new work:
-  this machine restarts for an update as soon as its running work finishes (waiting for <thread
-  titles>). Send this to another machine, or again after the restart." Its own continuations and
-  wakes still run, since they finish the work it waits for. It refuses rather than queues because
-  startup recovery holds every queued message until a person resumes it. The answer lists what it
-  waits for (logged as `Draining (no new work taken): ...`); idle also needs no command between
-  the drain check and its commit. A job scheduled from an agent's shell passes that agent's
-  provider session (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`) as `requester`, and the drain
-  leaves that thread's own work out (logged as `Not waiting for the thread that scheduled this
+- The drain (`drain.ts`). Every 30 s run of a `deploy-when-idle.sh` job first POSTs
+  `/fork/fleet/drain` on its own Mac with `{"action": "peek", "release", "requester"}` (the fleet
+  secret as bearer), which changes nothing, and waits while the answer is not `idle`, taking new
+  work as before. Once it is idle the run sends `"start"`: the server refuses new threads, messages
+  and delegated tasks from clients and agents' tools (`ThreadManagementService.dispatch`),
+  scheduled runs included, with "Not taking new work: this machine restarts for an update as soon
+  as its running work finishes (waiting for <thread titles>). Send this to another machine, or
+  again after the restart." and answers what is live again, also counting any command between the
+  drain check and its commit. Idle: install. Not idle (work began between the two): the run sends
+  `"cancel"` at once and waits again. So new work is refused only for the seconds between idle and
+  the restart. The server's own continuations and wakes are never refused, since they finish the
+  work it waits for; it refuses rather than queues because startup recovery holds every queued
+  message until a person resumes it. A job scheduled from an agent's shell passes that agent's
+  provider session (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`) as `requester`, and both answers
+  leave that thread's own work out (logged as `Not waiting for the thread that scheduled this
 deploy`), so an agent can wait for its own deploy; the restart cuts that work off and wakes the
-  thread. The drain is held in memory: the restart ends it, the job cancels it when it will not
-  install (superseded, installer failed), and a server restarted for another reason is asked
-  again at the next run. A server without the drain (a release before it, or no
+  thread. The drain is held in memory: the restart ends it, and the job cancels it whenever it will
+  not install (work began, superseded, installer failed). A server without the drain (a release
+  before it, or no
   `fork-fleet.json`) is checked with `live-work.sh` instead. The daily `pull-deploy.sh` still
   waits for the next day while `live-work.sh` prints anything; when it prints nothing it
   schedules the `deploy-when-idle.sh` job, which drains before installing. There is no timeout:
@@ -566,9 +568,9 @@ every Mac 05:45 com.example.t3code-fork.deploy ~/t3-fork/pull-deploy.sh
              SHA256SUMS -> deploy-when-idle.sh --schedule (and install-desktop.sh on the
              MacBook); waits for the next day while live-work.sh reports anything
 any Mac, on demand  com.example.t3code-fork.deploy-when-idle-<sha>  ~/t3-fork/deploy-when-idle.sh
-             fork/scripts/deploy-when-idle.sh --schedule <release tag> drains the server and
-             installs that release once the drain reports nothing live (checked every 30 s,
-             logged), then removes itself; a newer release supersedes it
+             fork/scripts/deploy-when-idle.sh --schedule <release tag> waits until nothing is
+             live (checked every 30 s, logged), drains the server for the restart and installs
+             that release, then removes itself; a newer release supersedes it
 every Mac every 60 s com.example.t3code-fork.watchdog ~/t3-fork/watchdog.sh
              restarts the T3 service after 3 failed localhost health checks or above 12 GB
              RSS, first saving a 5 s `sample` to ~/t3-fork/logs/watchdog-sample-*.txt

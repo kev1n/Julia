@@ -1,26 +1,8 @@
 /**
- * Fork (Owner): the drain before a planned restart (FORK.md, "Restarts keep
- * background work").
- *
- * deploy-when-idle.sh asks for it (POST /fork/fleet/drain, fleet/routes.ts) on
- * every run and installs once it answers idle. While draining,
- * ThreadManagementService.dispatch, the one path every command that can start
- * provider work takes, refuses new work from outside the server: a new thread,
- * message or delegated task from a client (web, mobile) or an agent's tool (mcp),
- * scheduled runs included. The server's own continuations and wakes (creation
- * source server or provider) still run: they finish the work the drain waits for.
- * A message accepted before the drain (a retried command, a steer re-sent after
- * its turn ended) is not new.
- *
- * It refuses rather than queues: startup recovery holds every queued message
- * until a person resumes it (ProviderRuntimeRecoveryService), so a message queued
- * here would sit after the restart; a refusal tells the sender now.
- *
- * The drain lives in memory: the restart it waits for ends it, the script cancels
- * it when it will not install, and the script asks again on every run, so a
- * restart for another reason only delays it a run. Idle means no live work
- * (liveWork.ts) outside the requesting thread and no command between this check
- * and its commit (`accepting`), whose run the projections do not show yet.
+ * Fork (Owner): the drain before a planned restart (FORK.md, "Restarts keep background work").
+ * While draining, ThreadManagementService.dispatch refuses new work from clients and agents but
+ * not the server's own continuations; it refuses rather than queues, since startup recovery holds
+ * queued messages. In memory only: the restart, or the deploy script cancelling, ends it.
  */
 import type { OrchestrationV2ServerCommand } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -96,33 +78,50 @@ export const refusalIn = (cause: unknown): string | undefined =>
 const view = ({ kind, title, what }: LiveWorkItem) => ({ kind, title, what });
 
 /**
- * Starts draining for `release` (or keeps draining) and reports what the
- * restart still waits for. `requester` is the requesting agent's provider
- * session id; its thread's work is left out, so an agent that waits for its own
- * deploy does not hold it up.
+ * What a restart would still cut off. `requester` is the requesting agent's
+ * provider session id; its thread's work is left out, so an agent that waits
+ * for its own deploy does not hold it up.
  */
-export const start = (release: string, requester: string | null) =>
-  Effect.gen(function* () {
-    if (drain?.release !== release) drain = { release, waitingFor: [] };
-    const current = drain;
-    // Read before the projections: a command counted here may commit after them.
-    const uncommitted = accepting;
-    const requesting = new Set(
-      requester === null ? [] : yield* threadsOfProviderSession(requester),
-    );
-    const work = yield* liveWork;
-    const waiting = work.filter((item) => !requesting.has(item.threadId));
-    current.waitingFor = [...new Set(waiting.map((item) => item.title))];
-    const waitingFor = waiting.map(view);
-    if (uncommitted > 0) {
-      waitingFor.push({ kind: "accepting", title: "", what: `${uncommitted} new command(s)` });
-    }
-    return {
-      idle: waitingFor.length === 0,
-      waitingFor,
-      notWaitingFor: work.filter((item) => requesting.has(item.threadId)).map(view),
-    };
-  });
+const status = Effect.fn("drain.status")(function* (requester: string | null) {
+  // Read before the projections: a command counted here may commit after them.
+  const uncommitted = accepting;
+  const requesting = new Set(requester === null ? [] : yield* threadsOfProviderSession(requester));
+  const work = yield* liveWork;
+  const waiting = work.filter((item) => !requesting.has(item.threadId));
+  const waitingFor = waiting.map(view);
+  if (uncommitted > 0) {
+    waitingFor.push({ kind: "accepting", title: "", what: `${uncommitted} new command(s)` });
+  }
+  return {
+    idle: waitingFor.length === 0,
+    waitingFor,
+    titles: [...new Set(waiting.map((item) => item.title))],
+    notWaitingFor: work.filter((item) => requesting.has(item.threadId)).map(view),
+  };
+});
+
+/** The status without draining: new work is still admitted. */
+export const peek = (requester: string | null) =>
+  status(requester).pipe(
+    Effect.map(({ idle, waitingFor, notWaitingFor }) => ({ idle, waitingFor, notWaitingFor })),
+  );
+
+/**
+ * Starts draining for `release` (or keeps draining) and reports what the
+ * restart still waits for. The script starts it only after `peek` reported
+ * idle, and cancels it at once when this answer is not idle, so new work is
+ * refused only between idle and the restart.
+ */
+export const start = Effect.fn("drain.start")(function* (
+  release: string,
+  requester: string | null,
+) {
+  if (drain?.release !== release) drain = { release, waitingFor: [] };
+  const current = drain;
+  const { titles, ...answer } = yield* status(requester);
+  current.waitingFor = titles;
+  return answer;
+});
 
 /** Stops draining for `release`; a drain for a newer release stays. */
 export const cancel = (release: string) =>
