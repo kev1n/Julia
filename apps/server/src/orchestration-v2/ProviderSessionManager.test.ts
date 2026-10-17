@@ -1958,6 +1958,49 @@ it.effect("ProviderSessionManagerV2 interrupts event subscriptions on server shu
   }),
 );
 
+// The run reading a subscription interrupts on a clean end and fails on a
+// failure, so a closed session must not look like a crashed one.
+it.effect(
+  "ProviderSessionManagerV2 ends subscriptions cleanly when an idle session is released",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const effect = Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("thread-provider-session-manager-idle-release-subscription");
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        yield* eventSink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+        });
+        const runtime = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const subscription = yield* runtime.subscribeEvents!;
+        const collected = yield* subscription.events.pipe(
+          Stream.runCollect,
+          Effect.exit,
+          Effect.forkScoped,
+        );
+
+        yield* TestClock.adjust("1 second");
+
+        assert.isTrue(Exit.isSuccess(yield* Fiber.join(collected)));
+        assert.isTrue(Option.isNone(yield* manager.get(providerSessionId)));
+      });
+
+      yield* effect.pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1000 })));
+    }),
+);
+
 it.effect("ProviderSessionManagerV2 drains subscribers when the provider stops", () =>
   Effect.gen(function* () {
     const state = yield* Ref.make(emptyState);
