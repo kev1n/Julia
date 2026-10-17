@@ -530,6 +530,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   `runtimeLayer.ts`: an agent's settle of its own thread mid-turn is kept on the thread
   (`settleAfterRunId` on the thread and `thread.metadata.update`), and startup waits again for
   each one a restart cut off; test in `runtimeLayer.test.ts`.
+- `apps/server/src/orchestration-v2/Orchestrator.ts` (again): `run.interrupt` on a run still waiting
+  in the queue cancels it (as `queued-run.cancel`) instead of refusing; test in
+  `ThreadLaunchService.test.ts`.
 - `apps/server/src/orchestration-v2/ProviderSessionManager.ts`: a settled Codex thread with
   background work stays loaded instead of having its terminals stopped; test in
   `ProviderSessionManager.test.ts`.
