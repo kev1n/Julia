@@ -80,13 +80,15 @@ every client shows the source as finished instead of Limited and drops its recov
 source names the new tab before that tab gets its first message, so nothing reading the source
 (the Orchestrator bridge settling a finished run) sees it finished while its work runs unnamed; a
 source naming a tab with no first message yet stays in the sweep, settled or not, until that
-message is sent (until the limit resets). Only a
+message is sent (until the limit resets), and auto-resume never resumes a source that names a
+tab. Only a
 thread no fallback could take reads Limited; with no account left anywhere, auto-resume and snooze
 apply as before. The web "Usage limit reached" alert waits 12 seconds (past one sweep) and is
 dropped if the thread moved meanwhile. Top-level failover runs inside upstream's usage-limit
 sweep; child recovery is reserved when the failed turn commits. Both work with no client connected and
 survives restarts; its command ids derive from the failed run, so a sweep cut short repeats the
-same commands. The phone has the switch (Settings > Threads); the model list is on desktop and web.
+same commands, except the tab's first message, which gets a new command id per attempt (a rejected
+command id stays rejected) under one fixed message id. The phone has the switch (Settings > Threads); the model list is on desktop and web.
 
 **Machines** (`apps/web/src/fork/machines/`, `apps/mobile/src/fork/machines.tsx`,
 `apps/server/src/fork/freeDisk.ts`). Usage > **Machines**, beside Limits, shows one card per paired
