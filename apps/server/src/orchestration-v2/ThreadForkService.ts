@@ -48,6 +48,20 @@ export function forkableSourceRunStatusError(
   return `Fork source run ${run.id} is ${run.status}; in-progress and rolled-back runs cannot be forked.`;
 }
 
+/** A fork that keeps snoozing starts snoozed until its source's wake time, if that is still ahead. */
+function forkSnooze(input: {
+  readonly sourceProjection: Pick<OrchestrationV2ThreadProjection, "thread">;
+  readonly keepSnoozed?: boolean;
+  readonly createdAt: DateTime.Utc;
+}) {
+  const wakeAt = input.sourceProjection.thread.snoozedUntil;
+  return input.keepSnoozed === true &&
+    wakeAt != null &&
+    DateTime.toEpochMillis(wakeAt) > DateTime.toEpochMillis(input.createdAt)
+    ? { snoozedUntil: wakeAt, snoozedAt: input.createdAt }
+    : { snoozedUntil: null, snoozedAt: null };
+}
+
 export interface ThreadForkServiceV2Shape {
   readonly plan: (input: {
     readonly sourceProjection: Pick<OrchestrationV2ThreadProjection, "thread">;
@@ -61,6 +75,8 @@ export interface ThreadForkServiceV2Shape {
     readonly contextMode?: "full" | "final_messages" | "without_tool_results";
     readonly destination?: "tab" | "thread";
     readonly chatGroupId?: ThreadId | null;
+    /** Keep the source's snooze while it lasts; a fork otherwise starts visible (fork). */
+    readonly keepSnoozed?: boolean;
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
     readonly createdAt: DateTime.Utc;
@@ -116,8 +132,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         archivedAt: null,
         settledOverride: null,
         settledAt: null,
-        snoozedUntil: null,
-        snoozedAt: null,
+        ...forkSnooze(input),
         // A guest link belongs to the thread it was made for.
         guestShare: null,
         lastVisitedAt: null,

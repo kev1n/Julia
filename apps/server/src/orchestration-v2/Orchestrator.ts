@@ -4100,6 +4100,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(command.contextMode === undefined ? {} : { contextMode: command.contextMode }),
         ...(command.destination === undefined ? {} : { destination: command.destination }),
         ...(command.chatGroupId === undefined ? {} : { chatGroupId: command.chatGroupId }),
+        ...(command.keepSnoozed === undefined ? {} : { keepSnoozed: command.keepSnoozed }),
         createdBy: command.createdBy,
         creationSource: command.creationSource,
         createdAt: now,

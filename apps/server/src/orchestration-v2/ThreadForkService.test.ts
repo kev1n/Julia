@@ -5,6 +5,7 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
+  type OrchestrationV2ThreadProjection,
   ProjectId,
   ProviderInstanceId,
   ProviderThreadId,
@@ -113,6 +114,8 @@ const planFork = (
     chatGroupId?: ThreadId | null;
     sourceChatGroupId?: ThreadId;
     sourceProjection?: OrchestrationV2ThreadProjection;
+    keepSnoozed?: boolean;
+    createdAt?: DateTime.Utc;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -129,6 +132,7 @@ const planFork = (
       })(),
       ...(options.destination === undefined ? {} : { destination: options.destination }),
       ...(options.chatGroupId === undefined ? {} : { chatGroupId: options.chatGroupId }),
+      ...(options.keepSnoozed === undefined ? {} : { keepSnoozed: options.keepSnoozed }),
       sourceRun,
       sourceProviderThread: undefined,
       canonicalSourcePoint: {
@@ -140,7 +144,7 @@ const planFork = (
       title: "Awake fork",
       createdBy: "user",
       creationSource: "mobile",
-      createdAt: forkCreatedAt,
+      createdAt: options.createdAt ?? forkCreatedAt,
     });
   }).pipe(Effect.provide(ThreadForkService.layer));
 
@@ -170,6 +174,23 @@ it.effect("keeps a fork awake when its source thread is snoozed", () =>
       threadId: sourceThreadId,
       runId: sourceRunId,
     });
+  }),
+);
+
+// A routine's thread is snoozed to stay out of the inbox; its usage-limit continuation is a fork
+// that must stay hidden too (fork/limitFailover.ts asks for this with keepSnoozed).
+it.effect("a fork asked to keep snoozing stays snoozed until its source wakes", () =>
+  Effect.gen(function* () {
+    const kept = yield* planFork(makeSourceRun("failed"), { keepSnoozed: true });
+    assert.deepEqual(kept.targetThread.snoozedUntil, snoozedUntil);
+    assert.deepEqual(kept.targetThread.snoozedAt, forkCreatedAt);
+
+    const pastWake = yield* planFork(makeSourceRun("failed"), {
+      keepSnoozed: true,
+      createdAt: DateTime.makeUnsafe("2026-07-25T10:00:00.000Z"),
+    });
+    assert.isNull(pastWake.targetThread.snoozedUntil);
+    assert.isNull(pastWake.targetThread.snoozedAt);
   }),
 );
 
