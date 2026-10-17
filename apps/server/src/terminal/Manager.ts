@@ -1552,6 +1552,7 @@ function sanitizeTerminalHistoryChunk(
   return { visibleText, pendingControlSequence: c1Introducer };
 }
 
+
 function legacySafeThreadId(threadId: string): string {
   return threadId.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

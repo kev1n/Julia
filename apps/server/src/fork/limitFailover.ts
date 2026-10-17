@@ -26,6 +26,8 @@ import {
   providerSupportsSelection,
   usableInstances,
 } from "@t3tools/shared/accountChoice";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- ids must be derived synchronously.
+import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -118,7 +120,12 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
   );
   if (!modelSelection) return false;
 
-  const identity = `${candidate.id}:${runId}:${Date.parse(resetAt)}`;
+  // Hashed because thread and run ids embed their source's id: a failover of a
+  // failover would otherwise nest every id and grow past filename limits.
+  const identity = NodeCrypto.createHash("sha256")
+    .update(`${candidate.id}:${runId}:${Date.parse(resetAt)}`)
+    .digest("hex")
+    .slice(0, 32);
   const targetThreadId = ThreadId.make(`limit-failover:${identity}`);
   yield* threads.dispatch({
     type: "thread.fork",
