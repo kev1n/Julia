@@ -52,6 +52,10 @@ export function limitRecoveryCommand(
   }
   if (
     !recovery.autoResume ||
+    // Fork (Owner): a limit failover moved this run's work to `continuedIn`; a
+    // re-arm after its first message failed keeps that link and must not resume
+    // the source too.
+    recovery.continuedIn !== undefined ||
     resetMs > nowMs ||
     (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
   )
