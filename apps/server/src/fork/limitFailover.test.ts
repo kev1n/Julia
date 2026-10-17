@@ -158,7 +158,8 @@ describe("continueLimitedThreadElsewhere", () => {
     Effect.gen(function* () {
       const { continued, dispatched } = yield* run(candidate);
       assert.isTrue(continued);
-      const [fork, message, handled] = dispatched;
+      // The source names the new tab before that tab's first message starts it.
+      const [fork, handled, message] = dispatched;
       assert.ok(fork?.type === "thread.fork");
       assert.equal(fork.sourceThreadId, threadId);
       assert.deepEqual(fork.sourcePoint, { type: "run", runId });
@@ -198,6 +199,30 @@ describe("continueLimitedThreadElsewhere", () => {
       const second = yield* run(candidate);
       assert.deepEqual(
         second.dispatched.map((command) => command.commandId),
+        first.dispatched.map((command) => command.commandId),
+      );
+    }),
+  );
+
+  it.effect("sends the first message a sweep that died after naming the new tab never sent", () =>
+    Effect.gen(function* () {
+      const first = yield* run(candidate);
+      const [fork, , message] = first.dispatched;
+      assert.ok(fork?.type === "thread.fork");
+      const resumed = yield* run({
+        ...candidate,
+        limitRecovery: {
+          runId,
+          resetAt,
+          autoResume: false,
+          snooze: false,
+          continuedIn: fork.targetThreadId,
+        },
+      });
+      assert.isTrue(resumed.continued);
+      assert.deepEqual(resumed.dispatched.at(-1), message);
+      assert.deepEqual(
+        resumed.dispatched.map((command) => command.commandId),
         first.dispatched.map((command) => command.commandId),
       );
     }),
