@@ -79,6 +79,7 @@ import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
+import * as PendingSettle from "../fork/pendingSettle.ts";
 import { shellStreamItemFromThreadShell } from "./ShellStream.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
@@ -326,7 +327,8 @@ const layerTest = Layer.mergeAll(
 ).pipe(
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
-  Layer.provide(SqlitePersistence.layerMemory),
+  // Exposed for fork/pendingSettle.ts, which reads the projection tables directly.
+  Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
   Layer.provide(layerServerConfig),
   Layer.provide(ServerSettings.layerTest()),
@@ -422,6 +424,27 @@ const layerProjectDeletionTest = Layer.mergeAll(
   Layer.provide(layerGitWorkflowTest),
   Layer.provide(layerPlatformTest),
 );
+
+/** Waits for a settle-after-run request to be dropped from the thread (fork). */
+const settleRequestCleared = (
+  orchestrator: Orchestrator.OrchestratorV2["Service"],
+  threadId: ThreadId,
+) =>
+  orchestrator.getThreadEventSequence(threadId).pipe(
+    Effect.flatMap((afterSequence) =>
+      orchestrator
+        .streamStoredEventsFrom({ threadId, afterSequence, eventType: "thread.metadata-updated" })
+        .pipe(
+          Stream.filter(
+            (stored) =>
+              stored.event.type === "thread.metadata-updated" &&
+              stored.event.payload.settleAfterRunId === null,
+          ),
+          Stream.runHead,
+          Effect.forkChild,
+        ),
+    ),
+  );
 
 it.layer(layerProjectDeletionTest)("project deletion during thread commands", (it) => {
   it.effect.each(["thread", "project"] as const)(
@@ -4879,13 +4902,17 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const settled = yield* orchestrator
         .streamStoredEventsFrom({ threadId, afterSequence: 0, eventType: "thread.settled" })
         .pipe(Stream.runHead, Effect.forkChild);
+      const cleared = yield* settleRequestCleared(orchestrator, threadId);
       const result = yield* threadManagement.settleThread({
         threadId,
         commandId: CommandId.make("runtime-layer-settle-after-run-settle"),
         byOwnAgent: true,
       });
       assert.deepEqual(result, { settlesWhenTurnEnds: true });
-      assert.isNull((yield* orchestrator.getThreadProjection(threadId)).thread.settledOverride);
+      const waiting = (yield* orchestrator.getThreadProjection(threadId)).thread;
+      assert.isNull(waiting.settledOverride);
+      // Kept on the thread, so a restart waits again (fork/pendingSettle.ts).
+      assert.equal(waiting.settleAfterRunId, run.id);
       const now = yield* DateTime.now;
       yield* eventSink.write({
         commandId: CommandId.make("runtime-layer-settle-after-run-completed"),
@@ -4904,7 +4931,82 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
       const projection = yield* orchestrator.getThreadProjection(threadId);
       assert.equal(projection.thread.settledOverride, "settled");
+      yield* Fiber.join(cleared);
+      assert.isNull((yield* orchestrator.getThreadProjection(threadId)).thread.settleAfterRunId);
     }),
+  );
+
+  // A restart drops the in-memory wait; startup reads the request back from the thread.
+  it.effect("a settle its own agent asked for still runs after a restart", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectId = ProjectId.make("runtime-layer-pending-settle-project");
+      const threadId = ThreadId.make("runtime-layer-pending-settle-thread");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-pending-settle-create"),
+        threadId,
+        projectId,
+        title: "Pending settle",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: "/tmp/runtime-layer-pending-settle",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-pending-settle-message"),
+        threadId,
+        messageId: MessageId.make("runtime-layer-pending-settle-message"),
+        text: "Fix it and then settle this thread.",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0];
+      if (run === undefined) return yield* Effect.die(new Error("Run missing."));
+      // What a server stopped mid-wait leaves behind: the request, and no waiter.
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("runtime-layer-pending-settle-requested"),
+        threadId,
+        settleAfterRunId: run.id,
+      });
+
+      const cleared = yield* settleRequestCleared(orchestrator, threadId);
+      yield* Layer.build(PendingSettle.layer);
+      const settled = yield* orchestrator
+        .streamStoredEventsFrom({ threadId, afterSequence: 0, eventType: "thread.settled" })
+        .pipe(Stream.runHead, Effect.forkChild);
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        commandId: CommandId.make("runtime-layer-pending-settle-completed"),
+        events: [
+          {
+            id: EventId.make("runtime-layer-pending-settle-completed"),
+            type: "run.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+          },
+        ],
+      });
+      yield* Fiber.join(settled);
+
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(threadId)).thread.settledOverride,
+        "settled",
+      );
+      yield* Fiber.join(cleared);
+      assert.isNull((yield* orchestrator.getThreadProjection(threadId)).thread.settleAfterRunId);
+    }).pipe(Effect.scoped),
   );
 
   it.effect("settles past held automatic runs but not held user messages", () =>

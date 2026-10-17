@@ -499,6 +499,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
+  /** Its own agent asked to settle it once this run completes; survives a restart (fork). */
+  settleAfterRunId: Schema.optional(Schema.NullOr(RunId)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -3107,6 +3109,8 @@ export const OrchestrationV2Command = Schema.Union([
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
+    /** Record (run id) or drop (null) a settle waiting for that run (fork). */
+    settleAfterRunId: Schema.optional(Schema.NullOr(RunId)),
     /** Link (object) or unlink (null) a pull request; absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   }),
