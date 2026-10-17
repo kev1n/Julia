@@ -2124,41 +2124,9 @@ export const layerWsRpc = (
                     })
                     .pipe(
                       Effect.andThen(
-                        ThreadMessageIntake.launchThread({
-                          commandId: input.commandId,
-                          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
-                          ...(input.reuseExistingThread === undefined
-                            ? {}
-                            : { reuseExistingThread: input.reuseExistingThread }),
-                          projectId: input.projectId,
-                          ...(input.chatGroupId === undefined
-                            ? {}
-                            : { chatGroupId: input.chatGroupId }),
-                          title: input.title,
-                          ...(input.generateTitle === undefined
-                            ? {}
-                            : { generateTitle: input.generateTitle }),
-                          modelSelection: input.modelSelection,
-                          runtimeMode: input.runtimeMode,
-                          interactionMode: input.interactionMode,
-                          workspaceStrategy: input.workspaceStrategy,
-                          ...(input.initialMessage === undefined
-                            ? {}
-                            : {
-                                initialMessage: {
-                                  ...(input.initialMessage.messageId === undefined
-                                    ? {}
-                                    : { messageId: input.initialMessage.messageId }),
-                                  text: input.initialMessage.text,
-                                  attachments: input.initialMessage.attachments,
-                                  ...(input.initialMessage.context === undefined
-                                    ? {}
-                                    : { context: input.initialMessage.context }),
-                                },
-                              }),
-                          createdBy: "user",
-                          creationSource: input.creationSource ?? "web",
-                        }),
+                        ThreadMessageIntake.launchThread(
+                          ThreadLaunchService.launchInputFromWire(input),
+                        ),
                       ),
                       Effect.provide(intakeContext),
                     ),
