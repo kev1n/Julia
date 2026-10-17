@@ -21,6 +21,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  OrchestrationV2ThreadLaunchInput,
   OrchestrationV2ThreadProjectionJson,
   ScheduledTaskId,
   type ServerProvider,
@@ -593,6 +594,49 @@ it.effect(
     }).pipe(Effect.provide(harness.layer));
   },
 );
+
+const decodeLaunchInput = Schema.decodeUnknownSync(OrchestrationV2ThreadLaunchInput);
+
+// The WebSocket handler hands a client's launch request to launchInputFromWire. It once dropped
+// snoozedUntil, so the Orchestrator bridge's routine threads launched visible.
+it.effect("a client's launch request keeps every field, so a snoozed launch starts snoozed", () => {
+  const harness = makeHarness({ runSetup: () => Effect.never });
+  const snoozedUntil = "2099-07-25T09:00:00.000Z";
+  const wire = decodeLaunchInput({
+    commandId: "command:wire",
+    creationSource: "mcp",
+    threadId: "thread:wire",
+    reuseExistingThread: false,
+    chatGroupId: "thread:wire",
+    projectId,
+    title: "Routine",
+    generateTitle: false,
+    modelSelection,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    workspaceStrategy: { type: "root" },
+    snoozedUntil,
+    initialMessage: {
+      messageId: "message:wire",
+      text: "Run it",
+      attachments: [],
+      context: { version: 1, records: [] },
+    },
+  });
+  const launchRequest = ThreadLaunch.launchInputFromWire(wire);
+  for (const field of Object.keys(OrchestrationV2ThreadLaunchInput.fields)) {
+    assert.deepEqual(
+      (launchRequest as unknown as Record<string, unknown>)[field],
+      (wire as Record<string, unknown>)[field],
+      field,
+    );
+  }
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const launched = yield* launches.launch(launchRequest);
+    assert.equal(DateTime.formatIso(launched.projection.thread.snoozedUntil!), snoozedUntil);
+  }).pipe(Effect.provide(harness.layer));
+});
 
 it.effect("provisions independent launches concurrently instead of behind a global semaphore", () =>
   Effect.gen(function* () {
