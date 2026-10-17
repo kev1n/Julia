@@ -1540,6 +1540,21 @@ it.layer(
     }),
   );
 
+  it.effect("keeps history for a thread id longer than a filename allows", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, logsDir } = yield* createManager();
+      const threadId = `limit-failover:${"run:thread:a1b2c3d4:ordinal:73:".repeat(20)}`;
+      yield* manager.open(openInput({ threadId }));
+      ptyAdapter.processes[0]?.emitData("kept\n");
+      yield* manager.close({ threadId });
+
+      const snapshot = yield* manager.open(openInput({ threadId }));
+      assert.equal(snapshot.history, "kept\n");
+      const names = yield* (yield* FileSystem.FileSystem).readDirectory(logsDir);
+      expect(names.every((name) => name.length <= 255)).toBe(true);
+    }),
+  );
+
   it.effect("retries with fallback shells when preferred shell spawn fails", () =>
     Effect.gen(function* () {
       const platform = yield* HostProcess.Platform;
