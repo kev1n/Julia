@@ -12473,6 +12473,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       },
     );
     const run = projection.runs.find((candidate) => candidate.id === command.runId);
+    // Fork (Owner): a run still waiting in the queue has not launched, so stopping it
+    // cancels it; refusing would leave it to start once the run ahead of it ends.
+    if (run?.status === "queued") {
+      yield* dispatchQueuedRunCancel(
+        {
+          type: "queued-run.cancel",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          runId: run.id,
+        },
+        events,
+      );
+      return undefined;
+    }
     const rootNode =
       run?.rootNodeId === null
         ? undefined
