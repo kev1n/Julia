@@ -12,6 +12,7 @@ import {
   type OrchestrationV2DelegatedFrom,
   type OrchestrationV2LinkOrigin,
   type OrchestrationV2ProviderThreadNativeMetadata,
+  type OrchestrationV2ThreadLaunchInput,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
   type ProviderInteractionMode,
@@ -107,6 +108,47 @@ export interface ThreadLaunchInput {
   /** The parent there, when that environment's agent delegated this as a task. */
   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
 }
+
+/**
+ * A client's `orchestration.launchThread` request as the service takes it. Server-only fields
+ * (scheduled task, sender thread, imported native thread) stay unset, so a client cannot claim
+ * them. Every client field must be carried here: the fork's `snoozedUntil` was once dropped,
+ * and the Orchestrator bridge's routine threads launched visible.
+ */
+export const launchInputFromWire = (
+  input: OrchestrationV2ThreadLaunchInput,
+): ThreadLaunchInput => ({
+  commandId: input.commandId,
+  ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+  ...(input.reuseExistingThread === undefined
+    ? {}
+    : { reuseExistingThread: input.reuseExistingThread }),
+  projectId: input.projectId,
+  ...(input.chatGroupId === undefined ? {} : { chatGroupId: input.chatGroupId }),
+  title: input.title,
+  ...(input.generateTitle === undefined ? {} : { generateTitle: input.generateTitle }),
+  modelSelection: input.modelSelection,
+  runtimeMode: input.runtimeMode,
+  interactionMode: input.interactionMode,
+  workspaceStrategy: input.workspaceStrategy,
+  ...(input.snoozedUntil === undefined ? {} : { snoozedUntil: input.snoozedUntil }),
+  ...(input.initialMessage === undefined
+    ? {}
+    : {
+        initialMessage: {
+          ...(input.initialMessage.messageId === undefined
+            ? {}
+            : { messageId: input.initialMessage.messageId }),
+          text: input.initialMessage.text,
+          attachments: input.initialMessage.attachments,
+          ...(input.initialMessage.context === undefined
+            ? {}
+            : { context: input.initialMessage.context }),
+        },
+      }),
+  createdBy: "user",
+  creationSource: input.creationSource ?? "web",
+});
 
 type PreparationInput = Pick<
   ThreadLaunchInput,
