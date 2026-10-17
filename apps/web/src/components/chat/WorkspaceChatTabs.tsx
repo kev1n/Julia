@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { T, useGT } from "gt-react";
@@ -17,7 +17,12 @@ import { primaryServerKeybindingsAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { useUiStateStore } from "../../uiStateStore";
-import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "../Sidebar.logic";
+import {
+  hasUnseenCompletion,
+  resolveSidebarThreadStatus,
+  resolveThreadLastVisitedAt,
+} from "../Sidebar.logic";
+import { Spinner } from "../ui/spinner";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ForkChatMenu } from "./ForkChatMenu";
@@ -40,10 +45,10 @@ export function WorkspaceChatTabs(props: {
   onNewChat: () => void;
   onForkChat: (destination: "tab" | "thread") => Promise<void>;
 }) {
-  const projectRefs = useMemo(
-    () => [scopeProjectRef(props.activeThread.environmentId, props.activeThread.projectId)],
-    [props.activeThread.environmentId, props.activeThread.projectId],
-  );
+  const gt = useGT();
+  const projectRefs = [
+    scopeProjectRef(props.activeThread.environmentId, props.activeThread.projectId),
+  ];
   const threads = useThreadShellsForProjectRefs(projectRefs);
   const navigate = useNavigate();
   const workspaceKey = workspaceChatKey(props.activeThread);
@@ -56,7 +61,7 @@ export function WorkspaceChatTabs(props: {
   const viewportRef = useRef<HTMLDivElement>(null);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const newTabShortcut = shortcutLabelForCommand(keybindings, "chat.newTab");
-  const chats = useMemo(() => workspaceChatTabs(threads, workspaceKey), [threads, workspaceKey]);
+  const chats = workspaceChatTabs(threads, workspaceKey);
   const visible = chats.filter(
     (thread) => thread.id === props.activeThread.id || !closed.includes(thread.id),
   );
@@ -111,11 +116,9 @@ export function WorkspaceChatTabs(props: {
       const next = visible[index + 1] ?? visible[index - 1];
       if (!next) return;
       closingRef.current = thread.id;
-      try {
-        await openChat(next);
-      } finally {
+      await Promise.resolve(openChat(next)).finally(() => {
         closingRef.current = null;
-      }
+      });
     }
     setClosed((ids) => [...new Set([...ids, thread.id])]);
   };
@@ -182,10 +185,14 @@ export function WorkspaceChatTabs(props: {
                     />
                   }
                 >
-                  <MessageSquareIcon
-                    aria-hidden
-                    className={cn("size-3.5 shrink-0", unseenClass(thread))}
-                  />
+                  {resolveSidebarThreadStatus(thread) === "working" ? (
+                    <Spinner aria-hidden size="xs" tone="accent" className="shrink-0" />
+                  ) : (
+                    <MessageSquareIcon
+                      aria-hidden
+                      className={cn("size-3.5 shrink-0", unseenClass(thread))}
+                    />
+                  )}
                   <span className={cn("truncate", unseenClass(thread))}>{thread.title}</span>
                 </TooltipTrigger>
                 <TooltipPopup>{thread.title}</TooltipPopup>
