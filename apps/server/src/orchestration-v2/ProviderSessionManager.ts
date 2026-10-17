@@ -759,7 +759,7 @@ export const layerWithOptions = (
       });
 
       // Server shutdown interrupts subscribers rather than ending them: a
-      // cleanly ended stream without a terminal fails its run, while an
+      // cleanly ended stream without a terminal interrupts its run, while an
       // interrupted one leaves run settlement to restart recovery.
       const interruptSubscribers = Effect.fn("ProviderSessionManager.interruptSubscribers")(
         function* (entry: LiveSessionEntry) {
@@ -772,8 +772,8 @@ export const layerWithOptions = (
         },
       );
 
-      // Server shutdown intentionally clears them; a provider-announced Stop
-      // must let consumers drain them before the stream completes.
+      // Server shutdown intentionally clears them; any other close that is not
+      // a runtime failure or detach lets consumers drain them before the stream completes.
       const endSubscribers = Effect.fn("ProviderSessionManager.endSubscribers")(function* (
         entry: LiveSessionEntry,
         afterDrain: Effect.Effect<void>,
@@ -1562,7 +1562,6 @@ export const layerWithOptions = (
         readonly onlyIfIdleGeneration?: number;
         readonly keepIfBusyOtherThan?: OwnBusyTurns;
         readonly keepIf?: Effect.Effect<boolean>;
-        readonly gracefulSubscribers?: boolean;
         readonly eventStreamCause?: Cause.Cause<ProviderAdapter.ProviderAdapterV2Error>;
       }) =>
         Effect.acquireUseRelease(
@@ -1594,11 +1593,13 @@ export const layerWithOptions = (
                       ),
                     { discard: true },
                   ).pipe(logReleaseFailure(input.providerSessionId));
-                  if (input.gracefulSubscribers === true) {
-                    yield* endSubscribers(entry, afterDrain);
-                  } else if (input.reason === "server_shutdown") {
+                  if (input.reason === "server_shutdown") {
                     yield* interruptSubscribers(entry);
-                  } else {
+                  } else if (
+                    input.reason === "runtime_error" ||
+                    input.detachedThreadId !== undefined
+                  ) {
+                    // A detach fails its subscribers so a handoff run can settle on it.
                     yield* failSubscribers(
                       entry,
                       input.detail ?? `Provider session released: ${input.reason}.`,
@@ -1606,6 +1607,8 @@ export const layerWithOptions = (
                       input.eventStreamCause,
                       input.detachedThreadId,
                     );
+                  } else {
+                    yield* endSubscribers(entry, afterDrain);
                   }
                   const closeExit = yield* closeScopeWithin(entry.scope, {
                     providerSessionId: input.providerSessionId,
@@ -3241,7 +3244,6 @@ export const layerWithOptions = (
                 yield* releaseEntry({
                   providerSessionId: entry.runtime.providerSessionId,
                   reason: "manual_shutdown",
-                  gracefulSubscribers: true,
                 }).pipe(logReleaseFailure(entry.runtime.providerSessionId));
                 return;
               }
