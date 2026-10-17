@@ -15,9 +15,10 @@
  *
  * Called from `UsageLimitRecoveryWorker`'s sweep, so it shares its persisted
  * candidates and needs no timers of its own. Every command id derives from the
- * failed run and reset, so a sweep that dies halfway repeats the same commands;
- * a source that names a tab with no first message yet stays a candidate
- * (`getLimitRecoveryCandidates`) until that message is sent.
+ * failed run and reset, so a sweep that dies halfway repeats the same commands,
+ * except the first message's, which is new per attempt; a source that names a
+ * tab with no first message yet stays a candidate (`getLimitRecoveryCandidates`)
+ * until that message is sent.
  */
 import {
   CommandId,
@@ -161,9 +162,12 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
       continuedIn: targetThreadId,
     },
   });
+  // One command id per attempt: a rejected dispatch is recorded under its id and
+  // would be rejected again on replay. The fixed message id is what ends the
+  // retries (`getLimitRecoveryCandidates` drops the source once it exists).
   yield* threads.dispatch({
     type: "message.dispatch",
-    commandId: CommandId.make(`limit-failover:${identity}:continue`),
+    commandId: CommandId.make(`limit-failover:${identity}:continue:${now}`),
     messageId: MessageId.make(`limit-failover:${identity}:continue`),
     threadId: targetThreadId,
     text: LIMIT_FAILOVER_PROMPT,

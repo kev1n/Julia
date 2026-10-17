@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import type * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import { limitRecoveryCommand } from "../orchestration-v2/UsageLimitRecoveryWorker.ts";
 import { continueLimitedThreadElsewhere, limitFailoverModelSelection } from "./limitFailover.ts";
 
 const NOW = Date.parse("2026-10-08T05:00:00Z");
@@ -114,9 +115,13 @@ describe("continueLimitedThreadElsewhere", () => {
     input: ProjectionStore.ProjectionLimitRecoveryCandidate,
     relationshipToParent: "fork" | "subagent" | null = null,
     unresolvedDelegate: "running" | "completed" | false = false,
+    {
+      at = NOW,
+      reject = () => false,
+    }: { at?: number; reject?: (command: OrchestrationV2ServerCommand) => boolean } = {},
   ) =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(NOW);
+      yield* TestClock.setTime(at);
       const dispatched: Array<OrchestrationV2ServerCommand> = [];
       const source = {
         title: "Fix the sync",
@@ -145,10 +150,12 @@ describe("continueLimitedThreadElsewhere", () => {
         },
         {
           dispatch: (command) =>
-            Effect.sync(() => {
-              dispatched.push(command);
-              return { sequence: dispatched.length, storedEvents: [] };
-            }),
+            reject(command)
+              ? Effect.die(`rejected ${command.commandId}`)
+              : Effect.sync(() => {
+                  dispatched.push(command);
+                  return { sequence: dispatched.length, storedEvents: [] };
+                }),
         },
       );
       return { continued, dispatched };
@@ -204,29 +211,61 @@ describe("continueLimitedThreadElsewhere", () => {
     }),
   );
 
-  it.effect("sends the first message a sweep that died after naming the new tab never sent", () =>
-    Effect.gen(function* () {
-      const first = yield* run(candidate);
-      const [fork, , message] = first.dispatched;
-      assert.ok(fork?.type === "thread.fork");
-      const resumed = yield* run({
-        ...candidate,
-        limitRecovery: {
-          runId,
-          resetAt,
-          autoResume: false,
-          snooze: false,
-          continuedIn: fork.targetThreadId,
-        },
-      });
-      assert.isTrue(resumed.continued);
-      assert.deepEqual(resumed.dispatched.at(-1), message);
-      assert.deepEqual(
-        resumed.dispatched.map((command) => command.commandId),
-        first.dispatched.map((command) => command.commandId),
-      );
-    }),
+  it.effect(
+    "retries a rejected first message after naming the new tab, under a new command id",
+    () =>
+      Effect.gen(function* () {
+        // Orchestration keeps a rejected command's receipt and rejects its id forever.
+        const rejected = new Set<string>();
+        const reject = (command: OrchestrationV2ServerCommand) => {
+          if (rejected.has(command.commandId)) return true;
+          if (command.type !== "message.dispatch" || rejected.size > 0) return false;
+          rejected.add(command.commandId);
+          return true;
+        };
+        const failed = yield* Effect.exit(run(candidate, null, false, { reject }));
+        assert.equal(failed._tag, "Failure");
+        const [first] = rejected;
+        const linked = {
+          ...candidate,
+          limitRecovery: {
+            runId,
+            resetAt,
+            autoResume: false,
+            snooze: false,
+            continuedIn: ThreadId.make(first!.slice(0, first!.indexOf(":continue"))),
+          },
+        };
+        const resumed = yield* run(linked, null, false, { at: NOW + 30_000, reject });
+        assert.isTrue(resumed.continued);
+        const message = resumed.dispatched.at(-1);
+        assert.ok(message?.type === "message.dispatch");
+        assert.equal(message.threadId, linked.limitRecovery.continuedIn);
+        assert.equal(message.messageId, `${linked.limitRecovery.continuedIn}:continue`);
+        assert.notEqual(message.commandId, first);
+      }),
   );
+
+  it("never resumes a source whose work a failover moved, even if re-armed", () => {
+    const recovery = {
+      runId,
+      resetAt,
+      autoResume: true,
+      snooze: false,
+      continuedIn: ThreadId.make("limit-failover:tab"),
+    };
+    const afterReset = Date.parse(resetAt) + 1;
+    assert.isNotNull(
+      limitRecoveryCommand(
+        { ...candidate, limitRecovery: { ...recovery, continuedIn: undefined } },
+        true,
+        afterReset,
+      ),
+    );
+    assert.isNull(
+      limitRecoveryCommand({ ...candidate, limitRecovery: recovery }, true, afterReset),
+    );
+  });
 
   it.effect("leaves a handled run, a past limit, and a subagent to upstream's recovery", () =>
     Effect.gen(function* () {
