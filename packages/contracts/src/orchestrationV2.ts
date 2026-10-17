@@ -3373,6 +3373,8 @@ export const OrchestrationV2Command = Schema.Union([
     ),
     destination: Schema.optional(Schema.Literals(["tab", "thread"])),
     chatGroupId: Schema.optional(Schema.NullOr(ThreadId)),
+    /** The fork stays snoozed while its source is, instead of starting visible (fork). */
+    keepSnoozed: Schema.optional(Schema.Boolean),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

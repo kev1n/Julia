@@ -1616,3 +1616,115 @@ it.effect("merge-back rejects a second fork's context until the first is consume
     );
   }).pipe(Effect.provide(forkCases[0]!.layer)),
 );
+
+// A usage-limit continuation (fork/limitFailover.ts) forks a snoozed routine thread and sends it
+// "continue"; both commands ask to keep the snooze, so the continuation never reaches the inbox.
+it.effect("a fork that keeps snoozing stays snoozed through its first message", () => {
+  const { instanceId, modelSelection, layer } = forkCases[0]!;
+  return Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const eventSink = yield* EventSink.EventSinkV2;
+    const now = yield* DateTime.now;
+    const sourceThreadId = ThreadId.make("snoozed-routine");
+    const targetThreadId = ThreadId.make("snoozed-routine-continued");
+    const sourceRunId = RunId.make("snoozed-routine-run");
+    const wakeAt = DateTime.add(now, { hours: 24 });
+    const providerThreadId = ProviderThreadId.make("snoozed-routine-native-thread");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-snoozed-routine"),
+      threadId: sourceThreadId,
+      projectId: ProjectId.make("snoozed-routine-project"),
+      title: "Routine",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      snoozedUntil: DateTime.formatIso(wakeAt),
+      createdBy: "user",
+      creationSource: "server",
+    });
+    yield* eventSink.write({
+      events: [
+        {
+          id: EventId.make("snoozed-routine-provider-thread"),
+          type: "provider-thread.updated",
+          threadId: sourceThreadId,
+          occurredAt: now,
+          payload: {
+            id: providerThreadId,
+            driver: forkCases[0]!.driver,
+            providerInstanceId: instanceId,
+            providerSessionId: null,
+            appThreadId: sourceThreadId,
+            ownerNodeId: null,
+            nativeThreadRef: {
+              driver: forkCases[0]!.driver,
+              nativeId: "native-routine",
+              strength: "strong",
+            },
+            nativeConversationHeadRef: null,
+            status: "idle",
+            firstRunOrdinal: 1,
+            lastRunOrdinal: 1,
+            handoffIds: [],
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+        {
+          id: EventId.make("snoozed-routine-run"),
+          type: "run.created",
+          threadId: sourceThreadId,
+          runId: sourceRunId,
+          occurredAt: now,
+          payload: {
+            id: sourceRunId,
+            threadId: sourceThreadId,
+            ordinal: 1,
+            providerInstanceId: instanceId,
+            modelSelection,
+            providerThreadId,
+            userMessageId: MessageId.make("snoozed-routine-message"),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "failed",
+            queuePosition: null,
+            requestedAt: now,
+            startedAt: now,
+            completedAt: now,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        },
+      ],
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.fork",
+      commandId: CommandId.make("fork-snoozed-routine"),
+      sourceThreadId,
+      targetThreadId,
+      sourcePoint: { type: "run", runId: sourceRunId },
+      keepSnoozed: true,
+      createdBy: "system",
+      creationSource: "server",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("continue-snoozed-routine"),
+      threadId: targetThreadId,
+      messageId: MessageId.make("continue-snoozed-routine"),
+      text: "Continue",
+      attachments: [],
+      modelSelection,
+      dispatchMode: { type: "start_immediately" },
+      keepSnoozed: true,
+      createdBy: "user",
+      creationSource: "server",
+    });
+    const target = yield* orchestrator.getThreadProjection(targetThreadId);
+    assert.deepEqual(target.thread.snoozedUntil, wakeAt);
+  }).pipe(Effect.provide(layer));
+});
