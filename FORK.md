@@ -76,7 +76,11 @@ minutes. Stop cancels recovery. Parents with outstanding delegate results stay i
 can receive those results on a compatible account, preserving task ownership.
 The source thread's limit recovery is set off for a forked run, which marks
 it handled and keeps auto-resume from also resuming it, and names the new tab (`continuedIn`), so
-every client shows the source as finished instead of Limited and drops its recovery banner. Only a
+every client shows the source as finished instead of Limited and drops its recovery banner. The
+source names the new tab before that tab gets its first message, so nothing reading the source
+(the Orchestrator bridge settling a finished run) sees it finished while its work runs unnamed; a
+source naming a tab with no first message yet stays in the sweep, settled or not, until that
+message is sent (until the limit resets). Only a
 thread no fallback could take reads Limited; with no account left anywhere, auto-resume and snooze
 apply as before. The web "Usage limit reached" alert waits 12 seconds (past one sweep) and is
 dropped if the thread moved meanwhile. Top-level failover runs inside upstream's usage-limit
@@ -778,6 +782,11 @@ Each series is independent of the packaging and tooling commits.
 
 ## Deviations
 
+- Limit failover names its tab on the source before sending the tab's first message (2026-10-17,
+  Owner). A crash between the two would leave a named tab that never starts, so the usage-limit
+  sweep keeps such a source as a candidate until the tab's `<tab id>:continue` message exists,
+  bounded like every failover by the limit's reset. That branch ignores the source's settled or
+  archived state, because the bridge may settle a source once it names its tab.
 - Auto reuses upstream's load-balancing setting and per-machine preference instead of a new
   setting: "Manual only" excludes a machine; any other preference makes it eligible, and the
   Prefer/Normal/Less often levels have no further effect under the fork rule.

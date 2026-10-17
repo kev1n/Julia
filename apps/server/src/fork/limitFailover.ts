@@ -4,14 +4,20 @@
  * the same chat and told to continue there on the first of
  * `limitFailoverModelSelections` whose provider has an account with usage left
  * (on the account Auto would pick, never the limited one). The source thread's
- * limit recovery is then configured off for that run, which both records that
+ * limit recovery is configured off for that run, which both records that
  * it was handled and keeps upstream's auto-resume from also resuming it, and
  * names the new tab in `continuedIn` so clients stop calling the source Limited. With no
  * account left anywhere, upstream's recovery (auto-resume, snooze) applies.
  *
+ * The source names the new tab before the new tab gets its first message, so
+ * anything that reads the source after the work moved (the Orchestrator bridge
+ * settling a finished run) finds where it went.
+ *
  * Called from `UsageLimitRecoveryWorker`'s sweep, so it shares its persisted
  * candidates and needs no timers of its own. Every command id derives from the
- * failed run and reset, so a sweep that dies halfway repeats the same commands.
+ * failed run and reset, so a sweep that dies halfway repeats the same commands;
+ * a source that names a tab with no first message yet stays a candidate
+ * (`getLimitRecoveryCandidates`) until that message is sent.
  */
 import {
   CommandId,
@@ -84,11 +90,13 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
 ) {
   const runId = candidate.latestRunId;
   const resetAt = candidate.usageLimitResetAt;
-  // Already handled (by this or by upstream's recovery) for this run and reset.
+  const recovery = candidate.limitRecovery;
+  // Already handled for this run and reset by upstream's recovery, or by a
+  // failover. A failover's tab that has no first message yet is finished below.
   if (
     !runId ||
     !resetAt ||
-    (candidate.limitRecovery?.runId === runId && candidate.limitRecovery.resetAt === resetAt)
+    (recovery?.runId === runId && recovery.resetAt === resetAt && !recovery.continuedIn)
   )
     return false;
   // A limit whose reset has passed is over; old stopped threads stay as they are.
@@ -139,6 +147,20 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     createdBy: "system",
     creationSource: "server",
   });
+  // Name the successor before it starts: the source must never look finished
+  // while its work runs in a tab nothing points to.
+  yield* threads.dispatch({
+    type: "thread.metadata.update",
+    commandId: CommandId.make(`limit-failover:${identity}:handled`),
+    threadId: candidate.id,
+    limitRecovery: {
+      runId,
+      resetAt,
+      autoResume: false,
+      snooze: false,
+      continuedIn: targetThreadId,
+    },
+  });
   yield* threads.dispatch({
     type: "message.dispatch",
     commandId: CommandId.make(`limit-failover:${identity}:continue`),
@@ -151,18 +173,6 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     keepSnoozed: true,
     createdBy: "user",
     creationSource: "server",
-  });
-  yield* threads.dispatch({
-    type: "thread.metadata.update",
-    commandId: CommandId.make(`limit-failover:${identity}:handled`),
-    threadId: candidate.id,
-    limitRecovery: {
-      runId,
-      resetAt,
-      autoResume: false,
-      snooze: false,
-      continuedIn: targetThreadId,
-    },
   });
   yield* Effect.logInfo("orchestration-v2.limit-failover.continued", {
     threadId: candidate.id,
