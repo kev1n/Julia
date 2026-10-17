@@ -38,10 +38,12 @@ import {
 } from "@t3tools/contracts";
 import { delegatedTaskProgress } from "@t3tools/provider-core/server/subagentProjection";
 import { threadTranscriptHeader } from "@t3tools/shared/threadTranscript";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -1021,13 +1023,36 @@ const make = Effect.gen(function* () {
   const settleAfterRun: ThreadManagementServiceShape["settleAfterRun"] = Effect.fn(
     "orchestrationV2.threadManagement.settleAfterRun",
   )(function* (input) {
-    const { run } = yield* waitForThread({ ...input, timeoutMs: SETTLE_AFTER_RUN_WAIT_MS });
-    if (run?.status !== "completed") return;
-    yield* dispatch({
-      type: "thread.settle",
-      commandId: CommandId.make(`server:settle-after-run:${input.runId}`),
-      threadId: input.threadId,
-    });
+    // Fork (Owner): the request is kept on the thread (settleAfterRunId), so a restart
+    // waits again (fork/pendingSettle.ts). It ends with this wait, unless the wait is
+    // cut by shutdown.
+    const dropRequest = getProjectThreadRecords(input, []).pipe(
+      Effect.flatMap(({ thread }) =>
+        thread.settleAfterRunId === input.runId
+          ? dispatch({
+              type: "thread.metadata.update",
+              commandId: CommandId.make(`server:settle-after-run:${input.runId}:done`),
+              threadId: input.threadId,
+              settleAfterRunId: null,
+            })
+          : Effect.void,
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const { run } = yield* waitForThread({ ...input, timeoutMs: SETTLE_AFTER_RUN_WAIT_MS });
+      if (run?.status !== "completed") return;
+      yield* dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make(`server:settle-after-run:${input.runId}`),
+        threadId: input.threadId,
+      });
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
+          ? Effect.void
+          : dropRequest.pipe(Effect.ignoreCause({ log: true })),
+      ),
+    );
   });
 
   const settleThread: ThreadManagementServiceShape["settleThread"] = Effect.fn(
@@ -1035,6 +1060,12 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     const shell = input.byOwnAgent ? yield* orchestrator.getThreadShell(input.threadId) : null;
     if (shell != null && shell.activeRunId !== null) {
+      yield* dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make(`server:settle-after-run:${shell.activeRunId}:requested`),
+        threadId: shell.id,
+        settleAfterRunId: shell.activeRunId,
+      });
       yield* settleAfterRun({
         projectId: shell.projectId,
         threadId: shell.id,
