@@ -4385,6 +4385,83 @@ it.effect(
     }),
 );
 
+// Settling a Codex thread detaches it from the shared session, and unloading its native thread
+// stops its background terminals. Like an idle unload, a detach leaves such a thread loaded.
+it.effect("ProviderSessionManagerV2 detaching a thread with background work leaves it loaded", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const effect = Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const projectId = yield* idAllocator.allocate.project({
+        fixtureName: "provider-session-manager-detach-background",
+      });
+      const threadId = yield* idAllocator.allocate.thread({
+        fixtureName: "provider-session-manager-detach-background-a",
+        projectId,
+      });
+      const otherThreadId = yield* idAllocator.allocate.thread({
+        fixtureName: "provider-session-manager-detach-background-b",
+        projectId,
+      });
+      const providerSessionId = idAllocator.derive.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+      });
+      const providerThread = makeProviderThread({
+        idAllocator,
+        threadId,
+        providerSessionId,
+        now,
+      });
+      yield* eventSink.write({
+        events: [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId, now }),
+          yield* makeThreadCreatedEvent({ idAllocator, threadId: otherThreadId, now }),
+          {
+            id: yield* idAllocator.allocate.event({ threadId }),
+            type: "provider-thread.updated",
+            threadId,
+            driver: CODEX_DRIVER,
+            occurredAt: now,
+            payload: providerThread,
+          },
+        ],
+      });
+      const runtime = yield* manager.open({
+        threadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* manager.open({
+        threadId: otherThreadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* runtime.resumeThread({ providerThread, threadId, modelSelection, runtimePolicy });
+
+      yield* manager.detach({ providerSessionId, threadId });
+
+      assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, []);
+      assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
+    });
+
+    yield* effect.pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 1000,
+          hasPendingBackgroundWorkForThread: Effect.succeed(true),
+        }),
+      ),
+      Effect.scoped,
+    );
+  }),
+);
+
 it.effect(
   "ProviderSessionManagerV2 invalidates only errored threads and keeps reusable session errors cached",
   () =>
