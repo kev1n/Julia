@@ -4364,6 +4364,25 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           autoResume: true,
         })).find((row) => row.id === threadId),
       );
+      // Fork (Owner): a failover that named its tab stays a candidate, settled or
+      // not, until that tab's first message exists.
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = json_set(payload_json, '$.limitRecovery.continuedIn', 'limit-failover:limit-shell', '$.settledOverride', 'settled')
+        WHERE thread_id = ${threadId}`;
+      assert.isDefined(
+        (yield* store.getLimitRecoveryCandidates(recoveryOptions)).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`INSERT INTO orchestration_v2_projection_messages
+        (message_id, thread_id, role, streaming, created_at, updated_at, payload_json)
+        VALUES ('limit-failover:limit-shell:continue', 'limit-failover:limit-shell', 'user', 0, ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)}, '{}')`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates(recoveryOptions)).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id = 'limit-failover:limit-shell:continue'`;
       yield* sql`UPDATE orchestration_v2_projection_threads SET payload_json = ${originalRow!.payload_json} WHERE thread_id = ${threadId}`;
       const session = {
         id: ProviderSessionId.make("session:limit-shell:shared"),
