@@ -526,6 +526,13 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   `ThreadLaunchService.launchInputFromWire`. `ThreadForkService.ts`, `fork/limitFailover.ts`: a
   continuation keeps the snooze; tests in `ThreadFork.execution.test.ts`, `ThreadForkService.test.ts`,
   `limitFailover.test.ts`.
+- `apps/server/src/orchestration-v2/ThreadManagementService.ts` (again), `fork/pendingSettle.ts`,
+  `runtimeLayer.ts`: an agent's settle of its own thread mid-turn is kept on the thread
+  (`settleAfterRunId` on the thread and `thread.metadata.update`), and startup waits again for
+  each one a restart cut off; test in `runtimeLayer.test.ts`.
+- `apps/server/src/orchestration-v2/ProviderSessionManager.ts`: a settled Codex thread with
+  background work stays loaded instead of having its terminals stopped; test in
+  `ProviderSessionManager.test.ts`.
 - `apps/server/src/orchestration-v2/ThreadManagementService.ts` (again): `dispatch` goes through
   `fork/drain.ts`'s `admit`; `apps/server/src/ws.ts`: a launch the drain refused says why.
 - `apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts`: shutdown intent and crash

@@ -49,11 +49,13 @@ import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2Pend
 import { threadTranscriptHeader } from "@t3tools/shared/threadTranscript";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as Clock from "effect/Clock";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -1282,122 +1284,145 @@ const make = Effect.gen(function* () {
   const settleAfterRun: ThreadManagementServiceShape["settleAfterRun"] = Effect.fn(
     "orchestrationV2.threadManagement.settleAfterRun",
   )(function* (input) {
+    // Fork (Owner): the request is kept on the thread (settleAfterRunId), so a restart
+    // waits again (fork/pendingSettle.ts). It ends with this wait, unless the wait is
+    // cut by shutdown.
     const requestedAt = yield* DateTime.now;
-    const { run } = yield* waitForThread({ ...input, timeoutMs: SETTLE_AFTER_RUN_WAIT_MS });
-    if (run?.status !== "completed") return;
-    // A message steered into this run and read after the request supersedes it.
-    const { turnItems } = yield* getProjectThreadRecords(input, ["turnItems"], {
-      turnItemRunIds: [run.id],
-      turnItemTypes: ["user_message"],
-    });
-    if (
-      turnItems.some(
-        (item) =>
-          item.type === "user_message" &&
-          (item.inputIntent === "steer" || item.inputIntent === "promoted_queued_to_steer") &&
-          item.completedAt !== null &&
-          !DateTime.isLessThan(DateTime.makeUnsafe(item.completedAt), requestedAt),
-      )
-    )
-      return;
-    const afterSequence = yield* orchestrator.getThreadEventSequence(input.threadId);
-    const trySettle = Effect.gen(function* () {
-      const sequence = yield* orchestrator.getThreadEventSequence(input.threadId);
-      const records = yield* getProjectThreadRecords(input, ["runs"]);
-      // Settling ends every watch; one the agent started after asking to settle must outlive it.
-      if (
-        threadPullRequestsOf(records.thread).some(
-          (link) =>
-            link.watch !== undefined &&
-            !DateTime.isLessThan(DateTime.makeUnsafe(link.watch.startedAt), requestedAt),
-        )
-      )
-        return true;
-      const later = records.runs.filter((candidate) => candidate.ordinal > run.ordinal);
-      const cancelledMessageIds = later
-        .filter((candidate) => candidate.status === "cancelled")
-        .map((candidate) => candidate.userMessageId);
-      // Send now cancels a queued run and moves its message into the running turn.
-      const steeredMessageIds =
-        cancelledMessageIds.length === 0
-          ? new Set()
-          : new Set(
-              (yield* getProjectThreadRecords(input, ["messages"], {
-                messageIds: cancelledMessageIds,
-              })).messages
-                .filter((message) => message.runId === run.id)
-                .map((message) => message.id),
-            );
-      const following = later.filter(
-        (candidate) =>
-          candidate.status !== "cancelled" || !steeredMessageIds.has(candidate.userMessageId),
-      );
-      if (following.length > 0) {
-        const { messages } = yield* getProjectThreadRecords(input, ["messages"], {
-          messageRunIds: following.map((candidate) => candidate.id),
-          messageRoles: ["user"],
-        });
-        const automaticMessageIds = new Set(
-          messages
-            .filter(
-              (message) =>
-                message.role === "user" &&
-                (message.notification !== undefined || message.delegatedCompletion !== undefined),
-            )
-            .map((message) => message.id),
-        );
-        if (
-          messages.some((message) => !automaticMessageIds.has(message.id)) ||
-          following.some((candidate) => !automaticMessageIds.has(candidate.userMessageId))
-        ) {
-          return true;
-        }
-        if (
-          following.some(
-            (candidate) => candidate.status !== "queued" && !isTerminalRunStatus(candidate.status),
-          )
-        )
-          return false;
-        // A wake cancelled before it started (its result was already read in-turn) did nothing.
-        if (
-          following.some(
-            (candidate) =>
-              candidate.status !== "queued" &&
-              candidate.status !== "completed" &&
-              !cancelledBeforeStart(candidate),
-          )
-        )
-          return true;
-      }
-      const latest = latestRun(records);
-      if (latest === undefined) return true;
-      return yield* dispatch({
-        type: "thread.settle",
-        commandId: CommandId.make(`server:settle-after-run:${input.runId}:${sequence}`),
-        threadId: input.threadId,
-        expectedLatestRunId: latest.id,
-      }).pipe(
-        Effect.as(true),
-        // A notification can start between the projection read and the guarded dispatch.
-        Effect.catchTags({
-          OrchestratorDispatchError: () => Effect.succeed(false),
-          OrchestratorCommandPreviouslyRejectedError: () => Effect.succeed(false),
-        }),
-      );
-    });
-    yield* Stream.fromEffect(trySettle).pipe(
-      Stream.concat(
-        orchestrator
-          .streamStoredEventsFrom({
-            threadId: input.threadId,
-            afterSequence,
-            eventType: "run.updated",
-          })
-          .pipe(Stream.mapEffect(() => trySettle)),
+    const dropRequest = getProjectThreadRecords(input, []).pipe(
+      Effect.flatMap(({ thread }) =>
+        thread.settleAfterRunId === input.runId
+          ? dispatch({
+              type: "thread.metadata.update",
+              commandId: CommandId.make(`server:settle-after-run:${input.runId}:done`),
+              threadId: input.threadId,
+              settleAfterRunId: null,
+            })
+          : Effect.void,
       ),
-      Stream.filter((done) => done),
-      Stream.runHead,
-      Effect.timeoutOption(Duration.millis(SETTLE_AFTER_RUN_WAIT_MS)),
+    );
+    yield* Effect.gen(function* () {
+      const { run } = yield* waitForThread({ ...input, timeoutMs: SETTLE_AFTER_RUN_WAIT_MS });
+      if (run?.status !== "completed") return;
+      // A message steered into this run and read after the request supersedes it.
+      const { turnItems } = yield* getProjectThreadRecords(input, ["turnItems"], {
+        turnItemRunIds: [run.id],
+        turnItemTypes: ["user_message"],
+      });
+      if (
+        turnItems.some(
+          (item) =>
+            item.type === "user_message" &&
+            (item.inputIntent === "steer" || item.inputIntent === "promoted_queued_to_steer") &&
+            item.completedAt !== null &&
+            !DateTime.isLessThan(DateTime.makeUnsafe(item.completedAt), requestedAt),
+        )
+      )
+        return;
+      const afterSequence = yield* orchestrator.getThreadEventSequence(input.threadId);
+      const trySettle = Effect.gen(function* () {
+        const sequence = yield* orchestrator.getThreadEventSequence(input.threadId);
+        const records = yield* getProjectThreadRecords(input, ["runs"]);
+        // Settling ends every watch; one the agent started after asking to settle must outlive it.
+        if (
+          threadPullRequestsOf(records.thread).some(
+            (link) =>
+              link.watch !== undefined &&
+              !DateTime.isLessThan(DateTime.makeUnsafe(link.watch.startedAt), requestedAt),
+          )
+        )
+          return true;
+        const later = records.runs.filter((candidate) => candidate.ordinal > run.ordinal);
+        const cancelledMessageIds = later
+          .filter((candidate) => candidate.status === "cancelled")
+          .map((candidate) => candidate.userMessageId);
+        // Send now cancels a queued run and moves its message into the running turn.
+        const steeredMessageIds =
+          cancelledMessageIds.length === 0
+            ? new Set()
+            : new Set(
+                (yield* getProjectThreadRecords(input, ["messages"], {
+                  messageIds: cancelledMessageIds,
+                })).messages
+                  .filter((message) => message.runId === run.id)
+                  .map((message) => message.id),
+              );
+        const following = later.filter(
+          (candidate) =>
+            candidate.status !== "cancelled" || !steeredMessageIds.has(candidate.userMessageId),
+        );
+        if (following.length > 0) {
+          const { messages } = yield* getProjectThreadRecords(input, ["messages"], {
+            messageRunIds: following.map((candidate) => candidate.id),
+            messageRoles: ["user"],
+          });
+          const automaticMessageIds = new Set(
+            messages
+              .filter(
+                (message) =>
+                  message.role === "user" &&
+                  (message.notification !== undefined || message.delegatedCompletion !== undefined),
+              )
+              .map((message) => message.id),
+          );
+          if (
+            messages.some((message) => !automaticMessageIds.has(message.id)) ||
+            following.some((candidate) => !automaticMessageIds.has(candidate.userMessageId))
+          ) {
+            return true;
+          }
+          if (
+            following.some(
+              (candidate) => candidate.status !== "queued" && !isTerminalRunStatus(candidate.status),
+            )
+          )
+            return false;
+          // A wake cancelled before it started (its result was already read in-turn) did nothing.
+          if (
+            following.some(
+              (candidate) =>
+                candidate.status !== "queued" &&
+                candidate.status !== "completed" &&
+                !cancelledBeforeStart(candidate),
+            )
+          )
+            return true;
+        }
+        const latest = latestRun(records);
+        if (latest === undefined) return true;
+        return yield* dispatch({
+          type: "thread.settle",
+          commandId: CommandId.make(`server:settle-after-run:${input.runId}:${sequence}`),
+          threadId: input.threadId,
+          expectedLatestRunId: latest.id,
+        }).pipe(
+          Effect.as(true),
+          // A notification can start between the projection read and the guarded dispatch.
+          Effect.catchTags({
+            OrchestratorDispatchError: () => Effect.succeed(false),
+            OrchestratorCommandPreviouslyRejectedError: () => Effect.succeed(false),
+          }),
+        );
+      });
+      yield* Stream.fromEffect(trySettle).pipe(
+        Stream.concat(
+          orchestrator
+            .streamStoredEventsFrom({
+              threadId: input.threadId,
+              afterSequence,
+              eventType: "run.updated",
+            })
+            .pipe(Stream.mapEffect(() => trySettle)),
+        ),
+        Stream.filter((done) => done),
+        Stream.runHead,
+        Effect.timeoutOption(Duration.millis(SETTLE_AFTER_RUN_WAIT_MS)),
+      );
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
+          ? Effect.void
+          : dropRequest.pipe(Effect.ignoreCause({ log: true })),
+      ),
     );
   });
 
@@ -1406,6 +1431,12 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     const shell = input.byOwnAgent ? yield* orchestrator.getThreadShell(input.threadId) : null;
     if (shell != null && shell.activeRunId !== null) {
+      yield* dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make(`server:settle-after-run:${shell.activeRunId}:requested`),
+        threadId: shell.id,
+        settleAfterRunId: shell.activeRunId,
+      });
       yield* settleAfterRun({
         projectId: shell.projectId,
         threadId: shell.id,
