@@ -1,6 +1,7 @@
 import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
+import * as PendingSettle from "../fork/pendingSettle.ts";
 import * as UsageWindowKeepAlive from "../fork/usageWindowKeepAlive.ts";
 import * as ThreadHistory from "../fork/threadHistory/ThreadHistory.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -331,7 +332,7 @@ const layerScheduledTaskProvided = ScheduledTaskService.layer.pipe(
       layerThreadManagementProvided,
       layerManagedProjectFoldersProvided,
       layerSecretRequestsProvided,
-      layerProviderAdapterRegistryProvided,
+      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
     ),
   ),
 );
@@ -348,7 +349,7 @@ const layerProviderContinuationWorkerProvided = ProviderContinuationService.laye
   Layer.provide(
     Layer.mergeAll(
       ProviderContinuationRequests.layer,
-      layerProviderAdapterRegistryProvided,
+      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
       layerThreadManagementProvided,
       IdAllocator.layer,
     ),
@@ -375,7 +376,7 @@ const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
       layerThreadTitleRegenerationProvided,
       layerThreadManagementProvided,
       ProjectionStore.layer,
-      layerProviderAdapterRegistryProvided,
+      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
     ),
   ),
 );
@@ -443,11 +444,12 @@ export const layerProduction = Layer.mergeAll(
         ProjectionStore.layer,
         layerThreadManagementProvided,
         layerOrchestratorProvided,
-        layerProviderAdapterRegistryProvided,
+        ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
       ),
     ),
   ),
   UsageWindowKeepAlive.layer.pipe(Layer.provide(TextGeneration.layer)),
+  PendingSettle.layer.pipe(Layer.provide(layerThreadManagementProvided)),
   ThreadHistory.layerSweep.pipe(Layer.provide(layerThreadHistoryProvided)),
   layerProviderContinuationWorkerProvided,
   layerAgentSessionScannerProvided,
