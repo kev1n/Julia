@@ -1,6 +1,6 @@
 #!/bin/bash
 # Daily on every Mac (LaunchAgent com.example.t3code-fork.deploy): install the
-# newest owner/t3code release if this Mac does not run it yet. Server runtime
+# newest release of the fork's repository if this Mac does not run it yet. Server runtime
 # on every Mac; the desktop app too where Julia or the legacy fork app is installed.
 # Waits for a later run while any thread is working or has background work
 # live (live-work.sh); when there is none it hands the install to a
@@ -8,9 +8,8 @@
 # cuts either off. On the MacBook it
 # also raises a notification while a "Fork sync failed" issue is open.
 set -uo pipefail
-fork_repo="owner/t3code"
-# Build outputs served by build-mac over the tailnet (see install-jobs.sh artifacts).
-artifacts_url="https://build-mac-host.example.ts.net:8444"
+# fork_repo, and artifacts_url: the build outputs build-mac serves over the tailnet.
+. "$(dirname "$0")/fork.env" || exit 1
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
 exec >> "$state/logs/deploy.log" 2>&1
