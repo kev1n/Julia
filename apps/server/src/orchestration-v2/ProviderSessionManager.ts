@@ -2562,10 +2562,24 @@ export const layerWithOptions = (
                   ) {
                     return;
                   }
+                  // Fork (Owner): unloading stops the native thread's background
+                  // terminals, so a settled thread still running background work
+                  // stays loaded, as an idle one does; idle release then waits for it.
+                  const hasPendingWork = entry.runtime.hasPendingBackgroundWorkForThread;
                   yield* Effect.forEach(
                     detachedProviderThreads.filter((thread) => thread.nativeThreadRef !== null),
                     (providerThread) =>
-                      unloadThread({ providerThread }).pipe(
+                      Effect.gen(function* () {
+                        if (
+                          hasPendingWork !== undefined &&
+                          (yield* hasPendingWork(providerThread).pipe(
+                            Effect.catchCause(() => Effect.succeed(false)),
+                          ))
+                        ) {
+                          return;
+                        }
+                        yield* unloadThread({ providerThread });
+                      }).pipe(
                         Effect.timeout(UNLOAD_THREAD_TIMEOUT_MS),
                         Effect.catchCause((cause) =>
                           Effect.logWarning(
