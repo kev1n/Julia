@@ -2591,3 +2591,48 @@ it.effect("replays an accepted send after the project disables the instance", ()
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
+// The Orchestrator bridge stops its run with run.interrupt. A run still waiting behind another one
+// was refused, so it started later and ran anyway; stopping it now cancels it.
+it.effect("stopping a run still waiting in the queue cancels it", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ runSetup: () => Effect.never });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:queued-stop",
+          thread: "thread:queued-stop",
+          message: "Go",
+        }),
+      );
+      const queuedMessageId = MessageId.make("message:queued-stop:second");
+      yield* threads.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("command:queued-stop:second"),
+        threadId: launched.threadId,
+        messageId: queuedMessageId,
+        text: "Then this",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "server",
+        dispatchMode: { type: "queue_after_active" },
+      });
+      const queued = (yield* threads.getThreadProjection(launched.threadId)).runs.find(
+        (run) => run.userMessageId === queuedMessageId,
+      );
+      assert.equal(queued?.status, "queued");
+
+      yield* threads.dispatch({
+        type: "run.interrupt",
+        commandId: CommandId.make("command:queued-stop:stop"),
+        threadId: launched.threadId,
+        runId: queued!.id,
+      });
+
+      const runs = (yield* threads.getThreadProjection(launched.threadId)).runs;
+      assert.equal(runs.find((run) => run.id === queued!.id)?.status, "cancelled");
+      assert.equal(runs.find((run) => run.id !== queued!.id)?.status, "preparing");
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
