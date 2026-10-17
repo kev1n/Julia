@@ -164,8 +164,11 @@ describe("continueLimitedThreadElsewhere", () => {
       assert.deepEqual(fork.sourcePoint, { type: "run", runId });
       assert.equal(fork.title, "Fix the sync");
       assert.isUndefined(fork.destination);
+      // A snoozed routine's continuation stays snoozed, through its first message too.
+      assert.isTrue(fork.keepSnoozed);
       assert.ok(message?.type === "message.dispatch");
       assert.equal(message.threadId, fork.targetThreadId);
+      assert.isTrue(message.keepSnoozed);
       assert.deepEqual(message.modelSelection, GPT);
       assert.ok(handled?.type === "thread.metadata.update");
       assert.equal(handled.threadId, threadId);

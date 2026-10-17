@@ -134,6 +134,8 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     targetThreadId,
     sourcePoint: { type: "run", runId },
     title: source.title,
+    // A routine's thread was snoozed to keep it out of the inbox; its continuation is too.
+    keepSnoozed: true,
     createdBy: "system",
     creationSource: "server",
   });
@@ -146,6 +148,7 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     modelSelection,
     attachments: [],
     dispatchMode: { type: "start_immediately" },
+    keepSnoozed: true,
     createdBy: "user",
     creationSource: "server",
   });

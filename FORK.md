@@ -348,7 +348,9 @@ deploy`), so an agent can wait for its own deploy; the restart cuts that work of
 routine runs) creates its thread already snoozed, so it never shows in the inbox while its
 worktree is prepared and its first message waits. Upstream refuses to snooze a thread with a
 queued run and wakes a thread on every new message; a launch's initial message, or a later
-message sent with `keepSnoozed`, leaves the snooze in place. The wake rules are upstream's: the
+message sent with `keepSnoozed`, leaves the snooze in place. A usage-limit continuation
+(`fork/limitFailover.ts`) forks with `keepSnoozed` on `thread.fork`, so it keeps its source's wake
+time; a fork asked by a person still starts visible. The wake rules are upstream's: the
 run completing or failing after creation brings the thread back.
 
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
@@ -520,7 +522,10 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   it restores or fails; `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`: the phone's notice.
 - `packages/contracts/src/orchestrationV2.ts`, `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
   `Orchestrator.ts`: start a thread snoozed (`snoozedUntil`, `keepSnoozed`); test in
-  `ThreadLaunchService.test.ts`.
+  `ThreadLaunchService.test.ts`; `ws.ts` maps the client's launch request through
+  `ThreadLaunchService.launchInputFromWire`. `ThreadForkService.ts`, `fork/limitFailover.ts`: a
+  continuation keeps the snooze; tests in `ThreadFork.execution.test.ts`, `ThreadForkService.test.ts`,
+  `limitFailover.test.ts`.
 - `apps/server/src/orchestration-v2/ThreadManagementService.ts` (again): `dispatch` goes through
   `fork/drain.ts`'s `admit`; `apps/server/src/ws.ts`: a launch the drain refused says why.
 - `apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts`: shutdown intent and crash
