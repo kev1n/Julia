@@ -34,12 +34,12 @@ describe("buildMoveMessage", () => {
   it("says where the thread came from, which branch holds the work, and carries the history", () => {
     const text = buildMoveMessage({
       title: "Fix login",
-      fromMachine: "MacBook Pro",
-      toMachine: "Mac Mini",
+      fromMachine: "Laptop",
+      toMachine: "Build Mac",
       branch: "t3/fix-login",
       messages: [message("user", "Remember the word lantern."), message("assistant", "Noted.")],
     });
-    expect(text).toContain("moved here from MacBook Pro to Mac Mini");
+    expect(text).toContain("moved here from Laptop to Build Mac");
     expect(text).toContain("branch t3/fix-login");
     expect(text).toContain("[user]\nRemember the word lantern.\n\n[assistant]\nNoted.");
     expect(text).not.toContain("omitted");

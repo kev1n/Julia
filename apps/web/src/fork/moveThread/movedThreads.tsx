@@ -41,7 +41,7 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/** "Moved to Mac Mini · Open" on a thread this client moved. */
+/** "Moved to <machine name> · Open" on a thread this client moved. */
 export function useMovedThreadBanner(
   threadRef: ScopedThreadRef | null,
 ): ComposerBannerStackItem | null {
