@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs one owner/t3code release on this Mac as soon as nothing would be cut off.
+# Installs one release of the fork on this Mac as soon as nothing would be cut off.
 #
 #   fork/scripts/deploy-when-idle.sh --schedule <release tag> [--now]
 #   fork/scripts/deploy-when-idle.sh --cancel <release tag>
@@ -38,6 +38,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$tag" ] || { echo "$usage" >&2; exit 2; }
+. "$(dirname "$0")/fork.env" # fork_repo, artifacts_url
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
 label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
@@ -47,6 +48,7 @@ if [ "$action" = schedule ]; then
   requester="${CLAUDE_CODE_SESSION_ID:-${CODEX_THREAD_ID:-}}"
   # A copy outside any checkout, so the job survives a worktree being removed;
   # a new file, so a job of an earlier tag running the old copy is not disturbed.
+  install -S -m 600 "$(dirname "$0")/fork.env" "$state/fork.env"
   install -S -m 700 "$0" "$state/deploy-when-idle.sh"
   /usr/bin/python3 - "$plist" "$label" "$state" "$tag" "$now" "$requester" <<'PY'
 import os, plistlib, sys
@@ -102,7 +104,7 @@ if [ "$action" = cancel ]; then
   echo "Cancelled $tag; the server takes new work again."
   exit 0
 fi
-latest=$(gh release view -R owner/t3code --json tagName -q .tagName)
+latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag; not overwriting it."
   cancel_drain
@@ -113,10 +115,10 @@ dir="$state/releases/$tag"
 if [ ! -f "$dir/VERSION" ]; then
   partial="$dir.partial"
   mkdir -p "$partial"
-  gh release download "$tag" -R owner/t3code --clobber -D "$partial"
+  gh release download "$tag" -R "$fork_repo" --clobber -D "$partial"
   target=$(cat "$partial/VERSION")
   while read -r checksum filename; do
-    curl -fsS --max-time 240 --retry 2 --output "$partial/$filename" "https://build-mac-host.example.ts.net:8444/$target/$filename"
+    curl -fsS --max-time 240 --retry 2 --output "$partial/$filename" "$artifacts_url/$target/$filename"
   done < "$partial/SHA256SUMS"
   (cd "$partial" && shasum -a 256 -c SHA256SUMS)
   mv "$partial" "$dir"
@@ -217,7 +219,7 @@ else
   quiet || exit 0
 fi
 # Check again just before restarting: another release may have arrived during download.
-latest=$(gh release view -R owner/t3code --json tagName -q .tagName)
+latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag during download; not overwriting it."
   cancel_drain
