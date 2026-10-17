@@ -4490,12 +4490,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               WHERE failure.type = 'error' AND failure.status = 'failed'
                 AND json_extract(failure.payload_json, '$.failure.class') = 'usage_limit'
             )
-            AND json_extract(t.payload_json, '$.archivedAt') IS NULL
-            AND json_extract(t.payload_json, '$.settledOverride') IS NOT 'settled'
             AND json_extract(item.payload_json, '$.failure.class') = 'usage_limit'
             AND json_extract(item.payload_json, '$.failure.resetAt') IS NOT NULL
             AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(COALESCE(r.completed_at, json_extract(t.payload_json, '$.updatedAt')))
-            AND (
+            AND ((
+              json_extract(t.payload_json, '$.archivedAt') IS NULL
+              AND json_extract(t.payload_json, '$.settledOverride') IS NOT 'settled'
+              AND (
               (
                 json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
                 AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
@@ -4527,7 +4528,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     )
                 )
               )
-            )
+            )) OR (
+              -- Fork (Owner): a limit failover names its tab before sending the tab's
+              -- first message (limitFailover.ts); until that message exists the
+              -- sweep sends it, even if the source was settled or archived meanwhile.
+              json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
+              AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
+              AND json_extract(t.payload_json, '$.limitRecovery.continuedIn') IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM orchestration_v2_projection_messages continuation
+                WHERE continuation.message_id = json_extract(t.payload_json, '$.limitRecovery.continuedIn') || ':continue'
+              )
+            ))
             AND NOT EXISTS (
               SELECT 1 FROM orchestration_v2_projection_runtime_requests request
               WHERE request.thread_id = t.thread_id AND request.status = 'pending'
