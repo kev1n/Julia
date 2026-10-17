@@ -99,6 +99,7 @@ echo "Service runs $version (was $previous)."
 # running bash keeps reading the old one (replace-running-scripts.test.sh).
 here=$(cd "$(dirname "$0")" && pwd)
 if [ -d "$HOME/t3-fork" ] && [ -f "$here/pull-deploy.sh" ]; then
+  install -S -m 600 "$here/fork.env" "$HOME/t3-fork/fork.env"
   install -S -m 700 "$here/pull-deploy.sh" "$HOME/t3-fork/pull-deploy.sh"
 fi
 # Same for the watchdog that restarts a hung service; this also installs it on

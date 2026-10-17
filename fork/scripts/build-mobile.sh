@@ -14,7 +14,8 @@
 #   android/<runtime>/manifest.json                   the newest update for that binary
 #   T3-Code-Owner.apk                                 the newest APK (the install link)
 set -euo pipefail
-artifacts_url=${T3CODE_ARTIFACTS_URL:-https://build-mac-host.example.ts.net:8444}
+. "$(dirname "$0")/fork.env"
+artifacts_url=${T3CODE_ARTIFACTS_URL:-$artifacts_url}
 # The release signing key: Android installs an APK over an older one only when both are
 # signed with the same key, so it never changes. Made once on build-mac; never in git.
 keystore="$HOME/t3-fork/keys/julia-fork-release.jks"
