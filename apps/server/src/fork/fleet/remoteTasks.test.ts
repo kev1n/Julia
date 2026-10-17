@@ -19,7 +19,7 @@ import * as ThreadManagement from "../../orchestration-v2/ThreadManagementServic
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { makePeerHandlers } from "./remoteTasks.ts";
 
-const REPO = "github.com/owner/t3code";
+const REPO = "github.com/example/t3code";
 const source = {
   environmentId: "env-macbook",
   label: "MacBook",

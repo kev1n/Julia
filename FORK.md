@@ -563,7 +563,8 @@ Azure (1).
 ```
 build-mac 05:00  com.example.t3code-fork.sync    fork/scripts/sync.sh
              fetch upstream tags -> rebase owner onto the newest v*-nightly.* tag
-             -> fork/scripts/checks.sh (typecheck of contracts/web/server/desktop/scripts,
+             -> fork/scripts/checks.sh (check-literals.sh: no host or ID outside fork.env,
+                typecheck of contracts/web/server/desktop/scripts,
                 lint of every file the fork touches, fork tests + tests beside touched files)
              -> fork/scripts/build.sh (server runtime archive + T3 Code (Owner).app)
              -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
@@ -598,6 +599,12 @@ job and ends its drain. Do not copy an older `~/t3-fork/deploy-when-idle-<sha>.s
 runs only and restart over background work.
 `install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` and installs or refreshes the
 watchdog from the release it installs.
+
+The fork's scripts read the hosts and IDs they share (the GitHub repository, build-mac's URLs, the
+Aside login LaunchAgent) from `fork/scripts/fork.env`, which ships in each release and is
+installed beside every script copied to `~/t3-fork`. `fork/scripts/check-literals.sh` (run by
+`checks.sh`) fails when a host or ID is written into any other file under `fork/` or a
+`src/fork/` directory.
 
 **Why build-mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's macOS
 runners bill private-repo minutes at ten times the Linux rate, a daily ~10-minute build would

@@ -1,10 +1,10 @@
 #!/bin/bash
 # Daily on the build Mac (build-mac, LaunchAgent com.example.t3code-fork.sync):
 # rebase the fork onto the newest upstream nightly tag, check, build, and
-# publish a GitHub release on owner/t3code that every Mac's pull job installs,
+# publish a GitHub release on the fork's repository that every Mac's pull job installs,
 # plus the phone app's update (build-mobile.sh) that the phone pulls itself.
 # On a conflict or a failed step nothing is published (so nothing deploys) and
-# the open "Fork sync failed" issue on owner/t3code gets the details.
+# the open "Fork sync failed" issue there gets the details.
 #   fork/scripts/sync.sh            rebase, check, build, push, release
 #   fork/scripts/sync.sh --dry-run [ref [autofix-limit-seconds]]
 #       rebase (onto ref, default the newest nightly), check, build; push,
@@ -18,9 +18,9 @@ autofix_limit=3600
 if [ "${1:-}" = "--dry-run" ]; then dry_run=true; onto=${2:-}; autofix_limit=${3:-$autofix_limit}; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd) # ~/src/t3code-fork
 state="$HOME/t3-fork"
-fork_repo="owner/t3code"
-artifacts_url="https://build-mac-host.example.ts.net:8444" # com.example.t3code-fork.artifacts
-t3_url="https://build-mac-host.example.ts.net" # this Mac's T3 Code server (Tailscale Serve)
+# fork_repo; artifacts_url (com.example.t3code-fork.artifacts); build_mac_url, this
+# Mac's T3 Code server (Tailscale Serve).
+. "$repo/fork/scripts/fork.env" || exit 1
 mkdir -p "$state/logs" "$state/out"
 log="$state/logs/sync-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$log") 2>&1
@@ -114,7 +114,7 @@ if ! prepare; then
   autofix="$state/autofix/$(date +%Y%m%d-%H%M%S)"
   fork/scripts/autofix.sh "$latest" "$before" "$problem" "$log" "$autofix" "$autofix_limit"
   [ -f "$autofix/thread.json" ] &&
-    thread_url="$t3_url/$(/usr/bin/python3 -c 'import json,sys; t=json.load(open(sys.argv[1])); print(t["environmentId"]+"/"+t["threadId"])' "$autofix/thread.json")"
+    thread_url="$build_mac_url/$(/usr/bin/python3 -c 'import json,sys; t=json.load(open(sys.argv[1])); print(t["environmentId"]+"/"+t["threadId"])' "$autofix/thread.json")"
   autofix_note="Auto-fix chat: ${thread_url:-no chat started}
 Verdict: $(cat "$autofix/verdict" 2>/dev/null)
 

@@ -9,7 +9,8 @@ set -euo pipefail
 
 label=com.example.t3code-fork.aside-helper
 plist="$HOME/Library/LaunchAgents/$label.plist"
-normal_label=com.example.aside-browser
+. "$(dirname "$0")/fork.env" # aside_login_label
+normal_label=$aside_login_label
 normal_plist="$HOME/Library/LaunchAgents/$normal_label.plist"
 home="$HOME/t3-fork/aside"
 domain="gui/$(id -u)"

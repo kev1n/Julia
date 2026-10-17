@@ -18,6 +18,7 @@ dir=${5:?work dir}
 limit=${6:?time limit in seconds}
 repo=$(git rev-parse --show-toplevel)
 here="$repo/fork/scripts"
+. "$here/fork.env" || exit 1 # fork_repo
 worktree="$dir/worktree"
 branch="autofix/$(basename "$dir")"
 report="$dir/report.md"
@@ -38,7 +39,7 @@ version="$upstream_version+owner.autofix"
 # points at the live install), so the agent runs the commands without them.
 clean_env="env -u T3CODE_HOME -u T3_SERVICE_LAUNCHER_CONTEXT -u T3_BOOT_SERVICE_UNIT"
 cat > "$dir/prompt.md" <<PROMPT
-The daily sync of Owner's T3 Code fork (owner/t3code, branch \`owner\`) failed on build-mac and nobody is watching: work unattended, never ask a question, and finish in this one turn.
+The daily sync of Owner's T3 Code fork ($fork_repo, branch \`owner\`) failed on build-mac and nobody is watching: work unattended, never ask a question, and finish in this one turn.
 
 ## What failed
 
