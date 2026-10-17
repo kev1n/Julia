@@ -1144,6 +1144,21 @@ export const layer: Layer.Layer<
           failure,
           threadDisposition: "reusable",
         });
+        const makeInterruptedTerminalEvent = (): ProviderTerminalEvent => ({
+          type: "turn.terminal",
+          driver: input.providerThread.driver,
+          providerThreadId: input.providerThread.id,
+          providerTurnId:
+            input.attempt.providerTurnId ??
+            idAllocator.derive.providerTurn({
+              driver: input.providerThread.driver,
+              nativeTurnId: `failed:${input.attempt.id}`,
+            }),
+          runOrdinal: input.run.ordinal,
+          status: "interrupted",
+          failure: null,
+          threadDisposition: "reusable",
+        });
         const responseStreamingMode = yield* Effect.gen(function* () {
           const responseStreamingMode = yield* serverSettings.getSettings.pipe(
             Effect.map(
@@ -2028,20 +2043,9 @@ export const layer: Layer.Layer<
             Effect.flatMap(() =>
               Effect.gen(function* () {
                 const terminal = yield* Ref.get(terminalEvent);
-                if (terminal === null) {
-                  // A session release interrupts or fails the stream; a clean
-                  // end without a terminal means the run would never settle.
-                  return yield* new RunExecutionIngestError({
-                    runId: input.run.id,
-                    cause: new ProviderAdapter.ProviderAdapterEventStreamError({
-                      driver: input.providerThread.driver,
-                      providerSessionId: input.providerSessionId,
-                      raisedByT3: true,
-                      cause: "Provider event stream ended without a root terminal.",
-                    }),
-                  });
-                }
-                yield* finalizeRootRun(terminal);
+                // A clean end without a root terminal means the session closed
+                // under the turn; a runtime failure fails the stream instead.
+                yield* finalizeRootRun(terminal ?? makeInterruptedTerminalEvent());
               }),
             ),
             // Server shutdown interrupts the subscription and leaves the run to
@@ -2154,6 +2158,7 @@ export const layer: Layer.Layer<
                         ),
                       )
                     : [];
+                  const seenTerminal = yield* Ref.get(terminalEvent);
                   let nextRetryWarningAt = completedAt;
                   yield* writeFinalRunEvents({
                     delegatedChild: input.appThread.lineage?.relationshipToParent === "subagent",
@@ -2170,17 +2175,21 @@ export const layer: Layer.Layer<
                     ...(abandonedProviderTurn === null ? {} : { abandonedProviderTurn }),
                     lostToolCalls,
                     completedAt,
-                    terminal: makeFailedTerminalEvent(
-                      makeProviderFailure({
-                        cause: squashed,
-                        message:
-                          knownProviderFailureMessage(squashed) ??
-                          userFacingDatabaseErrorMessage(squashed),
-                        class: "unknown",
-                      }),
-                      latestItemOrdinal + 1,
-                    ),
-                    failureItemPersisted: false,
+                    // Fork (Owner): a root terminal the reader saw but could not write
+                    // still settles the run, so a completed turn completes.
+                    terminal:
+                      seenTerminal ??
+                      makeFailedTerminalEvent(
+                        makeProviderFailure({
+                          cause: squashed,
+                          message:
+                            knownProviderFailureMessage(squashed) ??
+                            userFacingDatabaseErrorMessage(squashed),
+                          class: "unknown",
+                        }),
+                        latestItemOrdinal + 1,
+                      ),
+                    failureItemPersisted: seenTerminal?.status === "failed",
                     refreshAfterTurn,
                   }).pipe(
                     // Storage failures can be defects; retry both failure channels.
