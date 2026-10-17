@@ -544,7 +544,7 @@ export const layerWithOptions = (
       });
 
       // Server shutdown interrupts subscribers rather than ending them: a
-      // cleanly ended stream without a terminal fails its run, while an
+      // cleanly ended stream without a terminal interrupts its run, while an
       // interrupted one leaves run settlement to restart recovery.
       const interruptSubscribers = Effect.fn("ProviderSessionManager.interruptSubscribers")(
         function* (entry: LiveSessionEntry) {
@@ -557,8 +557,8 @@ export const layerWithOptions = (
         },
       );
 
-      // Server shutdown intentionally clears them; a provider-announced Stop
-      // must let consumers drain them before the stream completes.
+      // Server shutdown intentionally clears them; any other close that is not
+      // a runtime failure lets consumers drain them before the stream completes.
       const endSubscribers = Effect.fn("ProviderSessionManager.endSubscribers")(function* (
         entry: LiveSessionEntry,
       ) {
@@ -1136,7 +1136,6 @@ export const layerWithOptions = (
         readonly detachedThreadId?: ThreadId;
         readonly cancelIdleFiber?: boolean;
         readonly onlyIfIdleGeneration?: number;
-        readonly gracefulSubscribers?: boolean;
       }) =>
         Effect.acquireUseRelease(
           removeLiveEntry(input),
@@ -1155,15 +1154,15 @@ export const layerWithOptions = (
                   if (input.cancelIdleFiber !== false) {
                     yield* cancelIdleFiber(entry.idleFiber);
                   }
-                  if (input.gracefulSubscribers === true) {
-                    yield* endSubscribers(entry);
-                  } else if (input.reason === "server_shutdown") {
+                  if (input.reason === "server_shutdown") {
                     yield* interruptSubscribers(entry);
-                  } else {
+                  } else if (input.reason === "runtime_error") {
                     yield* failSubscribers(
                       entry,
                       input.detail ?? `Provider session released: ${input.reason}.`,
                     );
+                  } else {
+                    yield* endSubscribers(entry);
                   }
                   const closeExit = yield* closeScopeWithin(entry.scope, {
                     providerSessionId: input.providerSessionId,
@@ -2135,7 +2134,6 @@ export const layerWithOptions = (
                 yield* releaseEntry({
                   providerSessionId: entry.runtime.providerSessionId,
                   reason: "manual_shutdown",
-                  gracefulSubscribers: true,
                 }).pipe(logReleaseFailure(entry.runtime.providerSessionId));
                 return;
               }

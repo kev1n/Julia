@@ -32,10 +32,12 @@ import * as Exit from "effect/Exit";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import { TestClock } from "effect/testing";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -2648,7 +2650,7 @@ it.effect("emits run_interrupt_result when hard-stop finalizes the active attemp
   }),
 );
 
-it.effect("records a finished run as failed when its ownership check cannot be read", () =>
+it.effect("completes a finished run when its ownership check cannot be read", () =>
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
       key: "finalize-guard-read-failure",
@@ -2661,7 +2663,7 @@ it.effect("records a finished run as failed when its ownership check cannot be r
         ),
       events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
     });
-    assert.include(observed, "run:failed");
+    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
   }),
 );
 
@@ -2931,7 +2933,8 @@ it.effect("does not interrupt an ended provider when its terminal write fails", 
         }),
     });
     assert.equal(yield* Ref.get(interrupts), 0);
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    // Fork (Owner): the retry settles the run with the terminal it saw.
+    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
   }),
 );
 
@@ -3046,18 +3049,73 @@ it.effect.each([
   }),
 );
 
-it.effect("fails the run when its event stream ends without a root terminal", () =>
+it.effect("interrupts the run when its session closes before the turn ends", () =>
   Effect.gen(function* () {
     const { observed, finalEvents } = yield* captureRootRunTermination({
       key: "stream-end-without-terminal",
       shouldFinalizeRun: () => Effect.succeed(true),
       events: () => Stream.empty,
     });
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:interrupted", "pull-requests-refreshed"]);
     assert.equal(
       finalEvents.find((event) => event.type === "provider-thread.updated")?.payload.status,
       "idle",
     );
+  }),
+);
+
+// A full disk failed both the event write and the fallback that marks the
+// run failed, and the run stayed running until the server restarted.
+it.effect("retries settling the run until storage accepts the write", () =>
+  Effect.gen(function* () {
+    const firstWriteFailed = yield* Deferred.make<void>();
+    const writes = yield* Ref.make(0);
+    const capture = yield* captureRootRunTermination({
+      key: "settle-retry:ingest-failure",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      ingestNormalized: () => Effect.die(new Error("SQLITE_FULL: database or disk is full")),
+      beforeTerminalWrite: () =>
+        Ref.getAndUpdate(writes, (count) => count + 1).pipe(
+          Effect.flatMap((count) =>
+            count === 0
+              ? Deferred.succeed(firstWriteFailed, undefined).pipe(
+                  Effect.andThen(Effect.die(new Error("SQLITE_FULL: database or disk is full"))),
+                )
+              : Effect.succeed(true),
+          ),
+        ),
+      events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
+    }).pipe(Effect.forkChild);
+    yield* Deferred.await(firstWriteFailed);
+    yield* TestClock.adjust("1 second");
+    const { observed } = yield* Fiber.join(capture);
+    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.equal(yield* Ref.get(writes), 2);
+  }),
+);
+
+it.effect("completes a run that saw its turn end but could not write it at first", () =>
+  Effect.gen(function* () {
+    const firstWriteFailed = yield* Deferred.make<void>();
+    const capture = yield* captureRootRunTermination({
+      key: "settle-retry:terminal-seen",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      beforeTerminalWrite: () =>
+        Deferred.isDone(firstWriteFailed).pipe(
+          Effect.flatMap((failedOnce) =>
+            failedOnce
+              ? Effect.succeed(true)
+              : Deferred.succeed(firstWriteFailed, undefined).pipe(
+                  Effect.andThen(Effect.die(new Error("SQLITE_FULL: database or disk is full"))),
+                ),
+          ),
+        ),
+      events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
+    }).pipe(Effect.forkChild);
+    yield* Deferred.await(firstWriteFailed);
+    yield* TestClock.adjust("1 second");
+    const { observed } = yield* Fiber.join(capture);
+    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
   }),
 );
 
@@ -3093,7 +3151,7 @@ it.effect("does not start a turn whose run settled during the app context read",
       ),
       startTurn: () => Ref.update(providerCalls, (count) => count + 1),
     });
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:interrupted", "pull-requests-refreshed"]);
     assert.equal(yield* Ref.get(providerCalls), 0);
   }),
 );
