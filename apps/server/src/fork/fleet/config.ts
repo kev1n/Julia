@@ -1,14 +1,8 @@
 // @effect-diagnostics globalFetch:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): fleet settings, one file per server,
- * `~/.t3/userdata/fork-fleet.json` (mode 600):
- *
- *   { "hubUrl": "https://mac-a-host.example.ts.net",
- *     "selfUrl": "https://<this host>.example.ts.net",
- *     "secret": "<shared fleet secret>",
- *     "hub": true }            // only on the hub (mac-a)
- *
+ * Fork (Owner): fleet settings in `~/.t3/userdata/fork-fleet.json` (mode 600), with `hubUrl`,
+ * `selfUrl`, the shared `secret`, and `"hub": true` only on the hub (mac-a).
  * Without the file the fleet is off: the tools say so and nothing is published.
  */
 import * as NodeCrypto from "node:crypto";

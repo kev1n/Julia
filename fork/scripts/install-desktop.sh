@@ -73,6 +73,7 @@ release_puller="$(dirname "$0")/pull-deploy.sh"
 if [ -f "$release_puller" ]; then
   mkdir -p "$HOME/t3-fork"
   # A new file, not a copy over the one that may be running this install.
+  install -S -m 600 "$(dirname "$0")/fork.env" "$HOME/t3-fork/fork.env"
   install -S -m 700 "$release_puller" "$HOME/t3-fork/pull-deploy.sh"
 fi
 echo "Installed $destination $(/usr/bin/defaults read "$destination/Contents/Info" CFBundleShortVersionString)"

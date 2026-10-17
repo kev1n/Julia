@@ -98,6 +98,8 @@ CLAUDE_CODE_SESSION_ID=claude-session-1 run --schedule "$tag"
 plist="$tmp/Library/LaunchAgents/com.example.t3code-fork.deploy-when-idle-abc1234.plist"
 /usr/bin/python3 -c 'import plistlib,sys; a=plistlib.load(open(sys.argv[1],"rb"))["ProgramArguments"]; sys.exit(a[-2:] != ["--requester", "claude-session-1"])' "$plist" ||
   fail "the scheduled job does not pass the requesting session"
+# The scheduled copy reads its hosts and IDs from a fork.env installed beside it.
+[ -f "$tmp/t3-fork/fork.env" ] || fail "--schedule did not install fork.env beside the job's script"
 
 [ "$status" = 0 ] && echo ok
 exit "$status"
