@@ -55,9 +55,19 @@ import os, plistlib, sys
 path, label, state, tag, now, requester = sys.argv[1:]
 log = os.path.join(state, "logs", label.removeprefix("com.example.t3code-fork.") + ".log")
 args = ["/bin/bash", os.path.join(state, "deploy-when-idle.sh"), tag]
-args += ["--now"] if now == "1" else []
-args += ["--requester", requester] if requester else []
-data = {"Label": label, "ProgramArguments": args, "RunAtLoad": True, "StartInterval": 30, "StandardOutPath": log, "StandardErrorPath": log}
+extra = ["--now"] if now == "1" else []
+extra += ["--requester", requester] if requester else []
+data = {"Label": label, "RunAtLoad": True, "StartInterval": 30}
+# On a Mac whose ~/t3-fork is on a removable volume, only ExternalLauncher.app holds the
+# macOS access grant: it runs the job's script itself and writes the log above, so
+# launchd's own log and working directory stay on the internal disk.
+launcher = os.path.expanduser("~/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher")
+if os.access(launcher, os.X_OK):
+    args = [launcher, "t3-deploy-when-idle", tag]
+    log = os.path.expanduser("~/Library/Logs/external-launcher/" + label + ".log")
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    data["WorkingDirectory"] = os.path.dirname(log)
+data.update({"ProgramArguments": args + extra, "StandardOutPath": log, "StandardErrorPath": log})
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "wb") as f:
     plistlib.dump(data, f)

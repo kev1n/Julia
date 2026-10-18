@@ -100,6 +100,13 @@ plist="$tmp/Library/LaunchAgents/com.example.t3code-fork.deploy-when-idle-abc123
   fail "the scheduled job does not pass the requesting session"
 # The scheduled copy reads its hosts and IDs from a fork.env installed beside it.
 [ -f "$tmp/t3-fork/fork.env" ] || fail "--schedule did not install fork.env beside the job's script"
+# With ExternalLauncher installed, the job runs through it and logs on the internal disk.
+mkdir -p "$tmp/Applications/ExternalLauncher.app/Contents/MacOS"
+launcher="$tmp/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
+install -m 755 /dev/null "$launcher"
+CLAUDE_CODE_SESSION_ID= CODEX_THREAD_ID= run --schedule "$tag" --now
+/usr/bin/python3 -c 'import plistlib,sys; d=plistlib.load(open(sys.argv[1],"rb")); log=sys.argv[3]+"/Library/Logs/external-launcher/com.example.t3code-fork.deploy-when-idle-abc1234.log"; sys.exit(d["ProgramArguments"] != [sys.argv[2], "t3-deploy-when-idle", "owner-1.0.0-abc1234", "--now"] or d["StandardOutPath"] != log or d["WorkingDirectory"] != sys.argv[3]+"/Library/Logs/external-launcher")' "$plist" "$launcher" "$tmp" ||
+  fail "with ExternalLauncher installed the scheduled job does not run through it"
 
 [ "$status" = 0 ] && echo ok
 exit "$status"
