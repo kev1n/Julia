@@ -84,11 +84,27 @@ describe("moving a thread's branch between machines", () => {
       commitMessage: "WIP",
       haves: await refTips(target),
     });
-    expect(again).toEqual({ head: first.head, bundle: null });
+    expect(again).toEqual({ branch: "t3/feature", head: first.head, bundle: null });
     expect(await takeBundle(target, "t3/feature", again)).toEqual({
       branch: "t3/feature-3",
       commit: first.head,
     });
+  });
+
+  it("packs the branch the agent switched the worktree to", async () => {
+    const { target, worktree } = machines();
+    git(worktree, "switch", "-q", "-c", "recheck");
+    NodeFS.writeFileSync(NodePath.join(worktree, "c.txt"), "on recheck\n");
+
+    const packed = await packBranch({
+      worktreePath: worktree,
+      branch: "t3/feature",
+      commitMessage: "WIP",
+      haves: await refTips(target),
+    });
+    expect(packed.branch).toBe("recheck");
+    await takeBundle(target, packed.branch, packed);
+    expect(git(target, "show", `${packed.head}:c.txt`)).toBe("on recheck");
   });
 
   it("refuses a project checkout, so a shared branch is never committed to", async () => {
