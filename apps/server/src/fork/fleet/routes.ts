@@ -98,14 +98,14 @@ export const layer = Layer.unwrap(
   }),
 );
 
-const handle = (
-  environment: ServerEnvironment.ServerEnvironment["Service"],
-  service: OrchestratorMcpService.OrchestratorMcpService["Service"],
-  suggestions: FleetSuggestions.FleetSuggestions["Service"],
-  remoteTasks: RemoteTasks.PeerHandlers,
-  sql: Option.Option<SqlClient.SqlClient>,
-) =>
-  Effect.gen(function* () {
+const handle = Effect.fn("routes.handle")(
+  function* (
+    environment: ServerEnvironment.ServerEnvironment["Service"],
+    service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+    suggestions: FleetSuggestions.FleetSuggestions["Service"],
+    remoteTasks: RemoteTasks.PeerHandlers,
+    sql: Option.Option<SqlClient.SqlClient>,
+  ) {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const config = fleetConfig();
     if (config === null || !authorized(config, request.headers["authorization"])) {
@@ -154,8 +154,8 @@ const handle = (
           { status: isMoveFailure(cause) ? 409 : 500 },
         );
       }
-      const { head, bundle } = packed.success;
-      const headers = { "x-fork-move-head": head };
+      const { branch, head, bundle } = packed.success;
+      const headers = { "x-fork-move-head": head, "x-fork-move-branch": branch };
       return bundle === null
         ? HttpServerResponse.empty({ status: 204, headers })
         : HttpServerResponse.uint8Array(bundle, {
@@ -185,4 +185,6 @@ const handle = (
     return yield* asReply(
       service.sendToThread(peerScope(descriptor.environmentId, source), { ...input, message }),
     );
-  }).pipe(Effect.catchCause(() => Effect.succeed(json({ error: "fleet route failed" }, 500))));
+  },
+  Effect.catchCause(() => Effect.succeed(json({ error: "fleet route failed" }, 500))),
+);
