@@ -437,7 +437,8 @@ describe.skipIf(HostProcess.Platform.defaultValue() === "win32")("POSIX setup co
 
   it.live.each([
     { name: "an explicit exit", command: "exit 7", exitCode: 7 },
-    { name: "a syntax error", command: "if then", exitCode: 2 },
+    // macOS ships bash 3.2, whose eval exits 1 on a syntax error; bash 5 exits 2.
+    { name: "a syntax error", command: "if then", exitCode: HostProcess.Platform.defaultValue() === "darwin" ? 1 : 2 },
   ])("reports a nonzero completion for $name", ({ command, exitCode }) =>
     Effect.gen(function* () {
       const result = yield* runObservedSetup(command);

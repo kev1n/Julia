@@ -12,6 +12,7 @@ import {
   ThreadId,
   TerminalCwdNotFoundError,
   TerminalAttachStreamEvent,
+  type TerminalError,
   type TerminalEvent,
   type TerminalOpenInput,
   ProviderDriverKind,
@@ -1192,6 +1193,47 @@ it.layer(
       expect(first.writes).toEqual(["pwd\n"]);
       expect(second.writes).toEqual(["ls\n", Buffer.from([0x1b, 0x5b, 0x4d, 0x20, 0x80, 0x28])]);
       expect(ptyAdapter.spawnInputs).toHaveLength(2);
+    }),
+  );
+
+  it.effect("opens a run's setup terminal while a user open or attach waits", () =>
+    Effect.gen(function* () {
+      const userCalls: ReadonlyArray<
+        (
+          manager: TerminalManager.TerminalManager["Service"],
+        ) => Effect.Effect<unknown, TerminalError>
+      > = [
+        (manager) => manager.open(openInput({ terminalId: "user" })),
+        (manager) => manager.attachStream(openInput({ terminalId: "user" }), () => Effect.void),
+      ];
+      for (const userCall of userCalls) {
+        const { manager } = yield* createManager();
+        // A run start holds the lease while restore opens the setup terminal.
+        const userFiber = yield* withWorkspaceLease(
+          process.cwd(),
+          Effect.gen(function* () {
+            // Runs until it blocks, before the setup open asks for the thread lock.
+            const fiber = yield* userCall(manager).pipe(
+              Effect.forkScoped({ startImmediately: true }),
+            );
+            yield* manager.open(openInput({ terminalId: "setup" }), { workspaceLeaseHeld: true });
+            return fiber;
+          }),
+        );
+        yield* Fiber.join(userFiber);
+      }
+    }),
+  );
+
+  it.effect("attaches to a running terminal while a run start holds the workspace lease", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+      yield* manager.open(openInput());
+      const unsubscribe = yield* withWorkspaceLease(
+        process.cwd(),
+        manager.attachStream(openInput(), () => Effect.void),
+      );
+      unsubscribe();
     }),
   );
 
