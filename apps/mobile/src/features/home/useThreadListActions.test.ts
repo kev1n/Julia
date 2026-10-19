@@ -633,3 +633,38 @@ describe("thread archive guard", () => {
     expect(state.alerts.at(-1)?.title).toBe("Could not archive thread");
   });
 });
+
+describe("tabbed threads", () => {
+  const tab = (id: string, input: Partial<EnvironmentThreadShell> = {}) =>
+    makeThread({
+      id: ThreadId.make(id),
+      chatGroupId: ThreadId.make("thread"),
+      worktreePath: "/repo/worktrees/feature",
+      ...input,
+    });
+  const calls = () => state.requests.map(({ action, input }) => ({ action, ...input }));
+
+  it("pins every tab into the slot the strip already holds", async () => {
+    const thread = tab("thread");
+    state.shells = [
+      thread,
+      tab("second", { pinnedAt: "2026-09-02T00:00:00.000Z", pinOrderKey: "m" }),
+    ];
+    expect(await useThreadListActions().pinThread(thread)).toBe(true);
+    expect(calls()).toEqual([
+      { action: "pin", threadId: "thread", orderKey: "m" },
+      { action: "pin", threadId: "second", orderKey: "m" },
+    ]);
+  });
+
+  it("unpins every pinned tab", async () => {
+    const pinnedAt = "2026-09-02T00:00:00.000Z";
+    const thread = tab("thread", { pinnedAt, pinOrderKey: "a" });
+    state.shells = [thread, tab("second", { pinnedAt, pinOrderKey: "a" }), tab("third")];
+    expect(await useThreadListActions().unpinThread(thread)).toBe(true);
+    expect(calls()).toEqual([
+      { action: "unpin", threadId: "thread" },
+      { action: "unpin", threadId: "second" },
+    ]);
+  });
+});
