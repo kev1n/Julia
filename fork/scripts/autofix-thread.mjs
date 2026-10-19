@@ -1,15 +1,16 @@
 // Runs one agent chat on this Mac's T3 Code server and waits for it to finish,
 // so the sync's auto-fix shows up in Owner's app like any other thread.
 //   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
-//   node fork/scripts/autofix-thread.mjs settle <thread-id>
+//   node fork/scripts/autofix-thread.mjs settle
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
 // existing git worktree <worktree> with full access on the account
 // `autofixModelSelection` picks from the "Fork sync auto-fix models" setting,
 // and blocks until its run ends or <limit-seconds> pass;
 // then it stops the chat's turn (as the Stop button does) and reports
 // status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
-// `settle` settles a finished chat once the sync has accepted its branch and
-// removed its worktree, since a follow-up message there could only fail.
+// `settle` settles every finished auto-fix chat, so Owner's list holds at most
+// the one from the latest failed sync: the sync runs it before launching a new
+// chat and after accepting one. A chat Owner pinned or reopened is left alone.
 // It speaks the server's WebSocket RPC (Effect RPC JSON) with a short-lived
 // session from `t3 auth session issue`, revoked on exit.
 import { execFileSync } from "node:child_process";
@@ -19,10 +20,10 @@ import { basename } from "node:path";
 
 
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
-const settling = repoRoot === "settle" && worktree !== undefined;
+const settling = repoRoot === "settle";
 if (!limitSeconds && !settling)
   throw new Error(
-    "usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds> | settle <thread-id>",
+    "usage: autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds> | settle",
   );
 const server = "http://127.0.0.1:3773";
 const t3 = `${process.env.HOME}/.local/bin/t3`;
@@ -90,12 +91,12 @@ async function connect() {
   return { ws, call, closed };
 }
 
-// The first snapshot of the shell stream carries the project list.
-async function projects(conn) {
+// The first snapshot of the shell stream carries the project and thread lists.
+async function snapshot(conn) {
   return new Promise((resolve, reject) => {
     conn
       .call("orchestration.subscribeShell", {}, (item) => {
-        if (item.kind === "snapshot") resolve(item.snapshot.projects);
+        if (item.kind === "snapshot") resolve(item.snapshot);
       })
       .catch(reject);
   });
@@ -103,11 +104,25 @@ async function projects(conn) {
 
 if (settling) {
   const conn = await connect();
-  await conn.call("orchestration.dispatchCommand", {
-    type: "thread.settle",
-    commandId: randomUUID(),
-    threadId: worktree,
-  });
+  const stale = (await snapshot(conn)).threads.filter(
+    (thread) =>
+      thread.title.startsWith("Fork sync auto-fix:") &&
+      !thread.settledAt &&
+      !thread.archivedAt &&
+      !thread.deletedAt &&
+      !thread.pinnedAt &&
+      thread.settledOverride !== "active" &&
+      !thread.activeRunId &&
+      ended.has(thread.status),
+  );
+  for (const thread of stale) {
+    await conn.call("orchestration.dispatchCommand", {
+      type: "thread.settle",
+      commandId: randomUUID(),
+      threadId: thread.id,
+    });
+  }
+  console.error(`autofix: settled ${stale.length} finished auto-fix chat(s)`);
   conn.ws.close();
   process.exit(0);
 }
@@ -117,7 +132,7 @@ const { DEFAULT_SERVER_SETTINGS } = await import("../../packages/contracts/src/s
 const root = realpathSync(repoRoot);
 const environment = await (await fetch(`${server}/.well-known/t3/environment`)).json();
 let conn = await connect();
-let project = (await projects(conn)).find((p) => p.workspaceRoot === root);
+let project = (await snapshot(conn)).projects.find((p) => p.workspaceRoot === root);
 if (!project) {
   project = await conn.call("projects.mutate", {
     type: "project.create",

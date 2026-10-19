@@ -66,7 +66,7 @@ $commits
 ## Rules (the sync checks these mechanically and rejects your branch otherwise)
 
 - The commit list after \`$latest\` must have exactly the subjects above, in the same order. No "fix conflicts" commit.
-- Do not touch anything under \`fork/\` (the checks and build scripts), and do not delete, skip, \`.only\` or weaken tests, or add \`@ts-ignore\`, \`@ts-expect-error\`, \`@ts-nocheck\`, or lint-disable comments. If the only way to green is one of these, stop and say so.
+- Do not touch anything under \`fork/\` (the checks and build scripts), and do not delete, skip, \`.only\` or weaken tests, or add \`@ts-ignore\`, \`@ts-expect-error\`, \`@ts-nocheck\`, or lint-disable comments (except the reason comment upstream requires on a React effect: \`// oxlint-disable-next-line t3code/no-unreasoned-state-sync -- <why>\`). If the only way to green is one of these, stop and say so.
 - Do not push, publish, open issues, or touch \`~/src/t3code-fork\`, the \`owner\` branch, \`~/t3-fork/out\`, or \`~/.t3/userdata\`. The sync reruns the same checks and build itself and publishes only if they pass.
 
 ## When you finish
@@ -74,6 +74,8 @@ $commits
 Write \`$report\` (outside the repo). First line exactly \`RESOLVED\` or \`UNRESOLVED\`. Then, in plain words for Owner: what conflicted or failed (file and fork commit), how you resolved it, and the result of each of the three commands. If unresolved: why, and what a human should do next.
 PROMPT
 
+# Keep only this run's chat in Owner's list; older ones stay under Settled.
+node "$here/autofix-thread.mjs" settle || echo "autofix: could not settle older auto-fix chats"
 echo "autofix: launching an agent chat on $(hostname -s) in $worktree"
 node "$here/autofix-thread.mjs" "$repo" "$worktree" "Fork sync auto-fix: $latest" "$dir/prompt.md" "$limit" > "$dir/thread.json" ||
   verdict "could not run the chat on the T3 Code server"
@@ -86,7 +88,11 @@ if [ "$status" = "timed out" ]; then
 fi
 [ -f "$report" ] || verdict "the agent stopped ($status) without writing $report"
 [ "$(head -1 "$report")" = "RESOLVED" ] || verdict "the agent could not resolve it (its report says $(head -1 "$report"))"
-git -C "$worktree" rev-parse -q --verify REBASE_HEAD >/dev/null && verdict "the agent left a rebase in progress"
+# REBASE_HEAD can outlive a finished rebase; only the state directories mean one is in progress.
+for state_dir in rebase-merge rebase-apply; do
+  [ -d "$(git -C "$worktree" rev-parse --path-format=absolute --git-path "$state_dir")" ] &&
+    verdict "the agent left a rebase in progress"
+done
 result=$(git rev-parse "$branch")
 git merge-base --is-ancestor "$latest" "$result" || verdict "the agent's branch is not on $latest"
 [ "$(git log --reverse --format=%s "$base..$before")" = "$(git log --reverse --format=%s "$latest..$result")" ] ||
@@ -95,7 +101,8 @@ git diff --quiet "$before" "$result" -- fork || verdict "the agent changed files
 
 # What the fork adds on top of upstream must not lose test cases or gain skips,
 # focus, type suppressions or lint disables, compared with before the sync.
-count() { git grep -h -E "$1" "$2" -- "${@:3}" 2>/dev/null | wc -l; }
+# Upstream requires a reason disable on every React effect, so those do not count.
+count() { git grep -h -E "$1" "$2" -- "${@:3}" 2>/dev/null | grep -v 't3code/no-unreasoned-state-sync' | wc -l; }
 fork_delta() { echo $(($(count "$1" "$before" "${@:2}") - $(count "$1" "$base" "${@:2}"))) $(($(count "$1" "$result" "${@:2}") - $(count "$1" "$latest" "${@:2}"))); }
 tests='^[[:space:]]*(it|test)(\.[a-zA-Z]+)*\('
 read -r was now <<<"$(fork_delta "$tests" '*.test.ts' '*.test.tsx')"
