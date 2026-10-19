@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
   type TerminalAttachStreamEvent,
+  type TerminalError,
   type TerminalEvent,
   type TerminalOpenInput,
   ProviderDriverKind,
@@ -30,6 +31,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "./Manager.ts";
 import { terminalOutputStream } from "./OutputProtocol.ts";
+import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 
 vi.mock("effect/SynchronizedRef", async (importOriginal) => {
@@ -723,6 +725,47 @@ it.layer(
       expect(first.writes).toEqual(["pwd\n"]);
       expect(second.writes).toEqual(["ls\n"]);
       expect(ptyAdapter.spawnInputs).toHaveLength(2);
+    }),
+  );
+
+  it.effect("opens a run's setup terminal while a user open or attach waits", () =>
+    Effect.gen(function* () {
+      const userCalls: ReadonlyArray<
+        (
+          manager: TerminalManager.TerminalManager["Service"],
+        ) => Effect.Effect<unknown, TerminalError>
+      > = [
+        (manager) => manager.open(openInput({ terminalId: "user" })),
+        (manager) => manager.attachStream(openInput({ terminalId: "user" }), () => Effect.void),
+      ];
+      for (const userCall of userCalls) {
+        const { manager } = yield* createManager();
+        // A run start holds the lease while restore opens the setup terminal.
+        const userFiber = yield* withWorkspaceLease(
+          process.cwd(),
+          Effect.gen(function* () {
+            // Runs until it blocks, before the setup open asks for the thread lock.
+            const fiber = yield* userCall(manager).pipe(
+              Effect.forkScoped({ startImmediately: true }),
+            );
+            yield* manager.open(openInput({ terminalId: "setup" }), { workspaceLeaseHeld: true });
+            return fiber;
+          }),
+        );
+        yield* Fiber.join(userFiber);
+      }
+    }),
+  );
+
+  it.effect("attaches to a running terminal while a run start holds the workspace lease", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+      yield* manager.open(openInput());
+      const unsubscribe = yield* withWorkspaceLease(
+        process.cwd(),
+        manager.attachStream(openInput(), () => Effect.void),
+      );
+      unsubscribe();
     }),
   );
 

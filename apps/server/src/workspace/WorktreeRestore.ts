@@ -90,10 +90,12 @@ export const make = Effect.gen(function* () {
         threadId: input.threadId,
         projectId: input.projectId,
         worktreePath: input.worktreePath,
+        // The caller's lease; the setup terminal waiting on it would never open.
+        workspaceLeaseHeld: true,
         observeCompletion: {},
       })
       .pipe(Effect.mapError((error) => fail(error.message)));
-    if (setup.status === "no-script") return yield* clearMarker;
+    if (setup.status !== "started") return yield* clearMarker;
     const completion = setup.completion;
     if (completion === undefined) return yield* clearMarker;
     const settle = completion.pipe(
