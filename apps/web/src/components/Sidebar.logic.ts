@@ -9,7 +9,12 @@ import {
   isAtomCommandInterrupted,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import {
+  defaultAnimateLayoutChanges,
+  type AnimateLayoutChanges,
+  type useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   threadSearchMatchKey,
   threadSearchSubject,
@@ -176,6 +181,25 @@ export function useRetainedValue<T>(key: string | null, value: T | null): T | nu
 }
 
 // Sortable owns drag transforms; replaying committed order would animate drops twice.
+export type SidebarSortableBag = Pick<
+  ReturnType<typeof useSortable>,
+  "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
+>;
+
+export function sidebarSortableStyle(sortable: SidebarSortableBag) {
+  return {
+    transform: CSS.Translate.toString(sortable.transform),
+    transition: sortable.transition,
+    // The destination outline replaces the floating card. Keep the
+    // measured node mounted, but never obscure its neighbours.
+    opacity: sortable.isDragging ? 0 : undefined,
+    // A zero-height boundary also makes dnd-kit scale the source to
+    // zero. Only projected peers use scaleY as a visibility sentinel.
+    visibility:
+      !sortable.isDragging && sortable.transform?.scaleY === 0 ? ("hidden" as const) : undefined,
+  };
+}
+
 export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
   args.isSorting ? defaultAnimateLayoutChanges(args) : false;
 

@@ -9,7 +9,6 @@ import { useDeadlinePassed } from "~/hooks/useDeadline";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { useDraggable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   canSnooze,
   hasQueuedTurnStart,
@@ -83,6 +82,8 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import {
   animateSidebarLayoutChanges,
   hasUnseenCompletion,
+  sidebarSortableStyle,
+  type SidebarSortableBag,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
@@ -98,6 +99,7 @@ import {
   ThreadPullRequestBadgeControl,
   ThreadPullRequestsMiniList,
   ThreadWorktreeIndicator,
+  ThreadBranchIndicator,
   prStatusIndicator,
   resolveThreadPullRequestBadge,
   terminalStatusFromRunningIds,
@@ -120,6 +122,13 @@ import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger }
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
+import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
+import { Spinner } from "../ui/spinner";
+import {
+  SidebarSubagentDisclosure,
+  SidebarSubagentRows,
+  useSidebarSubagents,
+} from "./SidebarSubagentRows";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
 // status and auth on every provider; leaving those out keeps each
@@ -431,18 +440,45 @@ function SnoozeMenuButton(props: {
   );
 }
 
-type SortableThreadRowBag = Pick<
-  ReturnType<typeof useSortable>,
-  "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
->;
-
-export const draftSurfaceClassName = "bg-warning/4 hover:bg-warning/8";
-export const draftPenClassName = "size-3 shrink-0 text-warning-foreground";
+const draftSurfaceClassName = "bg-warning/4 hover:bg-warning/8";
+const draftPenClassName = "size-3 shrink-0 text-warning-foreground";
 
 // useSortable memoizes on its `disabled` object, so a fresh one per render
 // re-renders every row and marker on each sidebar update.
 export const SIDEBAR_SORTABLE_DRAG_DISABLED = { draggable: true } as const;
 const SIDEBAR_SORTABLE_DRAG_ENABLED = { draggable: false } as const;
+export const SIDEBAR_SORTABLE_TRANSITION = {
+  duration: 180,
+  easing: "cubic-bezier(0.2, 0, 0, 1)",
+} as const;
+
+/** The sortable bag for one sidebar row: a single thread or a tab session. */
+export function useSidebarSortableRow(input: {
+  id: string;
+  disabled: boolean;
+  contextDrag: boolean;
+  environmentId: SidebarThreadSummary["environmentId"];
+}): SidebarSortableBag {
+  const canOperateThread = useEnvironmentScope(input.environmentId, AuthOrchestrationOperateScope);
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: input.id,
+    disabled:
+      input.disabled || !canOperateThread
+        ? SIDEBAR_SORTABLE_DRAG_DISABLED
+        : SIDEBAR_SORTABLE_DRAG_ENABLED,
+    animateLayoutChanges: animateSidebarLayoutChanges,
+    transition: SIDEBAR_SORTABLE_TRANSITION,
+  });
+  // dnd-kit memoizes each field but not the bag, so the memoized row would
+  // rerender on every shell update without this.
+  return {
+    listeners,
+    setNodeRef,
+    transform: input.contextDrag ? null : transform,
+    transition: input.contextDrag && isDragging ? "transform 150ms ease-out" : transition,
+    isDragging: isDragging && !input.contextDrag,
+  };
+}
 
 // Takes the row's props rather than a render function: a closure from the
 // sidebar body is new on every sidebar render, which rebuilt the bag and
@@ -455,27 +491,12 @@ export function SortableThreadRow(
   },
 ) {
   const { sortableId, sortableDisabled, contextDrag, ...rowProps } = props;
-  const canOperateThread = useEnvironmentScope(
-    rowProps.thread.environmentId,
-    AuthOrchestrationOperateScope,
-  );
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const bag = useSidebarSortableRow({
     id: sortableId,
-    disabled:
-      sortableDisabled || !canOperateThread
-        ? SIDEBAR_SORTABLE_DRAG_DISABLED
-        : SIDEBAR_SORTABLE_DRAG_ENABLED,
-    animateLayoutChanges: animateSidebarLayoutChanges,
+    disabled: sortableDisabled,
+    contextDrag,
+    environmentId: rowProps.thread.environmentId,
   });
-  // dnd-kit memoizes each field but not the bag, so the memoized row would
-  // rerender on every shell update without this.
-  const bag = {
-    listeners,
-    setNodeRef,
-    transform: contextDrag ? null : transform,
-    transition: contextDrag && isDragging ? "transform 150ms ease-out" : transition,
-    isDragging: isDragging && !contextDrag,
-  };
   // The sidebar arranges rows from quiet shells, which hold still while a
   // thread streams; reading the live shell here re-renders only this row.
   const liveThread = useThreadShell(
@@ -552,7 +573,11 @@ type SidebarThreadRowProps = {
   snoozeSupported: boolean;
   pinningSupported: boolean;
   isPinned: boolean;
-  sortable?: SortableThreadRowBag | undefined;
+  sortable?: SidebarSortableBag | undefined;
+  // Destination previews reuse the row's appearance, not its selectable identity.
+  dragPreview?: boolean;
+  dimmed?: boolean;
+  showProjectIcon?: boolean;
   dropVerb: SidebarDropVerb | null;
   dragOverPinned: boolean;
   sweepAction: SidebarSweepAction | null;
@@ -564,9 +589,9 @@ type SidebarThreadRowProps = {
   // Unlike isActive, never true for the ancestor standing in for an open
   // subagent: drafts and PR clicks care about which composer is on screen.
   isRouteThread: boolean;
+  activeThreadKey: string | null;
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
-  currentEnvironmentId: string | null;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   scratchMachineLabel: string | null;
@@ -638,7 +663,7 @@ function ThreadRenameInput(props: {
   );
 }
 
-const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     isRenaming,
     onCancelRename,
@@ -665,6 +690,26 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
+  const subagents = useSidebarSubagents(threadRef);
+  const childSelected = subagents.all.some(
+    (child) =>
+      scopedThreadKey(scopeThreadRef(child.environmentId, child.id)) === props.activeThreadKey,
+  );
+  const disclosure = (
+    <SidebarSubagentDisclosure
+      count={subagents.threads.length}
+      expanded={subagents.expanded}
+      onToggle={() => subagents.setExpanded((expanded) => !expanded)}
+    />
+  );
+  const childRows = (
+    <SidebarSubagentRows
+      threads={subagents.threads}
+      expanded={subagents.expanded}
+      activeThreadKey={props.activeThreadKey}
+      onNavigate={onThreadClick}
+    />
+  );
   const { leaseLiveStatus, rowRef: leaseRowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const { revealRef } = props;
   const rowRef = (row: HTMLElement | null) => {
@@ -732,7 +777,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     status,
     isUnread,
     isWoke,
-    isActive: props.isActive,
+    isActive: props.isActive || childSelected,
     isSelected,
   });
   const topStatus =
@@ -805,6 +850,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     currentGitBranch: visibleGitStatus?.refName ?? null,
   });
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
+  // Once the agent is done, the branch glyph carries the PR state: green while
+  // a PR is open for review, purple once merged, untinted otherwise.
+  const branchPrState = pr
+    ? { state: pr.state, isDraft: pr.isDraft === true }
+    : currentLinkedPr?.snapshot
+      ? { state: currentLinkedPr.snapshot.state, isDraft: currentLinkedPr.snapshot.isDraft }
+      : null;
+  const branchToneClassName =
+    branchPrState && (branchPrState.state === "merged" || branchPrState.state === "open")
+      ? resolvePullRequestState({ ...branchPrState, isDraft: false }).toneClassName
+      : undefined;
 
   const modelInstanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
@@ -818,7 +874,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
     : thread.modelSelection.model;
 
-  const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
   const detailsTooltip = (
@@ -967,39 +1022,19 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     variantAction === "unsettle" &&
       !props.isActive &&
       "[&:not(:hover):not(:focus-within)_*]:text-secondary-label",
-    props.isActive
+    props.isActive || childSelected
       ? "bg-sidebar-row-active text-sidebar-foreground light:ring-1 light:ring-inset light:ring-sidebar-border/70"
       : isSelected || props.sweepAction !== null
         ? "bg-sidebar-row-selected text-sidebar-foreground light:ring-1 light:ring-inset light:ring-sidebar-border/70"
         : hasUnsentDraft
           ? cn(draftSurfaceClassName, "text-sidebar-foreground")
-          : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    shouldRecede &&
-      (status === "preparing" || status === "working") &&
-      "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
     isFileDragOver && "ring-1 ring-inset ring-primary/70",
     isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
-    props.sortable?.isDragging &&
-      "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
   );
   const sortable = props.sortable;
   const sortableRootProps = sortable
-    ? {
-        ref: sortable.setNodeRef,
-        style: {
-          transform: CSS.Translate.toString(sortable.transform),
-          transition: sortable.transition,
-          // A zero-height boundary also makes dnd-kit scale the source to
-          // zero. Only projected peers use scaleY as a visibility sentinel.
-          visibility:
-            !sortable.isDragging && sortable.transform?.scaleY === 0
-              ? ("hidden" as const)
-              : undefined,
-        },
-        ...sortable.listeners,
-      }
+    ? { ref: sortable.setNodeRef, style: sidebarSortableStyle(sortable), ...sortable.listeners }
     : {};
   const destinationVerb = sortable?.isDragging
     ? props.dropVerb
@@ -1023,45 +1058,32 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isActive: props.isActive,
   });
 
-  const title = isRenaming ? (
-    <ThreadRenameInput
-      title={renamingTitle}
-      onTitleChange={onRenameTitleChange}
-      onCommit={() => onCommitRename(threadRef, renamingTitle, thread.title)}
-      onCancel={onCancelRename}
-    />
-  ) : (
-    <span
-      aria-hidden
-      className={cn(
-        "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
-        variant !== "slim"
-          ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
-                : status === "failed" && !isUnread && !isWoke
-                  ? "text-foreground/95"
-                  : "text-foreground",
-            )
-          : cn(
-              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-              shouldRecede
-                ? "text-secondary-label"
-                : props.isActive || isWoke || status === "input" || status === "request"
-                  ? "text-foreground"
-                  : isUnread
-                    ? "text-muted-foreground"
-                    : "text-secondary-label/70",
-            ),
-        isRegeneratingTitle && "opacity-55",
-      )}
-      dir={textDirection(thread.title)}
-    >
-      {thread.title}
-    </span>
-  );
+  const title =
+    isRenaming && canOperateThread ? (
+      <ThreadRenameInput
+        title={renamingTitle}
+        onTitleChange={onRenameTitleChange}
+        onCommit={() => onCommitRename(threadRef, renamingTitle, thread.title)}
+        onCancel={onCancelRename}
+      />
+    ) : (
+      <span
+        aria-hidden
+        className={cn(
+          "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
+          isUnread && status !== "working" ? "font-bold" : "font-normal",
+          "truncate group-focus-within/sidebar-row:text-sidebar-foreground group-hover/sidebar-row:text-sidebar-foreground",
+          status === "ready" && shouldRecede
+            ? "text-sidebar-muted-foreground"
+            : "text-sidebar-foreground",
+          status === "working" && !props.sortable?.isDragging && "text-sidebar-foreground/85",
+          isRegeneratingTitle && "opacity-55",
+        )}
+        dir={textDirection(thread.title)}
+      >
+        {thread.title}
+      </span>
+    );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
   const prBadgeShape = supportsMultiplePullRequests
@@ -1213,16 +1235,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     const inFolder = variant === "folder" || multiline;
     return (
       <li
-        data-thread-item={threadKey}
+        data-thread-item={props.dragPreview ? undefined : threadKey}
         {...sortableRootProps}
         {...(fileDropHandlers ?? {})}
         className={cn(
-          "list-none [content-visibility:auto] [contain-intrinsic-size:auto_--spacing(9)]",
+          "list-none transition-opacity duration-150 motion-reduce:transition-none [content-visibility:auto] [contain-intrinsic-size:auto_--spacing(9)]",
           metaLine !== null && multiline && "[contain-intrinsic-size:auto_--spacing(13.5)]",
+          props.dimmed && !props.dragPreview && "opacity-30",
           sortable?.isDragging && "relative z-20",
         )}
       >
-        <Tooltip disabled={sortable?.isDragging}>
+        <Tooltip disabled={props.dragPreview || sortable?.isDragging}>
           <TooltipTrigger
             render={
               <div
@@ -1239,7 +1262,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   rowSurfaceClassName,
                   multiline
                     ? "flex flex-col justify-center px-2.5 py-1.5"
-                    : "flex h-9 items-center gap-2.5 px-2.5",
+                    : "flex h-9 items-center gap-2.5 pr-2.5 pl-7",
                   // Lines titles up with the folder name, past its chevron and icon.
                   inFolder && "ps-9",
                 )}
@@ -1253,30 +1276,33 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {/* `contents` keeps one-line rows a single flex row. */}
             <div className={multiline ? "flex h-6 min-w-0 items-center gap-2.5" : "contents"}>
               {accessibleTitle}
-              {/* The project header owns the favicon; rows identify the workspace. */}
-              {multiline ? null : (
+              {props.showProjectIcon && props.project ? (
                 <span
-                  className={cn(
-                    "flex shrink-0 items-center transition-opacity",
-                    (!props.isActive || variantAction === "unsettle") &&
-                      "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-                  )}
+                  aria-label={props.projectDisplayName ?? props.project.title}
+                  data-testid="pinned-project-icon"
                 >
-                  <ThreadWorktreeIndicator thread={thread} />
+                  <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
                 </span>
+              ) : null}
+              {/* Project headers own the favicon, except in Pins. The glyph doubles
+                as the run state: spinner while working, PR-tinted branch once done. */}
+              {status === "working" ? (
+                <Spinner
+                  aria-hidden
+                  aria-label="Working"
+                  size="xs"
+                  tone="accent"
+                  className="shrink-0"
+                />
+              ) : (
+                <ThreadBranchIndicator thread={thread} toneClassName={branchToneClassName} />
               )}
               {draftIndicator}
               {title}
+              {disclosure}
               {multiline ? titleLineIcons : null}
               {pinIndicator}
               {multiline ? null : terminalStatusIcon}
-              {!multiline && isRemote ? (
-                <EnvironmentMachineIcon
-                  aria-label={props.environmentLabel ?? "Remote environment"}
-                  kind={props.environmentMachine}
-                  className="size-3 shrink-0 text-muted-foreground"
-                />
-              ) : null}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
@@ -1379,14 +1405,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </TooltipTrigger>
                       <TooltipPopup side="top">Un-settle thread</TooltipPopup>
                     </Tooltip>
-                  ) : variantAction === "settle" && topStatus ? (
+                  ) : variantAction === "settle" &&
+                    topStatus &&
+                    topStatus.icon !== "working" &&
+                    topStatus.icon !== "done" ? (
+                    // Working and done read from the leading glyph and the
+                    // title weight, so the slot keeps the time.
                     <span
                       role="status"
                       className={cn("inline-flex items-center gap-1 text-xs", topStatus.className)}
                     >
-                      {topStatus.icon === "working" ? (
-                        <CircleDashedIcon aria-hidden className="size-3" />
-                      ) : null}
                       {topStatus.label}
                     </span>
                   ) : (
@@ -1419,13 +1447,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           </TooltipTrigger>
           {detailsTooltip}
         </Tooltip>
+        {childRows}
       </li>
     );
   }
 
   return (
     <li
-      data-thread-item={threadKey}
+      data-thread-item={props.dragPreview ? undefined : threadKey}
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
@@ -1434,7 +1463,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         sortable?.isDragging && "relative z-20",
       )}
     >
-      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
+      <Tooltip disabled={props.dragPreview || snoozeMenuOpen || sortable?.isDragging}>
         <TooltipTrigger
           render={
             <div
@@ -1609,6 +1638,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-1.5">
               {title}
+              {disclosure}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
@@ -1621,6 +1651,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
+      {childRows}
     </li>
   );
 });

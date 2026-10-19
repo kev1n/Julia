@@ -232,6 +232,33 @@ export function useThreadListActions(): {
   const snoozeMutation = useAtomCommand(threadEnvironment.snooze, { reportFailure: false });
   const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
+  const reorderPinnedMutation = useAtomCommand(threadEnvironment.reorderPin, {
+    reportFailure: false,
+  });
+  const reorderActiveMutation = useAtomCommand(threadEnvironment.reorderActive, {
+    reportFailure: false,
+  });
+  const pinTabs = async (thread: EnvironmentThreadShell, orderKey: string | undefined) => {
+    const results = await Promise.all(
+      withOtherTabs(thread, () => true).map((chat) =>
+        // Pinning a pinned thread keeps its key, so the strip's other pinned tabs move by
+        // reorder. The target itself is pinned outright: an undo may see its stale pin.
+        chat.id !== thread.id &&
+        chat.pinnedAt != null &&
+        orderKey !== undefined &&
+        chat.pinOrderKey !== orderKey
+          ? reorderPinnedMutation({
+              environmentId: chat.environmentId,
+              input: { threadId: chat.id, orderKey },
+            })
+          : pinMutation({
+              environmentId: chat.environmentId,
+              input: { threadId: chat.id, ...(orderKey !== undefined ? { orderKey } : {}) },
+            }),
+      ),
+    );
+    return results.find((result) => result._tag === "Failure") ?? results[0]!;
+  };
   const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -451,18 +478,22 @@ export function useThreadListActions(): {
       if (shell.pinnedAt == null || shell.pinOrderKey == null) continue;
       if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
     }
-    const orderKey = restoreOrderKey ?? pinOrderKeyBetween(null, firstKey) ?? undefined;
+    // Same placement as web: a fresh pin takes the top of the arranged
+    // run, and a strip keeps the slot a pinned tab already holds.
+    const orderKey =
+      restoreOrderKey ??
+      withOtherTabs(thread, (chat) => chat.pinnedAt != null).find(
+        (chat) => chat.pinnedAt != null && chat.pinOrderKey != null,
+      )?.pinOrderKey ??
+      pinOrderKeyBetween(null, firstKey) ??
+      undefined;
     ThreadUndo.invalidate("pin", scopedThreadKey(thread.environmentId, thread.id));
     // Pinning clears snooze, so older Settled or Snoozed undos would fight this pin.
     ThreadUndo.invalidate("settle", scopedThreadKey(thread.environmentId, thread.id));
     ThreadUndo.invalidate("snooze", scopedThreadKey(thread.environmentId, thread.id));
     const result = await withThreadDismissal(
       scopedThreadKey(thread.environmentId, thread.id),
-      () =>
-        pinMutation({
-          environmentId: thread.environmentId,
-          input: { threadId: thread.id, ...(orderKey !== undefined ? { orderKey } : {}) },
-        }),
+      () => pinTabs(thread, orderKey),
       (result) => result._tag === "Success",
     );
     if (result._tag === "Failure") {
@@ -491,11 +522,18 @@ export function useThreadListActions(): {
     const claim = ThreadUndo.begin("pin", scopedThreadKey(thread.environmentId, thread.id));
     const result = await withThreadDismissal(
       scopedThreadKey(thread.environmentId, thread.id),
-      () =>
-        unpinMutation({
-          environmentId: thread.environmentId,
-          input: { threadId: thread.id },
-        }),
+      async () => {
+        // A strip stays pinned while any tab is, so every pinned tab has to go.
+        const results = await Promise.all(
+          withOtherTabs(thread, (chat) => chat.pinnedAt != null).map((chat) =>
+            unpinMutation({
+              environmentId: chat.environmentId,
+              input: { threadId: chat.id },
+            }),
+          ),
+        );
+        return results.find((each) => each._tag === "Failure") ?? results[0]!;
+      },
       (result) => result._tag === "Success",
     );
     if (result._tag === "Failure") {
@@ -581,12 +619,6 @@ export function useThreadListActions(): {
   };
 
   // Plan against the complete section so filtering does not change a move.
-  const reorderPinnedMutation = useAtomCommand(threadEnvironment.reorderPin, {
-    reportFailure: false,
-  });
-  const reorderActiveMutation = useAtomCommand(threadEnvironment.reorderActive, {
-    reportFailure: false,
-  });
   const moveThread = async (
     thread: EnvironmentThreadShell,
     direction: ThreadMoveDestination,
@@ -696,10 +728,7 @@ export function useThreadListActions(): {
           ThreadUndo.invalidate("pin", scopedThreadKey(thread.environmentId, thread.id));
           ThreadUndo.invalidate("settle", scopedThreadKey(thread.environmentId, thread.id));
           ThreadUndo.invalidate("snooze", scopedThreadKey(thread.environmentId, thread.id));
-          const result = await pinMutation({
-            environmentId: thread.environmentId,
-            input: { threadId: thread.id, ...(orderKey === undefined ? {} : { orderKey }) },
-          });
+          const result = await pinTabs(thread, orderKey);
           if (result._tag === "Failure") {
             Dialog.alert("Could not pin thread", String(Cause.squash(result.cause)));
             return false;
@@ -723,10 +752,18 @@ export function useThreadListActions(): {
         if (target === undefined) continue;
         if (!checkThreadOperationPermission(target, "Could not move thread")) return false;
         ThreadUndo.invalidate("pin", scopedThreadKey(target.environmentId, target.id));
-        const result = await reorder({
-          environmentId: target.environmentId,
-          input: { threadId: target.id, orderKey: assignment.orderKey },
-        });
+        // A strip sorts as one row, so every tab takes the key. The server
+        // rejects tabs outside the order (a fresh failover tab in a pinned
+        // strip), so the move lands when any tab took it.
+        const results = await Promise.all(
+          withOtherTabs(target, () => true).map((chat) =>
+            reorder({
+              environmentId: chat.environmentId,
+              input: { threadId: chat.id, orderKey: assignment.orderKey },
+            }),
+          ),
+        );
+        const result = results.find((each) => each._tag === "Success") ?? results[0]!;
         if (result._tag === "Failure") {
           const error = Cause.squash(result.cause);
           Dialog.alert(

@@ -157,6 +157,18 @@ function firstFailure<R extends { readonly _tag: string }>(results: readonly R[]
   return results.find((result) => result._tag !== "Success") ?? results[0]!;
 }
 
+/** A strip sorts as one row, so a move writes the same key to every tab. The
+    server rejects tabs outside the order (a fresh failover tab is unpinned in
+    a pinned strip), and local shells may still predate a move that just
+    landed, so the move succeeds when any tab took the key. */
+async function moveTabs<R extends { readonly _tag: string }>(
+  target: ScopedThreadRef,
+  move: (ref: ScopedThreadRef) => Promise<R>,
+): Promise<R> {
+  const results = await Promise.all(readTabRefs(target, () => true).map(move));
+  return results.find((result) => result._tag === "Success") ?? results[0]!;
+}
+
 export class ThreadPinningUnsupportedError extends Schema.TaggedError<ThreadPinningUnsupportedError>()(
   "ThreadPinningUnsupportedError",
   {
@@ -742,18 +754,15 @@ export function useThreadActions() {
     );
   };
 
-  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
-    if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
-      return AsyncResult.failure(
-        Cause.fail(
-          new ThreadPinningUnsupportedError({
-            environmentId: target.environmentId,
-            threadId: target.threadId,
-          }),
-        ),
-      );
-    }
-    const orderKey = opts.orderKey ?? topOfPinnedRunOrderKey();
+  const reorderPinnedChat = (target: ScopedThreadRef, orderKey: string) => {
+    ThreadUndo.invalidate("pin", scopedThreadKey(target));
+    return reorderPinnedThreadMutation({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, orderKey },
+    });
+  };
+
+  const pinChat = (target: ScopedThreadRef, orderKey: string | undefined) => {
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
     // Pinning clears snooze, so older Settled or Snoozed undos would fight this pin.
     ThreadUndo.invalidate("settle", scopedThreadKey(target));
@@ -767,6 +776,43 @@ export function useThreadActions() {
     });
   };
 
+  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+    if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
+      return AsyncResult.failure(
+        Cause.fail(
+          new ThreadPinningUnsupportedError({
+            environmentId: target.environmentId,
+            threadId: target.threadId,
+          }),
+        ),
+      );
+    }
+    const tabs = readTabRefs(target, () => true).map((ref) => ({
+      ref,
+      thread: readThreadShell(ref),
+    }));
+    // Without an explicit slot the strip keeps the one a pinned tab already holds.
+    const orderKey =
+      opts.orderKey ??
+      tabs.find(({ thread }) => thread?.pinnedAt != null && thread.pinOrderKey != null)?.thread
+        ?.pinOrderKey ??
+      topOfPinnedRunOrderKey();
+    return firstFailure(
+      await Promise.all(
+        tabs.map(({ ref, thread }) =>
+          // Pinning a pinned thread keeps its key, so the strip's other pinned tabs move by
+          // reorder. The target itself is pinned outright: an undo may see its stale pin.
+          ref !== target &&
+          thread?.pinnedAt != null &&
+          orderKey !== undefined &&
+          thread.pinOrderKey !== orderKey
+            ? reorderPinnedChat(ref, orderKey)
+            : pinChat(ref, orderKey),
+        ),
+      ),
+    );
+  };
+
   const unpinThread = async (target: ScopedThreadRef) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
@@ -778,18 +824,45 @@ export function useThreadActions() {
         ),
       );
     }
-    const thread = readThreadShell(target);
-    const undoPlan = ThreadUndo.planThreadUndo("unpin", thread);
-    const action = ThreadUndo.begin("pin", scopedThreadKey(target));
-    const result = await unpinThreadMutation({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId },
-    });
-    if (result._tag === "Success" && action.isCurrent()) {
+    // A strip stays pinned while any tab is, so every pinned tab has to go.
+    const before = readTabRefs(target, (chat) => chat.pinnedAt != null).map((ref) => ({
+      ref,
+      plan: ThreadUndo.planThreadUndo("unpin", readThreadShell(ref)),
+    }));
+    const action = claimTabs(
+      "pin",
+      before.map(({ ref }) => ref),
+    );
+    const results = await Promise.all(
+      before.map(({ ref }) =>
+        unpinThreadMutation({
+          environmentId: ref.environmentId,
+          input: { threadId: ref.threadId },
+        }),
+      ),
+    );
+    const result = firstFailure(results);
+    const unpinned = before.filter((_, index) => results[index]!._tag === "Success");
+    if (unpinned.length > 0 && action.isCurrent()) {
       showThreadUndoNotice({
         action: "Unpinned",
         claim: action,
-        undo: () => runUndoPlan(target, undoPlan),
+        // One Undo pins every tab it unpinned back into its own slot.
+        undo: async () =>
+          firstFailure(
+            await Promise.all(
+              unpinned.map(({ ref, plan }) =>
+                ThreadUndo.executeThreadUndo(
+                  plan,
+                  (step) =>
+                    step.action === "pin"
+                      ? pinChat(ref, pinOrderKeyFor(ref, step.orderKey))
+                      : runUndoPlan(ref, [step], true),
+                  (restored) => restored._tag === "Success",
+                ),
+              ),
+            ),
+          ),
         failureTitle: "Failed to undo unpin",
       });
     } else {
@@ -888,11 +961,7 @@ export function useThreadActions() {
         ),
       );
     }
-    ThreadUndo.invalidate("pin", scopedThreadKey(target));
-    return reorderPinnedThreadMutation({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, orderKey },
-    });
+    return moveTabs(target, (ref) => reorderPinnedChat(ref, orderKey));
   };
 
   const reorderActiveThread = async (target: ScopedThreadRef, orderKey: string) => {
@@ -906,10 +975,12 @@ export function useThreadActions() {
         ),
       );
     }
-    return reorderActiveThreadMutation({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, orderKey },
-    });
+    return moveTabs(target, (ref) =>
+      reorderActiveThreadMutation({
+        environmentId: ref.environmentId,
+        input: { threadId: ref.threadId, orderKey },
+      }),
+    );
   };
 
   const unsnoozeChat = (target: ScopedThreadRef) => {
