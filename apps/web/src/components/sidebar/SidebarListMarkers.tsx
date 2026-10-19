@@ -8,20 +8,23 @@ import {
   sidebarMarkerId,
   type SidebarListMarker,
 } from "../Sidebar.logic";
-import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
+import { SIDEBAR_SORTABLE_DRAG_DISABLED, SIDEBAR_SORTABLE_TRANSITION } from "./SidebarThreadRow";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 
-function SortableSidebarMarker(props: {
+export function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
+  projectKey?: string | undefined;
   className?: string;
   children?: ReactNode;
   revealOverflow?: boolean;
   "data-testid"?: string;
+  dimmed?: boolean;
 }) {
   const { node, setNodeRef, transform, transition } = useSortable({
-    id: sidebarMarkerId(props.marker),
+    id: sidebarMarkerId(props.marker, props.projectKey),
     disabled: SIDEBAR_SORTABLE_DRAG_DISABLED,
     animateLayoutChanges: animateSidebarLayoutChanges,
+    transition: SIDEBAR_SORTABLE_TRANSITION,
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the projected drop box inside the scroll viewport as drag transforms move it
   useLayoutEffect(() => {
@@ -34,7 +37,11 @@ function SortableSidebarMarker(props: {
       ref={setNodeRef}
       data-thread-selection-safe
       data-testid={props["data-testid"]}
-      className={cn("list-none", props.className)}
+      className={cn(
+        "list-none transition-opacity duration-150 motion-reduce:transition-none",
+        props.dimmed && "opacity-30",
+        props.className,
+      )}
       style={{
         transform: CSS.Translate.toString(transform),
         transition: props.marker.endsWith("-placeholder") ? "none" : transition,
@@ -56,52 +63,17 @@ export function SidebarSectionPlaceholder(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="relative mx-0.5 -mb-px h-0"
+      className={cn("relative mx-0.5 -mb-px", props.showHint ? "h-9" : "h-0")}
       revealOverflow={props.marker === "settled-placeholder" && props.showHint}
     >
       {props.showHint ? (
         <div
           className={cn(
-            "absolute inset-x-0 top-0 flex h-9 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/25 text-xs text-sidebar-foreground/80",
-            props.isDropTarget && "border-primary/40 bg-primary/5 text-primary",
+            "absolute inset-x-0 top-0 flex h-9 items-center justify-center rounded-md text-xs text-sidebar-foreground/80",
+            props.isDropTarget && "text-primary",
           )}
         >
           {props.label}
-        </div>
-      ) : null}
-    </SortableSidebarMarker>
-  );
-}
-
-export function SidebarDragBoundary(props: {
-  marker: "pinned-header" | "pinned-divider";
-  label: string;
-  visible: boolean;
-  isDropTarget: boolean;
-}) {
-  return (
-    <SortableSidebarMarker
-      marker={props.marker}
-      data-testid={`sidebar-${props.marker}`}
-      className="pointer-events-none relative mx-0.5 -mb-px h-0"
-    >
-      {props.visible ? (
-        <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
-          <span
-            className={cn(
-              "shrink-0 text-xs font-medium",
-              props.isDropTarget ? "text-primary" : "text-sidebar-foreground/80",
-            )}
-          >
-            {props.label}
-          </span>
-          <span
-            aria-hidden
-            className={cn(
-              "h-px flex-1",
-              props.isDropTarget ? "bg-primary/50" : "bg-sidebar-foreground/25",
-            )}
-          />
         </div>
       ) : null}
     </SortableSidebarMarker>
@@ -115,6 +87,7 @@ export function SidebarSectionHeader(props: {
   count: number;
   className?: string;
   dragging?: boolean;
+  dimmed?: boolean;
   isDropTarget?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
   /** The first shelf at the bottom of the list hosts the undo notice just above itself. */
@@ -129,6 +102,7 @@ export function SidebarSectionHeader(props: {
   return (
     <SortableSidebarMarker
       marker={props.marker}
+      dimmed={props.dimmed ?? false}
       data-testid={`sidebar-${props.marker}`}
       className={cn("relative mx-0.5 h-8", props.className)}
     >
