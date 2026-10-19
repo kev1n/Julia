@@ -52,6 +52,10 @@ const tempFile = () =>
 
 export interface PackRequest {
   readonly worktreePath: string;
+  /**
+   * The branch the target last saw for the thread. An agent may have switched
+   * the worktree to another branch since; the worktree's own branch is packed.
+   */
   readonly branch: string;
   readonly commitMessage: string;
   /** Commits the target already has; those this repository knows are left out of the bundle. */
@@ -59,13 +63,15 @@ export interface PackRequest {
 }
 
 /**
- * Source side. Refuses anything but a linked worktree on `branch`, so a shared
+ * Source side. Refuses anything but a linked worktree on a branch, so a shared
  * branch checked out in a project checkout is never committed to.
- * Returns the branch tip and the bundle, or null when the target already has the tip.
+ * Returns the branch it packed, its tip, and the bundle, or null when the target already has the tip.
  */
-export async function packBranch(
-  request: PackRequest,
-): Promise<{ readonly head: string; readonly bundle: Uint8Array | null }> {
+export async function packBranch(request: PackRequest): Promise<{
+  readonly branch: string;
+  readonly head: string;
+  readonly bundle: Uint8Array | null;
+}> {
   const cwd = request.worktreePath;
   const [gitDir, commonDir] = (
     await git(cwd, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])
@@ -75,10 +81,10 @@ export async function packBranch(
       message: `${cwd} is a project checkout, not a thread's own worktree.`,
     });
   }
-  const current = await git(cwd, ["symbolic-ref", "--short", "HEAD"]);
-  if (current !== request.branch) {
-    throw new MoveFailure({ message: `${cwd} is on ${current}, not ${request.branch}.` });
-  }
+  const symbolic = await run(cwd, ["symbolic-ref", "--short", "HEAD"]);
+  if (symbolic.code !== 0)
+    throw new MoveFailure({ message: `${cwd} is not on a branch (detached HEAD).` });
+  const branch = symbolic.stdout.trim();
   await git(cwd, ["add", "-A"]);
   if ((await run(cwd, ["diff", "--cached", "--quiet"])).code !== 0) {
     // A move must not be blocked by the project's commit hooks.
@@ -95,15 +101,15 @@ export async function packBranch(
       "bundle",
       "create",
       file,
-      `refs/heads/${request.branch}`,
+      `refs/heads/${branch}`,
       ...(known.length > 0 ? ["--not", ...known] : []),
     ]);
     if (created.code !== 0) {
       // Everything on the branch is already in the target's history.
-      if (created.stderr.includes("empty bundle")) return { head, bundle: null };
+      if (created.stderr.includes("empty bundle")) return { branch, head, bundle: null };
       throw new MoveFailure({ message: `git bundle failed in ${cwd}: ${created.stderr.trim()}` });
     }
-    return { head, bundle: new Uint8Array(await NodeFS.promises.readFile(file)) };
+    return { branch, head, bundle: new Uint8Array(await NodeFS.promises.readFile(file)) };
   } finally {
     await NodeFS.promises.rm(file, { force: true });
   }
@@ -148,7 +154,9 @@ export async function receiveMove(input: ForkMoveReceiveInput): Promise<ForkMove
   const head = response.headers.get("x-fork-move-head") ?? "";
   if (!/^[0-9a-f]{40,64}$/.test(head))
     throw new MoveFailure({ message: `${source.label}: no branch tip.` });
-  return takeBundle(root, input.branch, {
+  // Sources from before the header always packed `input.branch`.
+  const branch = response.headers.get("x-fork-move-branch") ?? input.branch;
+  return takeBundle(root, branch, {
     head,
     bundle: response.status === 200 ? new Uint8Array(await response.arrayBuffer()) : null,
   });
