@@ -135,11 +135,9 @@ $autofix_note
 The agent's branch then failed the sync's own rerun: $problem
 The agent's work is kept in $autofix/worktree."
   git worktree remove --force "$autofix/worktree" && git branch -q -D "autofix/$(basename "$autofix")"
-  # The chat's folder is gone, so settle it rather than leave a thread whose
-  # next message fails. Best effort: the release does not depend on it.
-  node fork/scripts/autofix-thread.mjs settle \
-    "$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["threadId"])' "$autofix/thread.json")" ||
-    echo "!! Could not settle the auto-fix chat."
+  # The chat's folder is gone, so settle it (and any older one) rather than
+  # leave a thread whose next message fails. Best effort: the release does not depend on it.
+  node fork/scripts/autofix-thread.mjs settle || echo "!! Could not settle the auto-fix chats."
   echo "Auto-fix accepted: $(git rev-parse --short HEAD) passed the same checks and build."
 fi
 
@@ -189,4 +187,6 @@ open_issue=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync fa
 [ -n "$open_issue" ] && gh issue close "$open_issue" -R "$fork_repo" --comment "Fixed: $tag published." >/dev/null
 # Keep the output of this build and the one before it on disk.
 ls -1dt "$state/out"/*/ 2>/dev/null | grep -v '/mobile/$' | tail -n +3 | xargs rm -rf
+# The fork is current, so no earlier auto-fix chat needs Owner any more.
+node fork/scripts/autofix-thread.mjs settle || echo "!! Could not settle the auto-fix chats."
 echo "Published $tag"
