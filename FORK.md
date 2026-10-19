@@ -645,7 +645,9 @@ cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint
 did not grow. It then runs the very same rebase check, checks and builds itself on that branch;
 only if they pass does the normal push and release happen, and the release notes carry the
 chat link and the agent's report (what conflicted, how it was resolved) for audit. The chat's
-worktree is removed then; the chat itself stays in T3 Code.
+worktree is removed then. Each auto-fix chat is settled once a newer one starts or a sync
+publishes, so the active list shows at most the latest failed sync's chat; the rest stay under
+Settled. Chats Owner pinned or reopened are left alone.
 
 **Where a failure shows up:** if the agent cannot get everything green, times out ("timed
 out after 1 hour"), or its branch fails the guards or the rerun, nothing is released, so nothing deploys, and the job opens (or
