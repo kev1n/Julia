@@ -5,8 +5,6 @@ import {
 } from "./SidebarSubagentRows";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { useState } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { T, useGT, Var } from "gt-react";
 import { AlarmClockOffIcon, CheckIcon, PinIcon, Undo2Icon } from "lucide-react";
 import {
@@ -18,11 +16,12 @@ import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environ
 import { cn } from "../../lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import {
-  animateSidebarLayoutChanges,
   resolveSidebarThreadStatus,
   hasUnseenCompletion,
   resolveThreadLastVisitedAt,
+  sidebarSortableStyle,
   useSidebarRowSubscriptionLease,
+  type SidebarSortableBag,
 } from "../Sidebar.logic";
 import { ThreadBranchIndicator, useLinkedThreadPullRequest } from "../ThreadStatusIndicators";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
@@ -33,11 +32,12 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { useEnvironmentScope } from "../../state/session";
+import { useSidebarSortableRow } from "./SidebarThreadRow";
 
-/** One sidebar row for a workspace's chat tabs. Settle and snooze move every
- * tab (see useThreadActions); rename and delete still target the selected chat. */
-export function SidebarTabSessionRow(props: {
+type SidebarTabSessionRowProps = {
   session: WorkspaceChatSession;
+  sortable?: SidebarSortableBag | undefined;
+  dragPreview?: boolean;
   dimmed?: boolean;
   projectIcon?: ProjectFaviconProject | null;
   isActive: boolean;
@@ -53,7 +53,29 @@ export function SidebarTabSessionRow(props: {
     kind: "settle" | "unsettle" | "unsnooze";
     onSelect: (thread: ScopedThreadRef) => void;
   } | null;
-}) {
+};
+
+export function SortableTabSessionRow(
+  props: Omit<SidebarTabSessionRowProps, "sortable"> & {
+    sortableId: string;
+    sortableDisabled: boolean;
+    contextDrag: boolean;
+  },
+) {
+  const { sortableId, sortableDisabled, contextDrag, ...rowProps } = props;
+  const bag = useSidebarSortableRow({
+    id: sortableId,
+    disabled: sortableDisabled,
+    contextDrag,
+    environmentId: rowProps.session.thread.environmentId,
+  });
+  return <SidebarTabSessionRow {...rowProps} sortable={bag} />;
+}
+
+/** One sidebar row for a workspace's chat tabs. Settle, snooze, pin and
+ * reorder move every tab (see useThreadActions); rename and delete still
+ * target the selected chat. */
+export function SidebarTabSessionRow(props: SidebarTabSessionRowProps) {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
   const subagents = useSidebarSubagents(threadRef);
@@ -74,16 +96,9 @@ export function SidebarTabSessionRow(props: {
         ? gt("Un-settle thread")
         : gt("Settle thread");
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
-  // Sessions are not draggable as a unit, but must participate in the layout
-  // preview so single-chat drags move their rows and headers together.
-  const { setNodeRef, transform, transition } = useSortable({
-    id: scopedThreadKey(threadRef),
-    disabled: { draggable: true },
-    animateLayoutChanges: animateSidebarLayoutChanges,
-    transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-  });
+  const sortable = props.sortable;
   const attachRow = (node: HTMLLIElement | null) => {
-    setNodeRef(node);
+    sortable?.setNodeRef(node);
     rowRef(node);
   };
   const pr = useLinkedThreadPullRequest(
@@ -127,12 +142,13 @@ export function SidebarTabSessionRow(props: {
   return (
     <li
       ref={attachRow}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      data-thread-item={scopedThreadKey(threadRef)}
-      data-tab-session={session.key}
+      {...(sortable ? { style: sidebarSortableStyle(sortable), ...sortable.listeners } : {})}
+      data-thread-item={props.dragPreview ? undefined : scopedThreadKey(threadRef)}
+      data-tab-session={props.dragPreview ? undefined : session.key}
       className={cn(
         "list-none transition-opacity duration-150 motion-reduce:transition-none",
-        props.dimmed && "opacity-30",
+        props.dimmed && !props.dragPreview && "opacity-30",
+        sortable?.isDragging && "relative z-20",
       )}
     >
       <div
@@ -141,7 +157,7 @@ export function SidebarTabSessionRow(props: {
           props.isActive || childSelected ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
         )}
       >
-        <Tooltip>
+        <Tooltip disabled={props.dragPreview || sortable?.isDragging}>
           <TooltipTrigger
             render={
               <button

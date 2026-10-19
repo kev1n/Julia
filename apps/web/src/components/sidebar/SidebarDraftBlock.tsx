@@ -27,12 +27,7 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../../composerDraftStore";
-import {
-  draftPenClassName,
-  draftSurfaceClassName,
-  JUMP_HINT_SLOT_CLASS_NAME,
-  JumpHintBadge,
-} from "./SidebarThreadRow";
+import { JumpHintBadge } from "./SidebarThreadRow";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 const EMPTY_COMPOSER_PARTS = {
@@ -59,13 +54,15 @@ export function useDraftTerminalLabels(): ReadonlyMap<string, string> {
   );
 }
 
-export function draftTerminalLabel(
+function draftTerminalLabel(
   session: DraftSessionState,
   terminalLabels: ReadonlyMap<string, string>,
 ): string | null {
   return terminalLabels.get(`${session.environmentId}:${session.threadId}`) ?? null;
 }
 
+// Unsent sessions use the same compact geometry as threads. Navigation
+// preserves the composer and its settings; the active title stays frozen.
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
   composer: ComposerThreadDraftState | null;
@@ -112,11 +109,11 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   const preview =
     promptPreview.length > 0
       ? promptPreview
-      : attachmentCount === 0 && props.terminalLabel !== null
-        ? props.terminalLabel
-        : gt("{count, plural, one {{count} attachment} other {{count} attachments}}", {
+      : attachmentCount > 0
+        ? gt("{count, plural, one {{count} attachment} other {{count} attachments}}", {
             count: attachmentCount,
-          });
+          })
+        : (props.terminalLabel ?? gt("New thread"));
   const accessibility = resolveSidebarRowAccessibility({
     title: preview,
     statusLabel: gt("Unsent draft"),
@@ -158,34 +155,36 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         data-testid="sidebar-draft-row"
         className={cn(
           "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
+          props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
         )}
         onClick={handleActivate}
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
       >
-        <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
-          <div className="flex h-5 min-w-0 items-center gap-1.5">
-            <SquarePenIcon aria-hidden className={draftPenClassName} />
-            {props.project ? (
-              <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-            ) : null}
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectDisplayName}
-            </span>
-            <span
-              className={cn(
-                "ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end",
-                props.jumpLabel && JUMP_HINT_SLOT_CLASS_NAME,
-              )}
-            >
-              <SharedTooltipTrigger
+        <div className="flex h-9 items-center gap-2.5 pr-2.5 pl-7">
+          <SquarePenIcon aria-hidden className="size-3 shrink-0 text-icon-muted" />
+          {props.project ? (
+            <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+          ) : null}
+          <span className="min-w-0 flex-1 truncate text-sm">{preview}</span>
+          <span className="relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end">
+            {props.jumpLabel ? (
+              <JumpHintBadge label={props.jumpLabel} />
+            ) : (
+              <span
+                aria-hidden
+                className="text-xs text-secondary-label group-hover/sidebar-row:opacity-0 group-focus-within/sidebar-row:opacity-0"
+              >
+                <T>Draft</T>
+              </span>
+            )}
+            <SharedTooltipTrigger
                 render={
                   <button
                     type="button"
                     aria-label={gt("Discard draft")}
                     onClick={handleDiscard}
-                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                    className="pointer-events-none absolute inset-0 inline-flex cursor-pointer items-center justify-end rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
                   >
                     <XIcon className="size-3" />
                   </button>
@@ -196,10 +195,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                   </>
                 }
               />
-              {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-            </span>
-          </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
+          </span>
         </div>
       </div>
     </li>
@@ -217,8 +213,8 @@ function listedDraftComposer(draftId: string | null): ComposerThreadDraftState |
 }
 
 /**
- * Unsent drafts listed above the threads, newest first. The open draft keeps the
- * row it had on arrival (frozen content), so its row and jump number stay put.
+ * Unsent drafts, newest first. The open draft is always listed and keeps the
+ * row it had on arrival (frozen content, or "New thread"), so it stays put.
  */
 export function useSidebarDrafts(
   scopedProjectKeys: ReadonlySet<string> | null,
@@ -247,10 +243,9 @@ export function useSidebarDrafts(
         }
         // Composer edits stay frozen while open; terminals come and go live.
         const isListed =
+          draftKey === routeDraftId ||
           draftTerminalLabel(session, terminalLabels) !== null ||
-          (draftKey === routeDraftId
-            ? routeDraftComposer !== null
-            : composerDraftHasUserContent(store.draftsByThreadKey[draftKey]));
+          composerDraftHasUserContent(store.draftsByThreadKey[draftKey]);
         if (isListed) listed.push([draftKey, session]);
       }
       listed.sort(([, left], [, right]) => right.createdAt.localeCompare(left.createdAt));
@@ -260,8 +255,13 @@ export function useSidebarDrafts(
   return { draftIds, routeDraftComposer };
 }
 
+// Each project owns its drafts: a block lists the drafts of its project keys,
+// and only the open one while its project is collapsed.
 export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   draftIds: readonly DraftId[];
+  scopedProjectKeys?: ReadonlySet<string> | null;
+  excludedProjectKeys?: ReadonlySet<string>;
+  expanded?: boolean;
   routeDraftComposer: ComposerThreadDraftState | null;
   terminalLabels: ReadonlyMap<string, string>;
   jumpLabelByDraftId: ReadonlyMap<DraftId, string> | null;
@@ -285,11 +285,18 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   );
   const drafts = props.draftIds.flatMap((draftId) => {
     const session = draftThreadsByThreadKey[draftId];
+    if (!session) return [];
+    const projectKey = `${session.environmentId}:${session.projectId}`;
+    if (
+      (props.scopedProjectKeys != null && !props.scopedProjectKeys.has(projectKey)) ||
+      props.excludedProjectKeys?.has(projectKey) ||
+      (props.expanded === false && draftId !== props.routeDraftId)
+    ) {
+      return [];
+    }
     const composer =
-      (draftId === props.routeDraftId ? props.routeDraftComposer : null) ??
-      draftsByThreadKey[draftId] ??
-      null;
-    return session ? [{ draftId, session, composer }] : [];
+      draftId === props.routeDraftId ? props.routeDraftComposer : (draftsByThreadKey[draftId] ?? null);
+    return [{ draftId, session, composer }];
   });
   if (drafts.length === 0) {
     return null;
@@ -314,11 +321,6 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
           />
         );
       })}
-      <li
-        aria-hidden
-        data-testid="sidebar-draft-divider"
-        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-      />
     </>
   );
 });

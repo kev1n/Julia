@@ -19,6 +19,7 @@ const commands = vi.hoisted(() => ({
   snooze: vi.fn(),
   unsnooze: vi.fn(),
   reorderActive: vi.fn(),
+  reorderPin: vi.fn(),
 }));
 const router = vi.hoisted(() => {
   const listeners = new Set<(event: { action: { type: string } }) => void>();
@@ -103,6 +104,8 @@ vi.mock("../state/use-atom-command", () => ({
         return commands.unsnooze;
       case threadEnvironment.reorderActive:
         return commands.reorderActive;
+      case threadEnvironment.reorderPin:
+        return commands.reorderPin;
       default:
         return vi.fn();
     }
@@ -494,6 +497,13 @@ describe("tabbed threads", () => {
   });
   const settleCalls = () =>
     commands.settle.mock.calls.map(([call]) => (call as { input: { threadId: string } }).input);
+  const inputs = (command: (typeof commands)["pin"]) =>
+    command.mock.calls.map(([call]) => (call as { input: unknown }).input);
+  const pinned = (id: string, pinOrderKey: string) => ({
+    ...tab(id),
+    pinnedAt: "2026-10-08T11:00:00.000Z",
+    pinOrderKey,
+  });
 
   it("settles every open tab in one action and restores them with one Undo", async () => {
     tabs.push(tab("thread"), tab("second"), tab("already settled", "settled"));
@@ -505,8 +515,8 @@ describe("tabbed threads", () => {
     expect(
       commands.unsettle.mock.calls.map(([call]) => (call as { input: unknown }).input),
     ).toEqual([
-      { threadId: "thread", reason: "user" },
-      { threadId: "second", reason: "user" },
+      { threadId: "thread", reason: "user", restoreUnsettledAt: null },
+      { threadId: "second", reason: "user", restoreUnsettledAt: null },
     ]);
   });
 
@@ -514,5 +524,49 @@ describe("tabbed threads", () => {
     tabs.push(tab("thread", "settled"), tab("second", "settled"));
     await useThreadActions().unsettleThread(target);
     expect(commands.unsettle).toHaveBeenCalledTimes(2);
+  });
+
+  it("pins every tab into the dropped slot", async () => {
+    tabs.push(tab("thread"), pinned("second", "a5"));
+    await useThreadActions().pinThread(target, { orderKey: "m" });
+    expect(inputs(commands.pin)).toEqual([{ threadId: "thread", orderKey: "m" }]);
+    // Pinning a pinned tab keeps its key, so it moves by reorder instead.
+    expect(inputs(commands.reorderPin)).toEqual([{ threadId: "second", orderKey: "m" }]);
+  });
+
+  it("pins a new tab into the slot its strip already holds", async () => {
+    tabs.push(tab("thread"), pinned("second", "a5"));
+    await useThreadActions().pinThread(target);
+    expect(inputs(commands.pin)).toEqual([
+      { threadId: "thread", orderKey: "a5" },
+      { threadId: "second", orderKey: "a5" },
+    ]);
+    expect(commands.reorderPin).not.toHaveBeenCalled();
+  });
+
+  it("unpins every pinned tab and re-pins them with one Undo", async () => {
+    tabs.push(pinned("thread", "a1"), pinned("second", "a2"), tab("unpinned"));
+    await useThreadActions().unpinThread(target);
+    expect(inputs(commands.unpin)).toEqual([{ threadId: "thread" }, { threadId: "second" }]);
+    await currentUndo()();
+    expect(inputs(commands.pin)).toEqual([
+      { threadId: "thread", orderKey: "a1" },
+      { threadId: "second", orderKey: "a2" },
+    ]);
+  });
+
+  it("reorders a pinned strip from its unpinned failover tab", async () => {
+    tabs.push(tab("thread"), pinned("second", "a5"));
+    commands.reorderPin.mockImplementation(async ({ input }: { input: { threadId: string } }) =>
+      input.threadId === "second"
+        ? { _tag: "Success", value: undefined }
+        : { _tag: "Failure", cause: new Error("not pinned") },
+    );
+    const result = await useThreadActions().reorderPinnedThread(target, "b");
+    expect(result._tag).toBe("Success");
+    expect(inputs(commands.reorderPin)).toEqual([
+      { threadId: "thread", orderKey: "b" },
+      { threadId: "second", orderKey: "b" },
+    ]);
   });
 });

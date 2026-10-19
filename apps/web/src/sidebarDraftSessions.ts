@@ -9,7 +9,10 @@ type DraftSource = {
   readonly draftsByThreadKey: Readonly<Record<string, ComposerThreadDraftState>>;
 };
 
-/** Includes invested, unmapped sessions and the open empty session, never promoted ones. */
+/**
+ * Includes invested, unmapped sessions, sessions with a terminal and the open
+ * empty session, never promoted ones.
+ */
 export function selectSidebarDraftSessionKeys(
   source: DraftSource,
   input: {
@@ -17,6 +20,8 @@ export function selectSidebarDraftSessionKeys(
     readonly scopedProjectKeys: ReadonlySet<string> | null;
     readonly excludedProjectKeys?: ReadonlySet<string> | undefined;
     readonly expanded?: boolean | undefined;
+    // Keyed `${environmentId}:${threadId}`, as useDraftTerminalLabels returns them.
+    readonly terminalLabels?: ReadonlyMap<string, string> | undefined;
   },
 ) {
   return Object.entries(source.draftThreadsByThreadKey)
@@ -27,7 +32,11 @@ export function selectSidebarDraftSessionKeys(
         return false;
       if (input.excludedProjectKeys?.has(projectKey)) return false;
       if (key === input.routeDraftId) return true;
-      return input.expanded !== false && composerDraftHasUserContent(source.draftsByThreadKey[key]);
+      return (
+        input.expanded !== false &&
+        (input.terminalLabels?.has(`${session.environmentId}:${session.threadId}`) === true ||
+          composerDraftHasUserContent(source.draftsByThreadKey[key]))
+      );
     })
     .sort(([, left], [, right]) => right.createdAt.localeCompare(left.createdAt))
     .map(([key]) => key);
@@ -39,6 +48,7 @@ export function countSidebarDraftSessions(
   input: {
     readonly routeDraftId: string | null;
     readonly scopedProjectKeys: ReadonlySet<string> | null;
+    readonly terminalLabels?: ReadonlyMap<string, string> | undefined;
   },
 ) {
   const counts = new Map<string, number>();

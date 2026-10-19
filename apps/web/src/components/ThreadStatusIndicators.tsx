@@ -61,7 +61,6 @@ import {
 
 import type { SidebarThreadSummary } from "../types";
 import { SharedTooltipTrigger } from "./ui/shared-tooltip";
-import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   PULL_REQUEST_STATE_PRESENTATION,
@@ -882,49 +881,6 @@ export function ThreadBranchIndicator({
         />
       </TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-export function ThreadWorktreeIndicator({
-  thread,
-  active = false,
-}: {
-  thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
-  active?: boolean;
-}) {
-  const gt = useGT();
-  const worktreePath = thread.worktreePath?.trim();
-  if (!worktreePath) {
-    return null;
-  }
-
-  const displayPath = formatWorktreePathForDisplay(worktreePath);
-  const tooltip = thread.branch
-    ? gt("Worktree: {path} ({branch})", { path: displayPath, branch: thread.branch })
-    : gt("Worktree: {path}", { path: displayPath });
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            role="img"
-            aria-label={tooltip}
-            data-testid={`thread-worktree-${thread.id}`}
-            className="inline-flex items-center justify-center"
-          />
-        }
-      >
-        <GitBranchIcon
-          aria-hidden
-          className={cn(
-            "size-4 shrink-0",
-            active ? "text-sidebar-branch-active" : "text-sidebar-muted-foreground",
-          )}
-        />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }
