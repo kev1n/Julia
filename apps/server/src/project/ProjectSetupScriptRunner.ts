@@ -66,6 +66,8 @@ export interface ProjectSetupScriptRunnerInput {
   readonly projectCwd?: string;
   readonly worktreePath: string;
   readonly trigger?: "setup" | "settle";
+  /** The caller holds the worktree's workspace lease, so the terminal opens without taking it. */
+  readonly workspaceLeaseHeld?: boolean;
   readonly project?: {
     readonly id: ProjectId;
     readonly workspaceRoot: string;
@@ -463,14 +465,17 @@ export const make = Effect.gen(function* () {
     });
     const { completionShell, commandLine } = yield* Effect.gen(function* () {
       const shell = yield* terminalManager
-        .open({
-          threadId: input.threadId,
-          terminalId,
-          stopOnSettle: script.stopOnSettle ?? false,
-          cwd,
-          worktreePath: input.worktreePath,
-          env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" },
-        })
+        .open(
+          {
+            threadId: input.threadId,
+            terminalId,
+            stopOnSettle: script.stopOnSettle ?? false,
+            cwd,
+            worktreePath: input.worktreePath,
+            env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" },
+          },
+          { workspaceLeaseHeld: input.workspaceLeaseHeld === true },
+        )
         .pipe(
           Effect.andThen(() =>
             terminalManager

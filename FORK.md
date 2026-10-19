@@ -550,6 +550,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   Their tests (`RestartContinuation.test.ts`, `runtimeLayer.test.ts`,
   `testkit/OrchestratorReplayRestartBackgroundNote.integration.test.ts`) expect the wake;
   `testkit/ProviderReplayHarness.ts` gains `shutdownLikeServer` to close as the server does.
+- `apps/server/src/terminal/Manager.ts`, `project/ProjectSetupScriptRunner.ts`: `open` takes
+  `workspaceLeaseHeld`, which `workspace/WorktreeRestore.ts` sets so the setup terminal of a
+  restored worktree opens under the run start's lease instead of waiting on it forever. Every
+  terminal open, launching attach and restart takes the lease before the thread lock, so a user
+  terminal on the same thread cannot deadlock that setup open; attaching to an existing session
+  takes no lease. Tests in `WorktreeRestore.test.ts` and `terminal/Manager.test.ts`.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
