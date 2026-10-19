@@ -1,7 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto digest is effectful; a sync hash keeps historyPath a plain function.
 import * as NodeCrypto from "node:crypto";
 
-import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
+import { withWorkspaceLease, withWorkspaceLeaseIfAvailable } from "../workspace/workspaceLease.ts";
 import {
   DEFAULT_TERMINAL_ID,
   DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
@@ -168,8 +168,13 @@ class TerminalProcessSignalError extends Schema.TaggedError<TerminalProcessSigna
 export class TerminalManager extends Context.Service<
   TerminalManager,
   {
+    /**
+     * `workspaceLeaseHeld` is for a caller that already holds the worktree's
+     * workspace lease; taking it again would wait forever.
+     */
     readonly open: (
       input: TerminalOpenInput,
+      options?: { readonly workspaceLeaseHeld?: boolean },
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
 
     readonly getShell: (input: TerminalObserveInput) => Effect.Effect<string, TerminalError>;
@@ -1276,7 +1281,6 @@ function sanitizeTerminalHistoryChunk(
 
   return { visibleText, pendingControlSequence: "" };
 }
-
 
 function legacySafeThreadId(threadId: string): string {
   return threadId.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -2961,17 +2965,44 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     return snapshot(liveSession);
   });
 
-  const openLocked = (input: TerminalOpenInput) =>
-    withWorkspaceLease(
-      path.resolve(input.worktreePath ?? input.cwd),
-      openWithWorkspaceLease(input),
-    );
+  // Fork (Owner): a launch never waits for the workspace lease while it holds the thread
+  // lock: a run start holds the lease while its worktree restore's setup terminal waits for
+  // the thread lock. A launch takes a free lease under the thread lock, in the lock's order;
+  // a busy one makes it take the lease first and the thread lock after.
+  const withLaunchWorkspaceLease = <A, E, R>(
+    input: { readonly cwd: string; readonly worktreePath?: string | null | undefined },
+    effect: Effect.Effect<A, E, R>,
+  ) => withWorkspaceLease(path.resolve(input.worktreePath ?? input.cwd), effect);
 
-  const open: TerminalManager["Service"]["open"] = (input) =>
-    withThreadLock(
-      input.threadId,
-      resolveLaunchInputEnvironment(input).pipe(Effect.flatMap(openLocked)),
+  const withLaunchLocks = <A, E, R>(
+    input: {
+      readonly threadId: string;
+      readonly cwd: string;
+      readonly worktreePath?: string | null | undefined;
+    },
+    effect: Effect.Effect<A, E, R>,
+  ) => {
+    const leasePath = path.resolve(input.worktreePath ?? input.cwd);
+    return withThreadLock(input.threadId, withWorkspaceLeaseIfAvailable(leasePath, effect)).pipe(
+      Effect.flatMap((ran) =>
+        Option.isSome(ran)
+          ? Effect.succeed(ran.value)
+          : withWorkspaceLease(leasePath, withThreadLock(input.threadId, effect)),
+      ),
     );
+  };
+
+  const openLocked = (input: TerminalOpenInput) =>
+    withLaunchWorkspaceLease(input, openWithWorkspaceLease(input));
+
+  const open: TerminalManager["Service"]["open"] = (input, options) => {
+    const launch = resolveLaunchInputEnvironment(input).pipe(
+      Effect.flatMap(openWithWorkspaceLease),
+    );
+    return options?.workspaceLeaseHeld === true
+      ? withThreadLock(input.threadId, launch)
+      : withLaunchLocks(input, launch);
+  };
 
   const getShell = Effect.fn("terminal.getShell")(function* (input: TerminalObserveInput) {
     const session = yield* requireSession(input.threadId, input.terminalId);
@@ -2981,7 +3012,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     return session.shell;
   });
 
-  const openOrAttachForStream = Effect.fnUntraced(function* (requestedInput: TerminalAttachInput) {
+  // `leaseHeld`: the caller took the workspace lease before the thread lock.
+  const openOrAttachForStream = Effect.fnUntraced(function* (
+    requestedInput: TerminalAttachInput,
+    leaseHeld: boolean,
+  ) {
     const terminalId = requestedInput.terminalId;
     const input = withSharedGrid(toSessionKey(requestedInput.threadId, terminalId), requestedInput);
     const existing = yield* getSession(input.threadId, terminalId);
@@ -3002,7 +3037,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         terminalId,
         cwd: input.cwd,
       });
-      return yield* Effect.uninterruptible(openLocked(resolvedInput));
+      return yield* Effect.uninterruptible(
+        leaseHeld ? openWithWorkspaceLease(resolvedInput) : openLocked(resolvedInput),
+      );
     }
 
     const session = existing.value;
@@ -3015,7 +3052,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         terminalId,
         cwd: input.cwd,
       });
-      return yield* Effect.uninterruptible(openLocked(resolvedInput));
+      return yield* Effect.uninterruptible(
+        leaseHeld ? openWithWorkspaceLease(resolvedInput) : openLocked(resolvedInput),
+      );
     }
 
     if (
@@ -3170,27 +3209,47 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   ) => {
     const viewer = viewerId ?? `stream:${++anonymousViewerCount}`;
     let detach = () => {};
-    const initial = Effect.suspend(() => {
-      detach = retainViewerOnce(
+    const stream = (leaseHeld: boolean) =>
+      streamSession(
         input,
-        viewer,
-        input.cols !== undefined && input.rows !== undefined
-          ? { cols: input.cols, rows: input.rows }
-          : null,
+        Effect.suspend(() => {
+          detach = retainViewerOnce(
+            input,
+            viewer,
+            input.cols !== undefined && input.rows !== undefined
+              ? { cols: input.cols, rows: input.rows }
+              : null,
+          );
+          return openOrAttachForStream(input, leaseHeld);
+        }),
+        listener,
+        registerCleanup &&
+          ((stop) =>
+            registerCleanup(() => {
+              stop();
+              detach();
+            })),
       );
-      return openOrAttachForStream(input);
-    });
-    return streamSession(
-      input,
-      initial,
-      listener,
-      registerCleanup &&
-        ((stop) =>
-          registerCleanup(() => {
-            stop();
-            detach();
-          })),
-    ).pipe(
+    // Only a stream that launches its terminal takes the lease, before the thread lock;
+    // attaching to a running one does not wait for it. A launch that becomes needed
+    // after this read takes the lease under the thread lock, as before.
+    return getSession(input.threadId, input.terminalId).pipe(
+      Effect.flatMap((existing) => {
+        const launches =
+          input.cwd !== undefined &&
+          (Option.isNone(existing)
+            ? !(
+                input.resume &&
+                closedSessionKeys.has(toSessionKey(input.threadId, input.terminalId))
+              )
+            : !input.resume && !existing.value.process && input.restartIfNotRunning === true);
+        return launches && input.cwd !== undefined
+          ? withLaunchWorkspaceLease(
+              { cwd: input.cwd, worktreePath: input.worktreePath },
+              stream(true),
+            )
+          : stream(false);
+      }),
       Effect.map((stop) => () => {
         stop();
         detach();

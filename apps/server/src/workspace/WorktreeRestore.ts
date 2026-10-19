@@ -25,7 +25,7 @@ export class WorktreeRestoreError extends Schema.TaggedError<WorktreeRestoreErro
 ) {
   override get message(): string {
     if (this.noBase === true)
-      return `Could not recreate branch '${this.branch}' at ${this.worktreePath}: the project workspace has no current branch to start it from (detached HEAD?).`;
+      return `Could not recreate branch '${this.branch}' at ${this.worktreePath}: the project workspace has no commit to start it from.`;
     if (this.branch !== undefined)
       return `Could not recreate the worktree for branch '${this.branch}' at ${this.worktreePath}.`;
     return `Could not restore the worktree at ${this.worktreePath}: ${this.detail}`;
@@ -90,10 +90,12 @@ export const make = Effect.gen(function* () {
         threadId: input.threadId,
         projectId: input.projectId,
         worktreePath: input.worktreePath,
+        // The caller's lease; the setup terminal waiting on it would never open.
+        workspaceLeaseHeld: true,
         observeCompletion: {},
       })
       .pipe(Effect.mapError((error) => fail(error.message)));
-    if (setup.status === "no-script") return yield* clearMarker;
+    if (setup.status !== "started") return yield* clearMarker;
     const completion = setup.completion;
     if (completion === undefined) return yield* clearMarker;
     const settle = completion.pipe(
@@ -110,6 +112,31 @@ export const make = Effect.gen(function* () {
     // An async script lets the agent start while it runs, as on a new worktree.
     if (setup.async) return yield* settle.pipe(Effect.ignore, Effect.forkDetach, Effect.asVoid);
     yield* settle;
+  });
+
+  const resolveRecreateBase = Effect.fn("WorktreeRestore.resolveRecreateBase")(function* (
+    cwd: string,
+  ) {
+    // Recovery can follow an external checkout, before the status cache expires.
+    yield* git.invalidateLocalStatus(cwd);
+    const { refName: currentBranch } = yield* git.localStatus({ cwd });
+    if (currentBranch !== null) {
+      const refName = `refs/heads/${currentBranch}`;
+      return { refName, baseRefName: refName };
+    }
+    if (yield* git.hasCommit({ cwd, refName: "refs/remotes/origin/HEAD" })) {
+      const { commitSha } = yield* git.resolveRemoteTrackingCommit({
+        cwd,
+        refName: "HEAD",
+        fallbackRemoteName: "origin",
+      });
+      // Start from the commit so the thread branch does not track the default branch.
+      return { refName: commitSha, baseRefName: "refs/remotes/origin/HEAD" };
+    }
+    if (yield* git.hasCommit({ cwd, refName: "HEAD" })) {
+      return { refName: "HEAD", baseRefName: undefined };
+    }
+    return null;
   });
 
   const restore = Effect.fn("WorktreeRestore.restore")(function* (input: {
@@ -141,25 +168,32 @@ export const make = Effect.gen(function* () {
       const { worktreePath, branch } = input;
       yield* Effect.gen(function* () {
         yield* git.pruneWorktrees({ cwd });
+        // Push keeps the tracking ref current, so recovery reads it without fetching.
+        const pushedRef = `refs/remotes/origin/${branch}`;
         if ((yield* git.listLocalBranchNames(cwd)).includes(branch)) {
           yield* git.createWorktree({ cwd, refName: branch, path: worktreePath });
+        } else if (yield* git.hasCommit({ cwd, refName: pushedRef })) {
+          yield* git.createWorktree({
+            cwd,
+            refName: pushedRef,
+            newRefName: branch,
+            path: worktreePath,
+          });
         } else {
-          // Recovery can follow an external checkout, before the status cache expires.
-          yield* git.invalidateLocalStatus(cwd);
-          const { refName: baseRef } = yield* git.localStatus({ cwd });
-          if (baseRef === null) {
+          const base = yield* resolveRecreateBase(cwd);
+          if (base === null) {
             return yield* new WorktreeRestoreError({
               worktreePath,
-              detail: "no current branch",
+              detail: "no commit to start from",
               branch,
               noBase: true,
             });
           }
           yield* git.createWorktree({
             cwd,
-            refName: `refs/heads/${baseRef}`,
+            refName: base.refName,
             newRefName: branch,
-            baseRefName: `refs/heads/${baseRef}`,
+            ...(base.baseRefName === undefined ? {} : { baseRefName: base.baseRefName }),
             path: worktreePath,
           });
         }
