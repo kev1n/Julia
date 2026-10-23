@@ -1378,6 +1378,9 @@ export const layerWithOptions = (
           { discard: true },
         );
 
+      // Writes a released session's status, runtime requests, rosters and background items, each even if
+      // another fails. Once a replacement session with the same id opens, it owns the status, so only
+      // the released process's work is settled.
       const writeReleaseRecords = (input: {
         readonly entry: LiveSessionEntry;
         readonly reason: ProviderSessionReleaseReason;

@@ -152,6 +152,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-adaptive-sky-600-400",
     iconTintClassName: "accent-adaptive-sky-600-400",
   },
+  waiting: {
+    label: msg("Waiting", { $context: "thread status, waiting on something else" }),
+    icon: "circle.dashed.inset.filled",
+    className: "text-foreground-muted",
+    iconTintClassName: "accent-foreground-muted",
+  },
   failed: {
     label: msg("Failed", { $context: "thread status" }),
     icon: "exclamationmark.circle",

@@ -5094,7 +5094,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, ProjectionStoreService
 
         // Filled local pages need only the inherited count for cursor positions.
         // Run-forked parents still need the recursive read to include their ancestry.
+        // Fork (Owner): trimmed fork contexts drop inherited rows, so a raw count would
+        // misplace cursor positions; they take the recursive read.
         if (
+          (forkedFrom.contextMode ?? "full") === "full" &&
           window?.userTurnLimit !== undefined &&
           window.historyAnchor === undefined &&
           seenThreadIds.size === 0 &&

@@ -65,7 +65,7 @@ import {
 } from "./sidebar/routeReveal";
 import {
   buildSidebarProjectSnapshots,
-  groupSidebarThreadsByProject,
+  groupSidebarThreadsUnderProjects,
 } from "../sidebarProjectGrouping";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -87,7 +87,7 @@ it("groups thread navigation by project while preserving each project's row orde
     projectId: ProjectId.make(projectId),
     id: index,
   }));
-  const grouped = groupSidebarThreadsByProject(rows, snapshots);
+  const grouped = groupSidebarThreadsUnderProjects(rows, snapshots);
   expect(grouped.groups.map((group) => group.threads.map((row) => row.id))).toEqual([
     [1],
     [0, 2],
@@ -345,7 +345,7 @@ describe("resolveSidebarThreadStatus", () => {
         ...idle,
         runtime: { ...runtime, status: "idle" as const, lastError: "persisted" },
       }),
-    ).toBe("waiting");
+    ).toBe("working");
   });
 
   it("titles the window with live work and requests only", () => {
@@ -356,7 +356,8 @@ describe("resolveSidebarThreadStatus", () => {
       [{ ...idle, runtime }, "Working"],
       [{ ...idle, runtime, pendingGuestMessageCount: 1 }, "Working"],
       [{ ...idle, runtime, blockedOnThreadWait: true }, "Working"],
-      [{ ...idle, runtime: { ...runtime, status: "idle" as const } }, null],
+      // Fork: an idle session holds background work, so it reads as working.
+      [{ ...idle, runtime: { ...runtime, status: "idle" as const } }, "Working"],
       [{ ...idle, runtime: { ...runtime, status: "failed" as const } }, null],
       [{ ...idle, runtime: { ...runtime, status: "completed" as const } }, null],
       [idle, null],
@@ -571,7 +572,7 @@ describe("resolveThreadStatusPill", () => {
     });
   });
 
-  it("shows waiting for an idle thread with pending background tasks", () => {
+  it("shows working for an idle thread with pending background tasks", () => {
     expect(
       resolveThreadStatusPill({
         thread: {
@@ -587,10 +588,10 @@ describe("resolveThreadStatusPill", () => {
         },
       }),
     ).toMatchObject({
-      label: "Waiting",
-      colorClass: "text-sidebar-muted-foreground",
-      dotClass: "bg-sidebar-muted-foreground",
-      pulse: false,
+      label: "Working",
+      colorClass: "text-sky-600 dark:text-sky-300/80",
+      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      pulse: true,
     });
   });
 
@@ -1103,6 +1104,7 @@ describe("unseen completion with background work", () => {
       status: "ready",
       receded: false,
       pill: "Completed",
+      shelf: false,
     },
     {
       roster: "dev server watchdog",
@@ -1110,13 +1112,24 @@ describe("unseen completion with background work", () => {
       status: "ready",
       receded: false,
       pill: "Completed",
+      shelf: false,
     },
     {
       roster: "awaited command",
       task: { kind: "command", awaited: true },
-      status: "waiting",
+      status: "working",
       receded: true,
-      pill: "Waiting",
+      pill: "Working",
+      shelf: true,
+    },
+    {
+      roster: "subagent",
+      task: { kind: "subagent" },
+      status: "working",
+      topStatus: "working",
+      receded: true,
+      pill: "Working",
+      shelf: true,
     },
   ] as const)("presents a completed thread with a $roster roster", (expected) => {
     const thread = presentThreadShell(localEnvironmentId, {
@@ -1141,7 +1154,7 @@ describe("unseen completion with background work", () => {
         isSelected: false,
       }),
     ).toBe(expected.receded);
-    expect(isSidebarThreadWorking(thread)).toBe(expected.receded);
+    expect(isSidebarThreadWorking(thread)).toBe(expected.shelf);
     expect(resolveThreadStatusPill({ thread })).toMatchObject({ label: expected.pill });
   });
 });
@@ -1169,6 +1182,7 @@ describe("Working shelf (beta)", () => {
     latestRun: makeLatestRun(),
     runtime: null,
   };
+  // Stopped with background tasks still open: still working, not ready.
   const waiting = {
     ...idle,
     runtime: { ...runtime, status: "idle" as const },
@@ -1828,10 +1842,10 @@ describe("resolveSidebarFolderDot", () => {
     };
 
     expect(resolveSidebarFolderDot([idle])).toBeNull();
-    // A waiting thread stays quiet even with an unread completion, like its row.
+    // A thread stopped with background work open is still working, like its row.
     expect(
       resolveSidebarFolderDot([{ ...unread, runtime: { ...runtime, status: "idle" as const } }]),
-    ).toBeNull();
+    ).toBe("working");
     expect(resolveSidebarFolderDot([idle, working])).toBe("working");
     expect(resolveSidebarFolderDot([working, unread])).toBe("unread");
     expect(resolveSidebarFolderDot([unread, limited])).toBe("attention");

@@ -1048,6 +1048,10 @@ export function resolveAdjacentThreadId<T>(input: {
   return currentIndex < threadIds.length - 1 ? (threadIds[currentIndex + 1] ?? null) : null;
 }
 
+// "ready" is the unlabeled resting state: the agent stopped and is waiting on the user.
+// Fork (Owner): background work that holds completion stays working, even between
+// provider turns. Commands left running, such as a dev server, do not hold completion.
+// "waiting" is only a turn blocked on another T3 thread.
 export type SidebarThreadStatus =
   | "connecting"
   | "reconnecting"
@@ -1125,7 +1129,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return "working";
   }
   if (thread.runtime?.status === "idle") {
-    return "waiting";
+    return "working";
   }
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
@@ -1417,16 +1421,17 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
+  const working = {
+    label: msg("Working"),
+    colorClass: "text-sky-600 dark:text-sky-300/80",
+    dotClass: "bg-sky-500 dark:bg-sky-300/80",
+    pulse: true,
+  };
   if (
     (thread.runtime?.status === "running" && thread.blockedOnThreadWait !== true) ||
     thread.runtime?.status === "waiting"
   ) {
-    return {
-      label: msg("Working"),
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
+    return working;
   }
 
   if (
@@ -1442,13 +1447,14 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  const waiting = {
-    label: msg("Waiting"),
-    colorClass: "text-sidebar-muted-foreground",
-    dotClass: "bg-sidebar-muted-foreground",
-    pulse: false,
-  };
-  if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) return waiting;
+  if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
+    return {
+      label: msg("Waiting"),
+      colorClass: "text-sidebar-muted-foreground",
+      dotClass: "bg-sidebar-muted-foreground",
+      pulse: false,
+    };
+  }
 
   // A failed run goes to the inbox even while background work holds the thread.
   if (hasUnseenRunFailure(thread)) {
@@ -1460,7 +1466,8 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return waiting;
+  // Fork (Owner): background work that holds completion reads as working.
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return working;
 
   const hasPlanReadyPrompt =
     !thread.hasPendingUserInput &&

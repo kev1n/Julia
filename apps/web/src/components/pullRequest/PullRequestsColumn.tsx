@@ -179,6 +179,7 @@ export function PullRequestsColumn({
       )}
     >
       <WorkspacePageHeader
+        backToThreads
         electron={isElectron}
         reserveNativeControls={!rightPanelOpen}
         className="relative bg-background"

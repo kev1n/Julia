@@ -503,6 +503,37 @@ describe("EnvironmentSupervisor", () => {
       }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  // Fork (Owner): a machine that keeps dropping reconnects within 30 seconds.
+  it.effect("retries forever with exponential backoff capped at 30 seconds", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        prepare: () => Effect.fail(transient()),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.attempt === 1,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+
+      const delays = [2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000];
+      for (const [index, delay] of delays.entries()) {
+        yield* TestClock.adjust(delay - 1);
+        expect(yield* Ref.get(harness.prepareCount)).toBe(index + 1);
+        yield* TestClock.adjust(1);
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === index + 2,
+        );
+      }
+
+      expect(yield* Ref.get(harness.prepareCount)).toBe(delays.length + 1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
@@ -592,7 +623,8 @@ describe("EnvironmentSupervisor", () => {
       // Ten minutes of 4 s checks, then backoff that never polls faster than that.
       expect(delays.slice(0, 150).every((delay) => delay === 4_000)).toBe(true);
       expect(delays.slice(150).every((delay) => delay >= 4_000)).toBe(true);
-      expect(delays.at(-1)).toBeGreaterThanOrEqual(32_000);
+      // Fork: the backoff stops climbing at the fork's 30 s retry ceiling.
+      expect(delays.at(-1)).toBe(30_000);
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
