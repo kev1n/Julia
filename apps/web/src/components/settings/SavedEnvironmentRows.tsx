@@ -376,7 +376,6 @@ export function SavedBackendListRow({
           desktopAppUpdate={supportsDesktopAppUpdate(environment.serverConfig)}
           targetVersion={versionMismatch.clientVersion}
           label={serverUpdateState.status === "failed" ? "Retry update" : "Update"}
-          appearance="icon"
         />
       ) : null}
       <Tooltip>

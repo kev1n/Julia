@@ -1034,6 +1034,10 @@ export function resolveAdjacentThreadId<T>(input: {
   return currentIndex < threadIds.length - 1 ? (threadIds[currentIndex + 1] ?? null) : null;
 }
 
+// "ready" is the unlabeled resting state: the agent stopped and is waiting on the user.
+// Fork (Owner): background work that holds completion stays working, even between
+// provider turns. Commands left running, such as a dev server, do not hold completion.
+// "waiting" is only a turn blocked on another T3 thread.
 export type SidebarThreadStatus =
   | "approval"
   | "input"
@@ -1077,7 +1081,7 @@ type SidebarThreadStatusInput = Pick<
   | "pendingGuestMessageCount"
   | "runtime"
   | "blockedOnThreadWait"
->;
+> & { pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] };
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -1103,7 +1107,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return "working";
   }
   if (thread.runtime?.status === "idle") {
-    return "waiting";
+    return "working";
   }
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
@@ -1343,7 +1347,8 @@ export function resolveThreadStatusPill(input: {
 
   if (
     (thread.runtime?.status === "running" && thread.blockedOnThreadWait !== true) ||
-    thread.runtime?.status === "waiting"
+    thread.runtime?.status === "waiting" ||
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
   ) {
     return {
       label: "Working",
@@ -1366,10 +1371,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (
-    (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
-  ) {
+  if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
     return {
       label: "Waiting",
       colorClass: "text-sidebar-muted-foreground",

@@ -1242,6 +1242,67 @@ describe("deriveMessagesTimelineRows", () => {
     ).toBe(true);
   });
 
+  it("keeps assistant messages visible when there is no work to fold", () => {
+    const timelineEntries = [
+      {
+        id: "assistant-first-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:01Z",
+        message: {
+          id: "assistant-first" as never,
+          role: "assistant" as const,
+          text: "The main result is ready.",
+          runId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:01Z",
+          updatedAt: "2026-01-01T00:00:02Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-middle-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:03Z",
+        message: {
+          id: "assistant-middle" as never,
+          role: "assistant" as const,
+          text: "I am checking one more detail.",
+          runId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:03Z",
+          updatedAt: "2026-01-01T00:00:04Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Verification finished.",
+          runId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "assistant-first-entry",
+      "assistant-middle-entry",
+      "assistant-final-entry",
+    ]);
+  });
+
   it("derives a sane duration for a steer-superseded turn with one instant commentary message", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
@@ -2377,9 +2438,25 @@ describe("deriveMessagesTimelineRows", () => {
     expect(withoutPrompt).toContain("turn-fold");
     expect(withoutPrompt).not.toContain("assistant:imported-update");
 
+    // The fork folds only turns with work, so this fixture keeps its command.
     const timelineEntries = [
       message("imported-prompt", "user", 0),
       message("imported-update", "assistant", 4),
+      {
+        id: "imported-command",
+        kind: "work" as const,
+        createdAt: at(5),
+        entry: {
+          id: "imported-command",
+          createdAt: at(5),
+          runId: null,
+          label: "Ran git",
+          command: "git status",
+          requestKind: "command" as const,
+          tone: "tool" as const,
+          toolLifecycleStatus: "completed" as const,
+        },
+      },
       message("imported-answer", "assistant", 8),
     ];
     const foldInput = { timelineEntries, latestRun: null, isWorking: false };

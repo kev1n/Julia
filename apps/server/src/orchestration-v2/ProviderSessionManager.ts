@@ -1028,11 +1028,15 @@ export const layerWithOptions = (
                     allocateEventId,
                     readChild: (childThreadId) =>
                       projectionStore
-                        .getThreadRecords(childThreadId, ["nodes", "providerTurns", "subagents", "turnItems"], {
-                          // Runless items are the subagent's; any run there is the user's own.
-                          turnItemRunIds: [null],
-                          turnItemStatuses: OPEN_TURN_ITEM_STATUSES,
-                        })
+                        .getThreadRecords(
+                          childThreadId,
+                          ["nodes", "providerTurns", "subagents", "turnItems"],
+                          {
+                            // Runless items are the subagent's; any run there is the user's own.
+                            turnItemRunIds: [null],
+                            turnItemStatuses: OPEN_TURN_ITEM_STATUSES,
+                          },
+                        )
                         .pipe(
                           Effect.catchTags({
                             ProjectionStoreThreadNotFoundError: () => Effect.succeed(null),
@@ -1047,10 +1051,9 @@ export const layerWithOptions = (
           { discard: true },
         );
 
-      // requests, background-task rosters and background items it left. Each
-      // write runs even if another fails. Once a replacement session opens
-      // with the same id, it owns the session status, so only the work the
-      // released process left is settled.
+      // Writes a released session's status, runtime requests, rosters and background items, each even if
+      // another fails. Once a replacement session with the same id opens, it owns the status, so only
+      // the released process's work is settled.
       const writeReleaseRecords = (input: {
         readonly entry: LiveSessionEntry;
         readonly reason: ProviderSessionReleaseReason;

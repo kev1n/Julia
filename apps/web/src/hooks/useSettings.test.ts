@@ -20,6 +20,7 @@ import {
   persistClientSettingsPatch,
   persistClientSettingsUpdate,
   prepareModelPreferencesPatch,
+  resolveEnvironmentIdentificationMode,
 } from "./useSettings";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 
@@ -260,6 +261,28 @@ describe("persistClientSettingsUpdate", () => {
     expect(durableSettings.browserProfiles).toContainEqual(importedProfile);
     expect(getClientSettings().wordWrap).toBe(false);
     expect(getClientSettings().browserProfiles).toContainEqual(importedProfile);
+  });
+});
+
+describe("resolveEnvironmentIdentificationMode", () => {
+  it("hides unsupported artwork with a palette theme", () => {
+    expect(
+      resolveEnvironmentIdentificationMode({
+        mode: "artwork",
+        settingsHydrated: true,
+        paletteThemeActive: true,
+      }),
+    ).toBe("none");
+  });
+
+  it("keeps an explicitly selected pill with a palette theme", () => {
+    expect(
+      resolveEnvironmentIdentificationMode({
+        mode: "pill",
+        settingsHydrated: true,
+        paletteThemeActive: true,
+      }),
+    ).toBe("pill");
   });
 });
 

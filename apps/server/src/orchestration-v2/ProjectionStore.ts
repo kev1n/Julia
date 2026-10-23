@@ -4115,7 +4115,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
         // Filled local pages need only the inherited count for cursor positions.
         // Run-forked parents still need the recursive read to include their ancestry.
+        // Fork (Owner): trimmed fork contexts drop inherited rows, so a raw count would
+        // misplace cursor positions; they take the recursive read.
         if (
+          (forkedFrom.contextMode ?? "full") === "full" &&
           window?.userTurnLimit !== undefined &&
           window.historyAnchor === undefined &&
           seenThreadIds.size === 0 &&
@@ -6774,6 +6777,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       `;
 
     // Count all selected threads in one index walk; fork sources still need per-run counts.
+    // Fork (Owner): runless (v1 import) rows also need trimmed fork-context counts; they are
+    // read separately so the main walk stays on the covering index.
     const selectShellItemCounts = (threadIds: ReadonlyArray<ThreadId>) =>
       sql<ShellItemCountRow>`
         SELECT counts.thread_id,
@@ -6781,23 +6786,27 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             THEN counts.item_count ELSE 0 END) AS item_count,
           SUM(CASE WHEN counts.run_id IS NULL THEN counts.item_count ELSE 0 END)
             AS runless_item_count,
-          SUM(CASE WHEN counts.run_id IS NULL THEN counts.final_message_count ELSE 0 END)
-            AS runless_final_message_count,
-          SUM(CASE WHEN counts.run_id IS NULL THEN counts.without_reasoning_count ELSE 0 END)
-            AS runless_without_reasoning_count
+          COALESCE(MAX(runless.final_message_count), 0) AS runless_final_message_count,
+          COALESCE(MAX(runless.without_reasoning_count), 0) AS runless_without_reasoning_count
         FROM (
-          SELECT thread_id, run_id, COUNT(*) AS item_count,
-            SUM(CASE WHEN run_id IS NULL AND type <> 'reasoning' THEN 1 ELSE 0 END)
-              AS without_reasoning_count,
-            SUM(CASE WHEN run_id IS NULL AND (type = 'user_message' OR (type IN ('assistant_message', 'proposed_plan')
-              AND status = 'completed' AND parent_item_id IS NULL
-              AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0)) THEN 1 ELSE 0 END)
-              AS final_message_count
+          SELECT thread_id, run_id, COUNT(*) AS item_count
           FROM orchestration_v2_projection_turn_items
           WHERE thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)}))
           GROUP BY thread_id, run_id
         ) counts
         LEFT JOIN orchestration_v2_projection_runs r ON r.run_id = counts.run_id
+        LEFT JOIN (
+          SELECT thread_id,
+            SUM(CASE WHEN type = 'user_message' OR (
+              type IN ('assistant_message', 'proposed_plan') AND status = 'completed'
+              AND parent_item_id IS NULL
+              AND COALESCE(json_extract(payload_json, '$.streaming'), 0) = 0
+            ) THEN 1 ELSE 0 END) AS final_message_count,
+            SUM(CASE WHEN type <> 'reasoning' THEN 1 ELSE 0 END) AS without_reasoning_count
+          FROM orchestration_v2_projection_turn_items
+          WHERE thread_id IN (SELECT value FROM json_each(${encodeIdList(threadIds)})) AND run_id IS NULL
+          GROUP BY thread_id
+        ) runless ON runless.thread_id = counts.thread_id
         GROUP BY counts.thread_id
       `;
 

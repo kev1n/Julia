@@ -800,12 +800,8 @@ export function useThreadActions() {
     return firstFailure(
       await Promise.all(
         tabs.map(({ ref, thread }) =>
-          // Pinning a pinned thread keeps its key, so the strip's other pinned tabs move by
-          // reorder. The target itself is pinned outright: an undo may see its stale pin.
-          ref !== target &&
-          thread?.pinnedAt != null &&
-          orderKey !== undefined &&
-          thread.pinOrderKey !== orderKey
+          // Pinning a pinned thread keeps its key, so those tabs move by reorder.
+          thread?.pinnedAt != null && orderKey !== undefined && thread.pinOrderKey !== orderKey
             ? reorderPinnedChat(ref, orderKey)
             : pinChat(ref, orderKey),
         ),
@@ -827,7 +823,7 @@ export function useThreadActions() {
     // A strip stays pinned while any tab is, so every pinned tab has to go.
     const before = readTabRefs(target, (chat) => chat.pinnedAt != null).map((ref) => ({
       ref,
-      plan: ThreadUndo.planThreadUndo("unpin", readThreadShell(ref)),
+      undoPlan: ThreadUndo.planThreadUndo("unpin", readThreadShell(ref)),
     }));
     const action = claimTabs(
       "pin",
@@ -847,21 +843,9 @@ export function useThreadActions() {
       showThreadUndoNotice({
         action: "Unpinned",
         claim: action,
-        // One Undo pins every tab it unpinned back into its own slot.
         undo: async () =>
           firstFailure(
-            await Promise.all(
-              unpinned.map(({ ref, plan }) =>
-                ThreadUndo.executeThreadUndo(
-                  plan,
-                  (step) =>
-                    step.action === "pin"
-                      ? pinChat(ref, pinOrderKeyFor(ref, step.orderKey))
-                      : runUndoPlan(ref, [step], true),
-                  (restored) => restored._tag === "Success",
-                ),
-              ),
-            ),
+            await Promise.all(unpinned.map(({ ref, undoPlan }) => runChatUndoPlan(ref, undoPlan))),
           ),
         failureTitle: "Failed to undo unpin",
       });
@@ -888,11 +872,11 @@ export function useThreadActions() {
     const now = new Date().toISOString();
     const before = targets.map((ref) => {
       const thread = readThreadShell(ref);
+      // Settling also drops the pin and the snooze server-side, so Undo
+      // has to put those back as well.
       return {
         ref,
         wokeAt: thread ? threadWokeAt(thread, { now }) : null,
-        // Settling also drops the pin and the snooze server-side, so Undo
-        // has to put those back as well.
         undoPlan: ThreadUndo.planThreadUndo("settle", thread),
       };
     });
@@ -924,7 +908,7 @@ export function useThreadActions() {
       claim: action,
       undo: async () =>
         firstFailure(
-          await Promise.all(settled.map(({ ref, undoPlan }) => runUndoPlan(ref, undoPlan, true))),
+          await Promise.all(settled.map(({ ref, undoPlan }) => runChatUndoPlan(ref, undoPlan))),
         ),
       failureTitle: "Failed to undo settle",
     });
@@ -1058,36 +1042,23 @@ export function useThreadActions() {
     showThreadUndoNotice({
       action: "Snoozed",
       claim: action,
-      undo: async () =>
-        firstFailure(
-          await Promise.all(
-            snoozed.map((ref) => runUndoPlan(ref, ThreadUndo.planThreadUndo("snooze"), true)),
-          ),
-        ),
+      undo: async () => firstFailure(await Promise.all(snoozed.map(unsnoozeChat))),
       failureTitle: "Failed to wake thread",
     });
     return firstFailure(results);
   };
 
-  // A tab-strip Undo restores each chat it moved, so its steps act on that chat alone.
-  const runUndoPlan = (
-    target: ScopedThreadRef,
-    plan: ThreadUndo.ThreadUndoPlan,
-    chatOnly = false,
-  ) =>
+  const runChatUndoPlan = (target: ScopedThreadRef, plan: ThreadUndo.ThreadUndoPlan) =>
     ThreadUndo.executeThreadUndo(
       plan,
       async (step) => {
         switch (step.action) {
           case "unsettle":
-            return chatOnly ? unsettleChat(target) : unsettleThread(target);
+            return unsettleChat(target);
           case "unsnooze":
-            return chatOnly ? unsnoozeChat(target) : unsnoozeThread(target);
+            return unsnoozeChat(target);
           case "pin":
-            return pinThread(
-              target,
-              step.orderKey === undefined ? {} : { orderKey: step.orderKey },
-            );
+            return pinChat(target, step.orderKey ?? topOfPinnedRunOrderKey());
           case "snooze":
             return snoozeThreadMutation({
               environmentId: target.environmentId,
