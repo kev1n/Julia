@@ -14,7 +14,7 @@ import { msg } from "gt-react";
 
 import { m } from "../i18n/messages";
 
-import { readEnvironmentScope } from "./session";
+import { readEnvironmentScopeDenied } from "./session";
 import { useAtomCommand } from "./use-atom-command";
 
 const ORCHESTRATION_OPERATE_DENIED_MESSAGE = msg(
@@ -27,7 +27,7 @@ export function useOrchestrationCommand<W extends { readonly environmentId: Envi
 ): (value: W) => Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> {
   const run = useAtomCommand(command, options);
   return async (value: W): Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> => {
-    if (!readEnvironmentScope(value.environmentId, AuthOrchestrationOperateScope)) {
+    if (readEnvironmentScopeDenied(value.environmentId, AuthOrchestrationOperateScope)) {
       return AsyncResult.failure(
         Cause.fail(
           new EnvironmentAuthorizationError({
