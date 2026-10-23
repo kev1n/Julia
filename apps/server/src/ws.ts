@@ -236,7 +236,6 @@ import * as HostResources from "./resourceTelemetry/HostResources.ts";
 // Fork (Owner): move a thread to another machine.
 import { receiveMove } from "./fork/moveThread.ts";
 import * as ForkDrain from "./fork/drain.ts";
-import * as FleetSuggestions from "./fork/fleet/threadOverlaps.ts";
 import { ForkMoveError } from "@t3tools/contracts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
@@ -1226,7 +1225,6 @@ export const layerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
-  fleetSuggestions: FleetSuggestions.FleetSuggestions["Service"] | undefined,
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -2507,10 +2505,6 @@ export const layerWsRpc = (
               }),
           }),
         [WS_METHODS.forkThreadHistory]: (input) => threadHistory.watch(input.threadId),
-        [WS_METHODS.forkFleetOverlaps]: (input) =>
-          fleetSuggestions
-            ? fleetSuggestions.read(input.threadId)
-            : Effect.succeed({ overlaps: [], status: "unavailable" as const }),
         [WS_METHODS.serverGetProcessResourceHistory]: (input) =>
           processResourceMonitor.readHistory(input),
         [WS_METHODS.serverGetResourceTelemetryHistory]: (input) =>
@@ -3242,7 +3236,6 @@ export const WS_RPC_SERVER_OPTIONS = {
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
-    const fleetSuggestions = yield* Effect.serviceOption(FleetSuggestions.FleetSuggestions);
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
@@ -3310,12 +3303,7 @@ export const layer = Layer.unwrap(
           return httpEffect;
         }).pipe(
           Effect.provide(
-            layerWsRpc(
-              session,
-              clientAnalyticsProps,
-              serverBrowser,
-              Option.getOrUndefined(fleetSuggestions),
-            ).pipe(
+            layerWsRpc(session, clientAnalyticsProps, serverBrowser).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),

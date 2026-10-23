@@ -168,7 +168,6 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeResourceTelemetry]: AuthDiagnosticsReadScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.forkMoveReceive]: AuthOrchestrationOperateScope,
-  [WS_METHODS.forkFleetOverlaps]: AuthOrchestrationReadScope,
   [WS_METHODS.forkThreadHistory]: AuthOrchestrationReadScope,
   [WS_METHODS.gitResolvePullRequest]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsListRefs]: AuthOrchestrationReadScope,

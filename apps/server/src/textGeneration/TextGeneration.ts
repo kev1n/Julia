@@ -40,7 +40,6 @@ export class TextGeneration extends Context.Service<TextGeneration, ProviderText
 ) {}
 
 type TextGenerationOp =
-  | "generateFleetRelations"
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
@@ -128,11 +127,6 @@ export const make = Effect.gen(function* () {
     );
   });
   return TextGeneration.of({
-    generateFleetRelations: Effect.fn("TextGeneration.generateFleetRelations")(function (input) {
-      return resolveInstance(registry, "generateFleetRelations", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateFleetRelations(input)),
-      );
-    }),
     generateCommitMessage: Effect.fn("TextGeneration.generateCommitMessage")(function (input) {
       return generate("generateCommitMessage", input.modelSelection, (service, modelSelection) =>
         service.generateCommitMessage({ ...input, modelSelection }),

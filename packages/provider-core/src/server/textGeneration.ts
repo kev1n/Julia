@@ -7,7 +7,6 @@ import type {
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 
-import type { FleetRelationsOutput } from "./fleetRelationsPrompt.ts";
 import type { TextGenerationPolicy } from "./textGenerationPolicy.ts";
 import type { ThreadTitleForkSource } from "./textGenerationPrompts.ts";
 
@@ -99,13 +98,6 @@ export type ReviewGuideGenerationResult = Omit<
 >;
 
 export interface ProviderTextGeneration {
-  /** Judge which active chats across the fleet should coordinate. */
-  readonly generateFleetRelations: (input: {
-    cwd: string;
-    context: string;
-    modelSelection: ModelSelection;
-  }) => Effect.Effect<typeof FleetRelationsOutput.Type, TextGenerationError>;
-
   readonly generateCommitMessage: (
     input: CommitMessageGenerationInput,
   ) => Effect.Effect<CommitMessageGenerationResult, TextGenerationError>;

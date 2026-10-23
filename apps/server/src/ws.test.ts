@@ -648,7 +648,6 @@ it.effect(
             },
             {},
             yield* ServerBrowser.ServerBrowser,
-            undefined,
           ).pipe(Layer.provide(configRpcServices)),
         ),
       );

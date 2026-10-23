@@ -27,7 +27,6 @@ import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
 import { PeerSource, peerScope } from "./peer.ts";
 import * as RemoteTasks from "./remoteTasks.ts";
-import * as FleetSuggestions from "./threadOverlaps.ts";
 import { fleetConfig } from "./publisher.ts";
 
 const PeerRead = Schema.Struct({ source: PeerSource, input: OrchestratorMcpThreadReadInput });
@@ -55,9 +54,6 @@ const decodeDrain = Schema.decodeUnknownEffect(
     requester: Schema.optional(Schema.String),
   }),
 );
-const decodeSuggestionRequest = Schema.decodeUnknownEffect(
-  Schema.Struct({ environmentId: Schema.String, threadId: Schema.String }),
-);
 const decodeSnapshot = Schema.decodeUnknownEffect(FleetSnapshot);
 const decodeMovePack = Schema.decodeUnknownEffect(MovePack);
 const decodePeerRead = Schema.decodeUnknownEffect(PeerRead);
@@ -84,16 +80,11 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-    const suggestions = yield* FleetSuggestions.FleetSuggestions;
     const remoteTasks = yield* RemoteTasks.makePeerHandlers;
     // Optional, so a layer built without the database (tests) still builds; the
     // server provides it, and without it the drain answers 404 like an old server.
     const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
-    return HttpRouter.add(
-      "*",
-      "/fork/fleet/*",
-      handle(environment, service, suggestions, remoteTasks, sql),
-    );
+    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service, remoteTasks, sql));
   }),
 );
 
@@ -101,7 +92,6 @@ const handle = Effect.fn("routes.handle")(
   function* (
     environment: ServerEnvironment.ServerEnvironment["Service"],
     service: OrchestratorMcpService.OrchestratorMcpService["Service"],
-    suggestions: FleetSuggestions.FleetSuggestions["Service"],
     remoteTasks: RemoteTasks.PeerHandlers,
     sql: Option.Option<SqlClient.SqlClient>,
   ) {
@@ -122,15 +112,6 @@ const handle = Effect.fn("routes.handle")(
               ? ForkDrain.peek(requester ?? null)
               : ForkDrain.start(release, requester ?? null)
             ).pipe(Effect.provideService(SqlClient.SqlClient, sql.value)),
-      );
-    }
-    if (path === "hub/suggestions" && config.hub && request.method === "POST") {
-      const decoded = yield* decodeSuggestionRequest(yield* request.json).pipe(Effect.result);
-      if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
-      return json(
-        yield* suggestions.read(decoded.success.threadId, {
-          environmentId: decoded.success.environmentId,
-        }),
       );
     }
     if (path === "hub/index" && config.hub) return json(hubIndex(Date.now()));

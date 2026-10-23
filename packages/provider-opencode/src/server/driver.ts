@@ -126,11 +126,6 @@ function selectOpenCodeRuntimeTextGeneration(
   v2: ProviderTextGeneration,
 ): ProviderTextGeneration {
   return {
-    generateFleetRelations: (input) =>
-      byOpenCodeRuntime(probe.get, {
-        v1: v1.generateFleetRelations(input),
-        v2: v2.generateFleetRelations(input),
-      }),
     generateCommitMessage: (input) =>
       byOpenCodeRuntime(probe.get, {
         v1: v1.generateCommitMessage(input),

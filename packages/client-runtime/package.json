@@ -19,10 +19,6 @@
       "types": "./src/contextWindow.ts",
       "default": "./src/contextWindow.ts"
     },
-    "./fleet-overlaps": {
-      "types": "./src/fleetOverlaps.ts",
-      "default": "./src/fleetOverlaps.ts"
-    },
     "./thread-move": {
       "types": "./src/threadMove.ts",
       "default": "./src/threadMove.ts"
