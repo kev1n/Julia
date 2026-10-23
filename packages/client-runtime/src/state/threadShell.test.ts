@@ -119,6 +119,43 @@ describe("v2 thread shell lists", () => {
     }
   });
 
+  // Fork (Owner): delegate_task on another machine (apps/server/src/fork/fleet/remoteTasks.ts).
+  it("nests a subagent on another machine under its parent and out of navigation", () => {
+    const harness = makeHarness([environmentId, remoteEnvironmentId]);
+    const remoteChild = {
+      ...v2ThreadShell,
+      id: ThreadId.make("remote-child"),
+      lineage: {
+        parentThreadId: v2ThreadShell.id,
+        rootThreadId: ThreadId.make("remote-child"),
+        relationshipToParent: "subagent" as const,
+      },
+    };
+    harness.registry.set(harness.snapshotAtom(environmentId), v2ShellSnapshot);
+    harness.registry.set(harness.snapshotAtom(remoteEnvironmentId), {
+      ...v2ShellSnapshot,
+      threads: [remoteChild],
+    });
+    const atom = harness.threads.subagentThreadShellsAtom({
+      environmentId,
+      threadId: v2ThreadShell.id,
+    });
+    const disposeChildren = harness.registry.mount(atom);
+    const disposeNavigation = harness.registry.mount(harness.threads.navigationThreadShellsAtom);
+    try {
+      expect(harness.registry.get(atom).map((t) => [t.environmentId, t.id])).toEqual([
+        [remoteEnvironmentId, remoteChild.id],
+      ]);
+      expect(
+        harness.registry.get(harness.threads.navigationThreadShellsAtom).map((t) => t.id),
+      ).toEqual([v2ThreadShell.id]);
+    } finally {
+      disposeChildren();
+      disposeNavigation();
+      harness.registry.dispose();
+    }
+  });
+
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {

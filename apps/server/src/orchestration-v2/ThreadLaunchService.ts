@@ -92,6 +92,8 @@ export interface ThreadLaunchInput {
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
   /** Start the thread snoozed; its initial message keeps it snoozed (fork). */
   readonly snoozedUntil?: string;
+  /** Fork (Owner): the thread on another machine this one is a subagent of (fork/fleet/remoteTasks.ts). */
+  readonly remoteParentThreadId?: ThreadId;
   readonly initialMessage?: ThreadLaunchInitialMessage;
   readonly importedNativeThread?: {
     readonly ref: {
@@ -989,6 +991,9 @@ const make = Effect.gen(function* () {
                 worktreePath: initialWorktreePath,
                 ...(input.chatGroupId === undefined ? {} : { chatGroupId: input.chatGroupId }),
                 ...(input.snoozedUntil === undefined ? {} : { snoozedUntil: input.snoozedUntil }),
+                ...(input.remoteParentThreadId === undefined
+                  ? {}
+                  : { remoteParentThreadId: input.remoteParentThreadId }),
                 ...(input.importedNativeThread === undefined
                   ? {}
                   : { importedNativeThread: input.importedNativeThread }),

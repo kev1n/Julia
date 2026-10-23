@@ -595,6 +595,31 @@ it.effect(
   },
 );
 
+// Fork (Owner): delegate_task on another machine starts its child as a subagent of a parent
+// thread that lives in the other machine's database (fork/fleet/remoteTasks.ts).
+it.effect("launches a subagent of a thread on another machine, kept out of the thread list", () => {
+  const harness = makeHarness({ runSetup: () => Effect.never });
+  const remoteParentThreadId = ThreadId.make("thread:on-another-machine");
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const launched = yield* launches.launch({
+      ...launchInput({ command: "command:remote-child", thread: "thread:remote-child" }),
+      remoteParentThreadId,
+    });
+    assert.deepEqual(launched.projection.thread.lineage, {
+      parentThreadId: remoteParentThreadId,
+      relationshipToParent: "subagent",
+      rootThreadId: launched.threadId,
+    });
+    const listed = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
+    assert.notInclude(
+      listed.map((thread) => thread.id),
+      launched.threadId,
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
+
 const decodeLaunchInput = Schema.decodeUnknownSync(OrchestrationV2ThreadLaunchInput);
 
 // The WebSocket handler hands a client's launch request to launchInputFromWire. It once dropped
