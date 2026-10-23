@@ -218,9 +218,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     TextGenerationError,
     S["DecodingServices"] | Scope.Scope
   > {
-    // Titles and fleet judgments use supplied context, not checkout instructions.
+    // Titles use supplied context, not checkout instructions.
     const workingDirectory =
-      operation === "generateThreadTitle" || operation === "generateFleetRelations"
+      operation === "generateThreadTitle"
         ? yield* fileSystem
             .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
             .pipe(

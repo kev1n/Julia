@@ -15,10 +15,6 @@
       "types": "./src/server/adapterDriver.ts",
       "import": "./src/server/adapterDriver.ts"
     },
-    "./server/fleetRelationsPrompt": {
-      "types": "./src/server/fleetRelationsPrompt.ts",
-      "import": "./src/server/fleetRelationsPrompt.ts"
-    },
     "./server/attachmentPrompt": {
       "types": "./src/server/attachmentPrompt.ts",
       "import": "./src/server/attachmentPrompt.ts"
