@@ -212,10 +212,13 @@ environment and thread id plus the repository's canonical key; paths are reposit
   it under the parent, which lives in the other machine's database (there is no subagent node in
   the parent's run; those records cannot span two databases). It runs in the project with the
   same repository, in a fresh worktree of the parent checkout's base branch from origin, so the
-  parent's uncommitted or unpushed work is not there. The child's machine settles it, once idle,
-  when the hub snapshot shows its parent settled or archived (checked every 30 s with result
-  delivery). A parent that is itself a subagent is not in the snapshot, so its remote children
-  do not follow it.
+  parent's uncommitted or unpushed work is not there. Every 30 s, with result delivery, the
+  child's machine asks each other machine directly (`peer/thread-lifecycles`, answered from that
+  machine's own database, subagents included) about the parents of its idle remote children, and
+  settles each child whose parent is settled or archived. A machine that does not answer changes
+  nothing; the hub index only supplies addresses, never the parent's state. A user's follow-up to
+  a remote child starts a run like any thread's (no task is recorded on a parent that is not in
+  this database).
   Model and modes inherit as for a local child, and the instance must exist there (instance ids
   match across the three Macs). Its task id is `fleet:<environmentId>:<threadId>`, which
   `task_status` and `task_cancel` route to the owning machine. When its first run ends, the
@@ -499,7 +502,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/server/src/mcp/OrchestratorMcpService.ts`: exports `taskStatusForRun`.
 - `packages/contracts/src/orchestrationV2.ts`, `apps/server/src/orchestration-v2/ThreadLaunchService.ts`,
   `Orchestrator.ts`: optional `remoteParentThreadId` on `thread.create` and the launch input makes
-  the new thread a subagent of a thread on another machine; test in `ThreadLaunchService.test.ts`.
+  the new thread a subagent of a thread on another machine; `recordSubagentFollowup` in
+  `Orchestrator.ts` skips children not forked from a parent task node, so a follow-up to such a
+  thread is not refused for its missing parent; tests in `ThreadLaunchService.test.ts`.
   `packages/client-runtime/src/state/threadShell.ts`: `subagentThreadShellsAtom` also nests
   subagents from other environments that name a parent their own environment lacks; test in
   `threadShell.test.ts`.
