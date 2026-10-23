@@ -408,6 +408,37 @@ describe("EnvironmentSupervisor", () => {
       }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  // Fork (Owner): a machine that keeps dropping reconnects within 30 seconds.
+  it.effect("retries forever with exponential backoff capped at 30 seconds", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        prepare: () => Effect.fail(transient()),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.attempt === 1,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+
+      const delays = [2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000];
+      for (const [index, delay] of delays.entries()) {
+        yield* TestClock.adjust(delay - 1);
+        expect(yield* Ref.get(harness.prepareCount)).toBe(index + 1);
+        yield* TestClock.adjust(1);
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === index + 2,
+        );
+      }
+
+      expect(yield* Ref.get(harness.prepareCount)).toBe(delays.length + 1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

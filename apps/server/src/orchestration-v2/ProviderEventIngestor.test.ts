@@ -1115,7 +1115,7 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
-  it.effect.each(["interrupted", "control"] as const)(
+  it.effect.each(["completed", "interrupted", "failed", "cancelled", "control"] as const)(
     "dismisses the turn's native questions, and approvals unless it completed, when it ends with %s",
     (terminal) =>
       Effect.gen(function* () {
@@ -1261,7 +1261,7 @@ layer("ProviderEventIngestorV2", (it) => {
         };
         const stored = yield* ingestor.ingestNormalized(input);
         const projection = yield* projectionStore.getThreadProjection(threadId);
-        const closesApprovals = terminal === "interrupted";
+        const closesApprovals = terminal !== "completed" && terminal !== "control";
         for (const fixture of fixtures) {
           const closed =
             fixture.key === "native" ||

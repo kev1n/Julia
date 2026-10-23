@@ -2,7 +2,7 @@ import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 import { showThreadUndoNotice } from "./thread-undo-notice";
-import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { AuthOrchestrationOperateScope, type ScopedProjectRef } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
@@ -335,12 +335,18 @@ export function useThreadListActions(): {
     }
     return succeeded;
   };
+  // Only the target offers Undo; undoing it unsettles every tab again.
   const settleThread = (thread: EnvironmentThreadShell) =>
     actOnTabs(
       withOtherTabs(thread, (chat) => chat.settledOverride !== "settled"),
-      settleChat,
+      async (chat) =>
+        chat === thread ? settleChat(chat) : (await executeAction("settle", chat)) === true,
     );
-  const snoozeChat = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
+  const snoozeChat = async (
+    thread: EnvironmentThreadShell,
+    snoozedUntil: string,
+    offersUndo: boolean,
+  ) => {
     if (!checkThreadOperationPermission(thread, "Could not snooze thread")) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
     if (snoozeInFlightThreadKeys.current.has(key)) {
@@ -366,7 +372,7 @@ export function useThreadListActions(): {
       }
 
       selectionHaptic();
-      const claim = ThreadUndo.begin("snooze", key);
+      const claim = offersUndo ? ThreadUndo.begin("snooze", key) : null;
       const result = await withThreadDismissal(
         key,
         () =>
@@ -380,7 +386,7 @@ export function useThreadListActions(): {
         (result) => result._tag === "Success",
       );
       if (result._tag === "Failure") {
-        claim.finish();
+        claim?.finish();
         const error = Cause.squash(result.cause);
         Dialog.alert(
           "Could not snooze thread",
@@ -390,7 +396,7 @@ export function useThreadListActions(): {
         );
         return false;
       }
-      offerUndo(thread, "Snoozed", claim, ThreadUndo.planThreadUndo("snooze"));
+      if (claim) offerUndo(thread, "Snoozed", claim, ThreadUndo.planThreadUndo("snooze"));
       return true;
     })();
     snoozeInFlightThreadKeys.current.delete(key);
@@ -407,7 +413,8 @@ export function useThreadListActions(): {
           !effectiveSnoozed(chat, { now }) &&
           canSnooze(chat, { now }),
       ),
-      (chat) => snoozeChat(chat, snoozedUntil),
+      // Undoing the target's snooze wakes every tab.
+      (chat) => snoozeChat(chat, snoozedUntil, chat === thread),
     );
   };
   const unsnoozeChat = async (thread: EnvironmentThreadShell) => {

@@ -225,12 +225,16 @@ type ThreadContextWindowProjection = Pick<
 export function deriveThreadLiveTokenUsage(
   projection: ThreadContextWindowProjection | null | undefined,
 ): OrchestrationV2ProviderTurnTokenUsage | null {
-  if (!projection || projection.thread.activeProviderThreadId === null) return null;
+  if (!projection) return null;
   const activeId = projection.thread.activeProviderThreadId;
-  const providerThread = projection.providerThreads.find((thread) => thread.id === activeId);
+  const providerThread =
+    activeId === null
+      ? undefined
+      : projection.providerThreads.find((thread) => thread.id === activeId);
   return latestProviderTurnTokenUsage(
     projection.providerTurns.filter((turn) => {
-      if (turn.providerThreadId !== activeId || turn.tokenUsage === undefined) return false;
+      if (activeId === null || turn.providerThreadId !== activeId || turn.tokenUsage === undefined)
+        return false;
       const attempt = projection.attempts.find((attempt) => attempt.id === turn.runAttemptId);
       if (
         !attempt ||
@@ -244,6 +248,7 @@ export function deriveThreadLiveTokenUsage(
         !selection || (run !== undefined && modelSelectionsEqual(selection, run.modelSelection))
       );
     }),
+    // A fresh fork reports its source's usage until its own first turn does.
     projection,
     providerThread,
   );
@@ -253,12 +258,15 @@ export function deriveThreadLiveTokenUsage(
 export function deriveThreadContextWindowSnapshot(
   projection: ThreadContextWindowProjection | null | undefined,
 ): ContextWindowSnapshot | null {
-  if (!projection || projection.thread.activeProviderThreadId === null) return null;
+  if (!projection) return null;
   const activeId = projection.thread.activeProviderThreadId;
-  const providerThread = projection.providerThreads.find((thread) => thread.id === activeId);
+  const providerThread =
+    activeId === null
+      ? undefined
+      : projection.providerThreads.find((thread) => thread.id === activeId);
   const liveUsage = deriveThreadLiveTokenUsage(projection);
   return deriveLatestContextWindowSnapshot(
-    liveUsage || providerThread?.contextUsage
+    liveUsage || providerThread?.contextUsage || activeId === null
       ? []
       : projection.visibleTurnItems.filter(({ item }) => item.providerThreadId === activeId),
     liveUsage,

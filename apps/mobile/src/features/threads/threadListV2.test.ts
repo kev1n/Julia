@@ -187,6 +187,29 @@ describe("resolveThreadListV2Status", () => {
   });
 
   it.each([
+    { kind: "monitor", status: "working" },
+    { kind: "subagent", status: "working" },
+  ] as const)("presents idle $kind work as $status", ({ kind, status }) => {
+    expect(
+      resolveThreadListV2Status(
+        makeThread({
+          id: ThreadId.make("t"),
+          title: "t",
+          pendingBackgroundTasks: [{ taskId: "bg-1", description: "Background work", kind }],
+          runtime: {
+            status: "idle",
+            activeRunId: null,
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            providerName: "Codex",
+            lastError: null,
+            updatedAt: NOW,
+          },
+        }),
+      ),
+    ).toBe(status);
+  });
+
+  it.each([
     { roster: "dev server", task: { kind: "command" }, status: "ready" },
     { roster: "dev server watchdog", task: { kind: "monitor" }, status: "ready" },
     { roster: "awaited command", task: { kind: "command", awaited: true }, status: "working" },

@@ -11983,6 +11983,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  /**
+   * What Stop holds besides its run: queued messages wait, buffered wakes are cancelled, PR watches
+   * end, and delegated tasks' owed wakes (and every `cohortRunIds` entry) are dropped.
+   * With `keepSubagents`, only the queue is held.
+   */
   const holdStoppedThread = Effect.fn("Orchestrator.holdStoppedThread")(function* (input: {
     readonly command: Extract<
       OrchestrationV2ServerCommand,

@@ -1183,9 +1183,11 @@ function deriveTurnFolds(input: {
     if (hiddenEntryIds.size === 0) {
       continue;
     }
-    const hidesNonCompactionWork = (entries: ReadonlyArray<TimelineEntry>) =>
-      entries.some((entry) => hiddenEntryIds.has(entry.id) && !timelineEntryIsCompaction(entry));
-    if (!hidesNonCompactionWork(group.entries)) {
+    // Message-only history (including a fork's final response chunks) is not
+    // work. A lone compaction row also needs other work before it folds.
+    const hasNonCompactionWork = (entries: ReadonlyArray<TimelineEntry>) =>
+      entries.some((entry) => entry.kind !== "message" && !timelineEntryIsCompaction(entry));
+    if (!hasNonCompactionWork(group.entries)) {
       continue;
     }
 
@@ -1234,7 +1236,12 @@ function deriveTurnFolds(input: {
     for (const [index, { startIndex, steer }] of group.steerSegments.entries()) {
       const entries = group.entries.slice(startIndex, group.steerSegments[index + 1]?.startIndex);
       const anchorEntry = entries[0];
-      if (anchorEntry === undefined || !hidesNonCompactionWork(entries)) continue;
+      if (
+        anchorEntry === undefined ||
+        !hasNonCompactionWork(entries) ||
+        !entries.some((entry) => hiddenEntryIds.has(entry.id))
+      )
+        continue;
       const segmentMs = computeElapsedMs(
         steer.createdAt,
         entries.map(timelineEntryEnd).reduce<string | null>(maxIsoTimestamp, null) ??

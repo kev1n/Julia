@@ -877,9 +877,7 @@ function useThreadSettingsCatalogItems(
       const current = group.subscriptions.some((subscription) => !subscription.value.isLegacy);
       const isFirst = !firstByCatalog.has(first.catalog) && current;
       if (current) firstByCatalog.add(first.catalog);
-      const selected = group.subscriptions.some((subscription) =>
-        isDisplayed(subscription.value),
-      );
+      const selected = group.subscriptions.some((subscription) => isDisplayed(subscription.value));
       const favorite = isFavorite(group);
       const preferred = defaultModelPriority(first.catalog, first.model) < 3;
       const defaultModel =

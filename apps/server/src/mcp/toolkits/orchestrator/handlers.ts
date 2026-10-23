@@ -22,7 +22,7 @@ const handlers = {
       const remote = machine === undefined ? null : yield* RemoteTasks.resolveMachine(machine);
       if (remote === null) return local;
       // The caller's own inheritance and limits, with the other machine's catalog.
-      return { ...local, providers: yield* RemoteTasks.providers(remote) };
+      return { ...local, providers: yield* RemoteTasks.providers(remote, input.search) };
     }),
   ),
   // Fork (Owner): `machine` naming another fleet machine runs the child there,

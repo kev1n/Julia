@@ -1,4 +1,8 @@
-import { type ConfirmDialogOptions, type ContextMenuItem } from "@t3tools/contracts";
+import {
+  type ConfirmDialogOptions,
+  type ContextMenuItem,
+  type DesktopBridge,
+} from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const showContextMenuFallbackMock =
@@ -65,6 +69,16 @@ afterEach(() => {
 });
 
 describe("LocalApi", () => {
+  it("renders context menus in the DOM even with a desktop bridge", async () => {
+    showContextMenuFallbackMock.mockResolvedValue("rename");
+    testWindow().desktopBridge = {} as unknown as DesktopBridge;
+    const { createLocalApi } = await import("./localApi");
+    const items = [{ id: "rename", label: "Rename" }] as const;
+
+    await expect(createLocalApi().contextMenu.show(items, { x: 4, y: 5 })).resolves.toBe("rename");
+    expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 });
+  });
+
   it("fails closed in a browser when no themed host is available", async () => {
     requestConfirmDialogMock.mockReturnValue(undefined);
     const { createLocalApi } = await import("./localApi");
