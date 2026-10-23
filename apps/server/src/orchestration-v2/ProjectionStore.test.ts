@@ -4384,6 +4384,51 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       );
       yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id = 'limit-failover:limit-shell:continue'`;
       yield* sql`UPDATE orchestration_v2_projection_threads SET payload_json = ${originalRow!.payload_json} WHERE thread_id = ${threadId}`;
+      // Fork (Owner): a background-task wake that settles without doing work
+      // after the limit leaves the limited run the one to recover.
+      const wakeRunId = RunId.make("run:limit-shell:empty-wake");
+      const wakeMessageId = MessageId.make("message:limit-shell:empty-wake");
+      yield* store.apply({
+        id: EventId.make("event:limit-shell:empty-wake"),
+        type: "run.created",
+        threadId,
+        runId: wakeRunId,
+        nodeId: NodeId.make("node:limit-shell:empty-wake"),
+        driver,
+        providerInstanceId,
+        occurredAt: now,
+        payload: {
+          ...original,
+          id: wakeRunId,
+          ordinal: original.ordinal + 4,
+          rootNodeId: NodeId.make("node:limit-shell:empty-wake"),
+          userMessageId: wakeMessageId,
+          status: "completed",
+          startedAt: DateTime.add(now, { minutes: 1 }),
+          completedAt: DateTime.add(now, { minutes: 1 }),
+        },
+      });
+      yield* sql`INSERT INTO orchestration_v2_projection_messages
+        (message_id, thread_id, run_id, role, streaming, created_at, updated_at, payload_json)
+        VALUES (${wakeMessageId}, ${threadId}, ${wakeRunId}, 'user', 0, ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)},
+          ${encodeUnknownJsonString({ notification: { source: { kind: "background_task", work: "subagent" }, outcome: "failed", summary: "6 subagents failed" } })})`;
+      const wakeCandidate = (yield* store.getLimitRecoveryCandidates({
+        now,
+        autoResume: true,
+        snooze: false,
+      })).find((row) => row.id === threadId);
+      assert.equal(wakeCandidate?.latestRunId, original.id);
+      yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+        (turn_item_id, thread_id, run_id, node_id, ordinal, type, status, updated_at, payload_json)
+        VALUES ('limit-shell:wake-reply', ${threadId}, ${wakeRunId}, 'node:limit-shell:empty-wake', 5, 'assistant_message', 'completed', ${DateTime.formatIso(now)}, '{}')`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates({ now, autoResume: true, snooze: false })).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`DELETE FROM orchestration_v2_projection_turn_items WHERE turn_item_id = 'limit-shell:wake-reply'`;
+      yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id = ${wakeMessageId}`;
+      yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE run_id = ${wakeRunId}`;
       const session = {
         id: ProviderSessionId.make("session:limit-shell:shared"),
         driver,

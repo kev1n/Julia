@@ -3854,6 +3854,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 latest.status = 'cancelled'
                 AND json_extract(latest.payload_json, '$.startedAt') IS NULL
               )
+              -- Fork (Owner): a background-task wake that settled without doing
+              -- anything (Claude's "N subagents failed" right after the limit hit
+              -- them too) did not clear the limit; otherwise it hides the thread
+              -- from failover and auto-resume.
+              AND NOT (
+                latest.status = 'completed'
+                AND EXISTS (
+                  SELECT 1 FROM orchestration_v2_projection_messages wake
+                  WHERE wake.message_id = json_extract(latest.payload_json, '$.userMessageId')
+                    AND json_type(wake.payload_json, '$.notification') = 'object'
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM orchestration_v2_projection_turn_items work
+                  WHERE work.thread_id = latest.thread_id AND work.run_id = latest.run_id
+                    AND work.type NOT IN ('notification', 'checkpoint', 'system_notice')
+                )
+              )
             -- latestExecutedRun: the run that ended last (runRanAfter).
             ORDER BY latest.completed_at IS NULL DESC, latest.completed_at DESC,
               latest.ordinal DESC, latest.run_id DESC
