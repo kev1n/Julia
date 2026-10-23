@@ -609,6 +609,9 @@ export default function ChatView(props: ChatViewProps) {
       ? (draft.modelSelectionByProvider[draft.activeProvider] ?? null)
       : null;
   });
+  const composerModelSelectionExplicit = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.modelSelectionExplicit === true,
+  );
   const composerHasAttachments = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
@@ -1307,7 +1310,6 @@ export default function ChatView(props: ChatViewProps) {
     activeEnvironmentUnavailableState,
     activeThreadEnvironmentId: activeThread?.environmentId ?? null,
     movedThreadRef: isServerThread ? activeThreadRef : null,
-    fleetOverlapRef: isServerThread ? activeThreadRef : null,
   });
   const threadHistoryBanner = useThreadHistoryBanner(isServerThread ? activeThreadRef : null);
   const systemComposerBannerItems = threadHistoryBanner

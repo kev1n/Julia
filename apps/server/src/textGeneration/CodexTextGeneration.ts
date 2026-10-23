@@ -242,16 +242,6 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     );
 
     const runCodexCommand = Effect.fn("runCodexJson.runCodexCommand")(function* () {
-      const workingDirectory =
-        operation === "generateFleetRelations"
-          ? yield* fileSystem
-              .makeTempDirectoryScoped({ prefix: "t3code-fleet-judge-" })
-              .pipe(
-                Effect.mapError((cause) =>
-                  normalizeCliError("codex", operation, cause, "Failed to create judge directory"),
-                ),
-              )
-          : cwd;
       const resolved = resolveRuntime
         ? yield* resolveRuntime.pipe(
             Effect.mapError(
@@ -303,7 +293,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       };
       const mcpServersOff = yield* listEnabledMcpServers({
         binary,
-        cwd: workingDirectory,
+        cwd,
         env,
         launchArgs: codexMcpListLaunchArgs(launchArgs),
       }).pipe(Effect.map(codexMcpServersOff));
@@ -335,7 +325,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       );
       const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         env,
-        cwd: workingDirectory,
+        cwd,
         shell: spawnCommand.shell,
         stdin: {
           stream: Stream.encodeText(Stream.make(prompt)),
