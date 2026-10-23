@@ -617,6 +617,20 @@ it.effect("launches a subagent of a thread on another machine, kept out of the t
       listed.map((thread) => thread.id),
       launched.threadId,
     );
+    // The parent is not in this database; a user's follow-up still starts a run.
+    yield* threads.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("command:remote-child:followup"),
+      threadId: launched.threadId,
+      messageId: MessageId.make("message:remote-child:followup"),
+      text: "One more thing",
+      attachments: [],
+      createdBy: "user",
+      creationSource: "server",
+      dispatchMode: { type: "queue_after_active" },
+    });
+    const followed = yield* threads.getThreadProjection(launched.threadId);
+    assert.lengthOf(followed.runs, 1);
   }).pipe(Effect.provide(harness.layer));
 });
 
