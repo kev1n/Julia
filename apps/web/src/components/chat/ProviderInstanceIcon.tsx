@@ -65,6 +65,7 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   className?: string;
   iconClassName?: string;
   badgeClassName?: string;
+  statusDotClassName?: string;
   indicatorBackground?: string;
 }) {
   const Icon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
@@ -122,6 +123,7 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
         <span
           className={cn(
             "pointer-events-none absolute right-0 bottom-0 z-10 size-2 rounded-full border bg-(--provider-accent) shadow-sm",
+            props.size === "compact" && "right-[-0.125rem] bottom-[-0.125rem]",
             props.badgeClassName,
           )}
           style={{ borderColor: indicatorBackground }}

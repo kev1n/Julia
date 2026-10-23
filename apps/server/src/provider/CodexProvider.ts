@@ -165,8 +165,11 @@ function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"])
   return account.email;
 }
 
-export function codexDefaultReasoningEffortOverride(model: string): "medium" | undefined {
-  return codexModelFamily(model) === "gpt-6-astra" ? "medium" : undefined;
+export function codexDefaultReasoningEffortOverride(model: string): string | undefined {
+  const family = codexModelFamily(model);
+  // Fork (Owner): the fork's Codex default effort wins, so the catalog and turns without a
+  // saved effort agree on it.
+  return forkCodexDefaultEffort(family) ?? (family === "gpt-6-astra" ? "medium" : undefined);
 }
 
 export function mapCodexModelCapabilities(
@@ -174,9 +177,7 @@ export function mapCodexModelCapabilities(
 ): ModelCapabilities {
   const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
     reasoningEffort ===
-    (forkCodexDefaultEffort(codexModelFamily(model.model)) ??
-      codexDefaultReasoningEffortOverride(model.model) ??
-      model.defaultReasoningEffort)
+    (codexDefaultReasoningEffortOverride(model.model) ?? model.defaultReasoningEffort)
       ? {
           id: reasoningEffort,
           label: reasoningEffortLabel(reasoningEffort),

@@ -41,8 +41,9 @@ interface SystemComposerBannersInput {
 }
 
 /**
- * The composer banners about the machine itself: offline or reconnecting,
- * a server update, and auto-balanced machines that need one.
+ * The composer banners about the machine itself: offline or reconnecting.
+ * Fork (Owner): server updates show in one quiet corner toast
+ * (ServerUpdateNotice), not here.
  */
 export function useSystemComposerBanners(input: SystemComposerBannersInput) {
   const {
