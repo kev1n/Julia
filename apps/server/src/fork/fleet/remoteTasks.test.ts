@@ -3,6 +3,7 @@ import { describe, expect } from "vite-plus/test";
 import type {
   OrchestrationProjectShell,
   OrchestratorMcpCapabilitiesResult,
+  OrchestrationV2ThreadShell,
   OrchestratorMcpThreadSendInput,
   ThreadId,
 } from "@t3tools/contracts";
@@ -17,7 +18,7 @@ import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
 import * as ThreadLaunch from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
-import { makePeerHandlers } from "./remoteTasks.ts";
+import { makePeerHandlers, remoteChildrenToSettle } from "./remoteTasks.ts";
 
 const REPO = "github.com/example/t3code";
 const source = {
@@ -127,6 +128,8 @@ describe("delegated tasks on another machine", () => {
         modelSelection: parentModelSelection,
         runtimeMode: "auto-accept-edits",
         workspaceStrategy: { type: "worktree", baseRef: "owner", startFromOrigin: true },
+        // A subagent of the parent thread on the MacBook, not a top-level thread.
+        remoteParentThreadId: "parent-thread",
       });
       // A retried request replays the same launch; a new round is a new one.
       expect(retry!.commandId).toBe(first!.commandId);
@@ -208,5 +211,43 @@ describe("delegated tasks on another machine", () => {
       expect(send!.input.message).toContain("Remote task on build-mac completed");
       expect(send!.input.message).toContain("Found two bugs.");
     }).pipe(Effect.provide(parent.layer));
+  });
+});
+
+describe("remote subagents follow their parent", () => {
+  const child = (id: string, parentThreadId: string, changes: object = {}) =>
+    ({
+      id,
+      lineage: { parentThreadId, relationshipToParent: "subagent", rootThreadId: id },
+      archivedAt: null,
+      deletedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      activeRunId: null,
+      ...changes,
+    }) as unknown as OrchestrationV2ThreadShell;
+  const parents = [
+    { threadId: "settled-parent", lifecycle: "settled" },
+    { threadId: "archived-parent", lifecycle: "archived" },
+    { threadId: "idle-parent", lifecycle: "idle" },
+  ] as const;
+
+  it("settles an idle child once its parent elsewhere is settled or archived", () => {
+    const local = child("local-parent", "x", { lineage: { relationshipToParent: null } });
+    expect(
+      remoteChildrenToSettle(
+        [
+          child("of-settled", "settled-parent"),
+          child("of-archived", "archived-parent"),
+          child("of-idle", "idle-parent"),
+          child("still-running", "settled-parent", { activeRunId: "run-1" }),
+          child("already-settled", "settled-parent", { settledOverride: "settled" }),
+          // A local subagent follows its local parent, never a fleet entry of the same id.
+          local,
+          child("of-local", "local-parent"),
+        ],
+        [...parents, { threadId: "local-parent", lifecycle: "settled" }],
+      ),
+    ).toEqual(["of-settled", "of-archived"]);
   });
 });
