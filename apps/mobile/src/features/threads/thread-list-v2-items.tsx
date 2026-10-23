@@ -935,7 +935,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       (thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId),
   )?.iconUrl;
 
-  const subagents = useThreadSubagentList(thread);
+  const subagents = useThreadSubagentList(thread, tabs);
   const disclosure = (
     <ThreadSubagentDisclosure
       count={subagents.threads.length}

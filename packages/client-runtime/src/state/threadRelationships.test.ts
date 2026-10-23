@@ -1,16 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ThreadId } from "@t3tools/contracts";
+import { RunId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
+  isLimitFailoverContinuation,
   orderWebThreadLineageRows,
   resolveMergeBackTargetThreadId,
   threadRelationshipRowStatus,
 } from "./threadRelationships.ts";
 
 describe("thread relationships", () => {
+  // Fork (Owner): apps/server/src/fork/limitFailover.ts.
+  it("pairs a limited thread with the tab that continued it, in either order", () => {
+    const original = { id: ThreadId.make("original"), limitRecovery: null };
+    const continuation = { id: ThreadId.make("limit-failover:continuation"), limitRecovery: null };
+    const limited = {
+      ...original,
+      limitRecovery: {
+        runId: RunId.make("run"),
+        resetAt: "2026-10-23T23:00:00.000Z",
+        autoResume: false,
+        snooze: false,
+        continuedIn: continuation.id,
+      },
+    };
+    expect(isLimitFailoverContinuation(limited, continuation)).toBe(true);
+    expect(isLimitFailoverContinuation(continuation, limited)).toBe(true);
+    expect(isLimitFailoverContinuation(original, continuation)).toBe(false);
+  });
+
   it.each([
     ["running", "completed"],
     ["completed", "running"],
