@@ -736,7 +736,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
-  const subagents = useSidebarSubagents(threadRef);
+  const subagents = useSidebarSubagents([threadRef]);
   const childSelected = subagents.all.some(
     (child) =>
       scopedThreadKey(scopeThreadRef(child.environmentId, child.id)) === props.activeThreadKey,

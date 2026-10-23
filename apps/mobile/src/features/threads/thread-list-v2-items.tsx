@@ -926,7 +926,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     };
   }, [thread, props.providers]);
 
-  const subagents = useThreadSubagentList(thread);
+  const subagents = useThreadSubagentList(thread, tabs);
   const disclosure = (
     <ThreadSubagentDisclosure
       count={subagents.threads.length}
