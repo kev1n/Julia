@@ -14,7 +14,7 @@ import { msg } from "gt-react";
 
 import { m } from "../i18n/messages";
 
-import { readEnvironmentScope, readEnvironmentScopeDenied } from "./session";
+import { readEnvironmentScopeDenied } from "./session";
 import { useAtomCommand } from "./use-atom-command";
 
 const ORCHESTRATION_OPERATE_DENIED_MESSAGE = msg(
@@ -22,8 +22,10 @@ const ORCHESTRATION_OPERATE_DENIED_MESSAGE = msg(
 );
 
 // Module scope: React Compiler cannot reorder an inline arrow used as a parameter default.
-function hasLiveOperateGrant(environmentId: EnvironmentId): boolean {
-  return readEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
+// Fork: an unloaded or failed session read is not a denial; a remote environment's
+// session fetch can lag while its socket works, and the server still checks the grant.
+function operateNotDenied(environmentId: EnvironmentId): boolean {
+  return !readEnvironmentScopeDenied(environmentId, AuthOrchestrationOperateScope);
 }
 
 /**
@@ -38,7 +40,7 @@ export function threadTriagePermitted(environmentId: EnvironmentId): boolean {
 export function useOrchestrationCommand<W extends { readonly environmentId: EnvironmentId }, A, E>(
   command: AtomCommand<W, A, E>,
   options?: string | AtomCommandOptions,
-  permitted: (environmentId: EnvironmentId) => boolean = hasLiveOperateGrant,
+  permitted: (environmentId: EnvironmentId) => boolean = operateNotDenied,
 ): (value: W) => Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> {
   const run = useAtomCommand(command, options);
   return async (value: W): Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> => {

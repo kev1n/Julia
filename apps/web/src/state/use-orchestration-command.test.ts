@@ -10,12 +10,13 @@ import { assert, beforeEach, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   allowed: new Set<string>(),
-  readScope: vi.fn(),
+  unknown: new Set<string>(),
+  readDenied: vi.fn(),
   run: vi.fn(),
 }));
 
 vi.mock("react", () => ({ useCallback: (callback: unknown) => callback }));
-vi.mock("./session", () => ({ readEnvironmentScope: state.readScope }));
+vi.mock("./session", () => ({ readEnvironmentScopeDenied: state.readDenied }));
 vi.mock("./use-atom-command", () => ({ useAtomCommand: () => state.run }));
 
 import { useOrchestrationCommand } from "./use-orchestration-command";
@@ -31,12 +32,14 @@ const target = (environmentId: EnvironmentId): Target => ({
 
 beforeEach(() => {
   state.allowed.clear();
+  state.unknown.clear();
   state.run.mockReset().mockResolvedValue(AsyncResult.success("receipt"));
-  state.readScope
+  state.readDenied
     .mockReset()
     .mockImplementation(
       (environmentId, scope) =>
-        scope === AuthOrchestrationOperateScope && state.allowed.has(environmentId),
+        !state.unknown.has(environmentId) &&
+        !(scope === AuthOrchestrationOperateScope && state.allowed.has(environmentId)),
     );
 });
 
@@ -70,4 +73,11 @@ it("does not dispatch a later mutation after access changes while awaiting a rec
   expect((await pending)._tag).toBe("Success");
   expect((await mutate(target(second)))._tag).toBe("Failure");
   expect(state.run).toHaveBeenCalledTimes(1);
+});
+
+it("leaves an environment whose session has not loaded to the server's check", async () => {
+  state.unknown.add(second);
+  const mutate = useOrchestrationCommand(command);
+  expect((await mutate(target(second)))._tag).toBe("Success");
+  expect(state.run).toHaveBeenCalledWith(target(second));
 });
