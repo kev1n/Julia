@@ -186,7 +186,6 @@ import type {
   ThreadFeedLatestRun,
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
-import { FleetOverlapNotice } from "../../fork/FleetOverlapNotice";
 import { ThreadHistoryNotice } from "../../fork/ThreadHistoryNotice";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
@@ -1789,10 +1788,6 @@ function ThreadDetailBody(
                         onDismiss={() => props.onDismissFeedback(submission.id)}
                       />
                     ))}
-                    <FleetOverlapNotice
-                      environmentId={props.environmentId}
-                      threadId={props.selectedThread.id}
-                    />
                     <ThreadHistoryNotice
                       environmentId={props.environmentId}
                       threadId={props.selectedThread.id}

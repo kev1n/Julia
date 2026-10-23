@@ -43,7 +43,6 @@ import {
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
 // Fork (Owner): move a thread to another machine.
-import { ForkFleetOverlapsInput, ForkFleetOverlapsResult } from "./forkFleet.ts";
 import { ForkThreadHistoryInput, ForkThreadHistoryStatus } from "./forkThreadHistory.ts";
 import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
 import * as Rpc from "effect/rpc/Rpc";
@@ -610,7 +609,6 @@ export const WS_METHODS = {
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
   forkMoveReceive: "fork.moveReceive",
-  forkFleetOverlaps: "fork.fleetOverlaps",
   forkThreadHistory: "fork.threadHistory",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
@@ -1113,12 +1111,6 @@ const WsForkMoveReceiveRpc = Rpc.make(WS_METHODS.forkMoveReceive, {
   payload: ForkMoveReceiveInput,
   success: ForkMoveReceiveResult,
   error: Schema.Union([ForkMoveError, EnvironmentAuthorizationError]),
-});
-
-const WsForkFleetOverlapsRpc = Rpc.make(WS_METHODS.forkFleetOverlaps, {
-  payload: ForkFleetOverlapsInput,
-  success: ForkFleetOverlapsResult,
-  error: EnvironmentAuthorizationError,
 });
 
 // Fork (Owner): restores a settled thread's history from Azure and reports where it is.
@@ -2471,7 +2463,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,
   WsForkMoveReceiveRpc,
-  WsForkFleetOverlapsRpc,
   WsForkThreadHistoryRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
