@@ -5,17 +5,20 @@
  * Fork (Owner): delegate_task on another machine (`machine` on the tool).
  *
  *   parent machine                                child machine
- *   delegate_task ─ POST peer/delegate ─────────▶ new top-level thread in the same
- *                                                 repository, fresh worktree from the
- *                                                 parent checkout's base branch
+ *   delegate_task ─ POST peer/delegate ─────────▶ new subagent thread of the parent in
+ *                                                 the same repository, fresh worktree from
+ *                                                 the parent checkout's base branch
  *   task_status / task_cancel ─ peer/task, ────▶ read / interrupt that thread
  *                               peer/task-cancel
  *   orchestrator_capabilities ─ peer/providers ─▶ its provider instances and models
  *   parent thread ◀─ POST peer/task-result ────── its first run ended: the result
  *                                                 wakes the parent like a local child's
+ *   parent settled or archived (hub snapshot) ──▶ the child is settled once idle
  *
- * A remote child is an ordinary thread on its machine, not a subagent node:
- * the orchestrator's parent/child records cannot span two databases. Its task
+ * A remote child's lineage names its parent (`remoteParentThreadId` on
+ * thread.create), so both machines keep it out of their thread lists and the
+ * client nests it under the parent. The orchestrator's subagent node records
+ * cannot span two databases, so there is no node in the parent's run. Its task
  * id is `fleet:<environmentId>:<threadId>`, which task_status and task_cancel
  * route back to the owning machine. Results still to deliver are kept in
  * `fork-remote-tasks.json` beside the fleet settings, so a restart or an
@@ -37,6 +40,7 @@ import {
   ThreadId,
   repositoryGroupingKeyOf,
   type OrchestrationV2Run,
+  type OrchestrationV2ThreadShell,
   type OrchestratorMcpCapabilitiesResult,
   type OrchestratorMcpDelegateTaskInput,
   type OrchestratorMcpDelegateTaskResult,
@@ -69,9 +73,9 @@ import {
   fleetRequest,
   readFleetConfig,
 } from "./config.ts";
-import type { FleetSnapshot } from "./model.ts";
+import type { FleetSnapshot, FleetThread } from "./model.ts";
 import { PeerSource, peerScope } from "./peer.ts";
-import { fleetConfig, localSnapshot } from "./publisher.ts";
+import { fleetConfig, lifecycleOf, localSnapshot } from "./publisher.ts";
 import { loadView } from "./view.ts";
 
 type Result = OrchestratorMcpDelegateTaskResult;
@@ -558,6 +562,7 @@ export const makePeerHandlers = Effect.gen(function* () {
             baseRef: input.baseRef ?? "HEAD",
             startFromOrigin: input.baseRef !== null,
           },
+          remoteParentThreadId: ThreadId.make(input.source.threadId),
           initialMessage: {
             messageId: MessageId.make(commandId),
             text: `[Delegated task from ${input.source.label}, thread "${input.source.title}". Your final message is sent back to that thread as the task result. You run in a fresh worktree of ${input.baseRef ?? "this checkout's HEAD"}: the parent's uncommitted or unpushed work is not here.]\n\n${input.task}`,
@@ -678,7 +683,34 @@ export const makePeerHandlers = Effect.gen(function* () {
   ]) satisfies PeerHandlers;
 });
 
-// ── Child machine: delivering results ───────────────────────────────────
+// ── Child machine: delivering results and following the parent ─────────
+
+/**
+ * Subagents here whose parent, on another machine, is settled or archived and
+ * that are idle themselves (a running one is settled once its turn ends).
+ */
+export function remoteChildrenToSettle(
+  shells: ReadonlyArray<OrchestrationV2ThreadShell>,
+  fleetThreads: ReadonlyArray<Pick<FleetThread, "threadId" | "lifecycle">>,
+): ReadonlyArray<ThreadId> {
+  const local = new Set<string>(shells.map((shell) => shell.id));
+  const ended = new Set(
+    fleetThreads
+      .filter((thread) => thread.lifecycle === "settled" || thread.lifecycle === "archived")
+      .map((thread) => thread.threadId),
+  );
+  return shells
+    .filter(
+      (shell) =>
+        shell.lineage.relationshipToParent === "subagent" &&
+        shell.lineage.parentThreadId !== null &&
+        !local.has(shell.lineage.parentThreadId) &&
+        ended.has(shell.lineage.parentThreadId) &&
+        shell.deletedAt === null &&
+        lifecycleOf(shell) === "idle",
+    )
+    .map((shell) => shell.id);
+}
 
 /**
  * Sends each finished remote task's result to its parent thread. Runs on
@@ -743,8 +775,31 @@ export const runDelivery = Effect.gen(function* () {
       ),
     );
 
+  /** Settle each remote child whose parent was settled or archived on its machine. */
+  const followParents = Effect.gen(function* () {
+    const { threads: shells } = yield* orchestrator.getShellSnapshot({ location: "active" });
+    const view = yield* Effect.promise(() => loadView(config, localSnapshot()));
+    const fleetThreads = view.entries.flatMap(({ snapshot }) => snapshot.threads);
+    for (const threadId of remoteChildrenToSettle(shells, fleetThreads)) {
+      yield* threads
+        .settleThread({
+          threadId,
+          commandId: CommandId.make(`fleet-parent-settled:${NodeCrypto.randomUUID()}`),
+          byOwnAgent: false,
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logDebug("settling a remote child failed", { threadId, cause }),
+          ),
+        );
+    }
+  }).pipe(
+    Effect.catchCause((cause) => Effect.logDebug("following remote parents failed", { cause })),
+  );
+
   const sweep = lock.withPermits(1)(
     Effect.gen(function* () {
+      yield* followParents;
       const pending = readPending(config.userdataDir);
       const done: string[] = [];
       for (const [threadId, entry] of Object.entries(pending)) {

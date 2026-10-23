@@ -4220,8 +4220,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : { delegatedFrom: command.delegatedFrom }),
       ...(command.workflowRun === undefined ? {} : { workflowRun: command.workflowRun }),
       lineage: {
-        parentThreadId: null,
-        relationshipToParent: null,
+        parentThreadId: command.remoteParentThreadId ?? null,
+        relationshipToParent: command.remoteParentThreadId === undefined ? null : "subagent",
         rootThreadId: command.threadId,
         ...(command.workflowRun === undefined ? {} : { workflowStep: true }),
       },
