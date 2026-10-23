@@ -42,6 +42,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../../config.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
+import { resolveInteractionMode, resolveRuntimeMode } from "../../mcp/delegatedTaskModes.ts";
 import { readCaller } from "../../mcp/threadAccess.ts";
 import * as Orchestrator from "../../orchestration-v2/Orchestrator.ts";
 import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
@@ -115,7 +116,7 @@ const PeerTask = Schema.Struct({
   /** A terminal result read by the parent needs no automatic delivery. */
   acknowledge: Schema.optional(Schema.Boolean),
 });
-const PeerProviders = Schema.Struct({ source: PeerSource });
+const PeerProviders = Schema.Struct({ source: PeerSource, search: Schema.optional(Schema.String) });
 const PeerTaskCancel = Schema.Struct({
   source: PeerSource,
   threadId: ThreadId,
@@ -282,7 +283,7 @@ export const delegate = Effect.fn("remoteTasks.delegate")(function* (
     caller.runtimeMode,
     input.runtimeMode,
   );
-  const interactionMode = yield* OrchestratorMcpService.resolveInteractionMode(
+  const interactionMode = yield* resolveInteractionMode(
     caller.interactionMode,
     input.interactionMode,
   );
@@ -313,14 +314,19 @@ export const delegate = Effect.fn("remoteTasks.delegate")(function* (
   });
   if (input.mode !== "wait") return accepted;
   const timeoutMs = Math.min(MAX_WAIT_MS, Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_MS));
+  if (accepted.childThreadId === null) return accepted;
   return yield* waitRemote(target, source, accepted.childThreadId, timeoutMs);
 });
 
 /** Another machine's provider instances and models, as orchestrator_capabilities lists them. */
-export const providers = Effect.fn("remoteTasks.providers")(function* (target: FleetSnapshot) {
+export const providers = Effect.fn("remoteTasks.providers")(function* (
+  target: FleetSnapshot,
+  search: string | undefined,
+) {
   const { source } = yield* callingThread;
   return yield* ask<OrchestratorMcpCapabilitiesResult["providers"]>(target, "peer/providers", {
     source,
+    ...(search === undefined ? {} : { search }),
   });
 });
 
@@ -397,7 +403,11 @@ export const makePeerHandlers = Effect.gen(function* () {
     target: OrchestratorMcpTarget | undefined,
     parent: ModelSelection,
   ) {
-    const { providers } = yield* service.capabilities(scope);
+    // Capabilities list a short model list; searching for the requested model finds it.
+    const { providers } = yield* service.capabilities(
+      scope,
+      target?.model === undefined ? {} : { search: target.model },
+    );
     const instanceId =
       target?.providerInstanceId ??
       (target?.driverKind === undefined
@@ -417,7 +427,9 @@ export const makePeerHandlers = Effect.gen(function* () {
       target?.model ?? (sameAsParent ? parent.model : provider.models[0]?.id) ?? undefined;
     if (
       model === undefined ||
-      (provider.models.length > 0 && !provider.models.some((candidate) => candidate.id === model))
+      (provider.models.length > 0 &&
+        !provider.models.some((candidate) => candidate.id === model) &&
+        (provider.omittedModels ?? 0) === 0)
     ) {
       return yield* fail(
         "model_unavailable",
@@ -511,7 +523,7 @@ export const makePeerHandlers = Effect.gen(function* () {
       pendingApproval: null,
       waitTimedOut,
       machine: descriptor.label,
-      link: formatThreadLink(threadId, shell.title),
+      link: formatThreadLink({ environmentId: descriptor.environmentId, threadId }, shell.title),
     } satisfies Result;
   });
 
@@ -525,7 +537,7 @@ export const makePeerHandlers = Effect.gen(function* () {
     const descriptor = yield* environment.getDescriptor;
     const scope = peerScope(descriptor.environmentId, input.source);
     // The parent's own modes are the ceiling, as for any peer request.
-    yield* OrchestratorMcpService.resolveRuntimeMode(input.source.runtimeMode, input.runtimeMode);
+    yield* resolveRuntimeMode(input.source.runtimeMode, input.runtimeMode);
     const target = yield* project(input.repoKey);
     const selection = yield* modelSelection(scope, input.target, input.parentModelSelection);
     const commandId = CommandId.make(
@@ -622,8 +634,10 @@ export const makePeerHandlers = Effect.gen(function* () {
   const listProviders = Effect.fn("remoteTasks.listProviders")(function* (body: unknown) {
     const input = yield* decode(PeerProviders)(body);
     const descriptor = yield* environment.getDescriptor;
-    return (yield* service.capabilities(peerScope(descriptor.environmentId, input.source)))
-      .providers;
+    return (yield* service.capabilities(
+      peerScope(descriptor.environmentId, input.source),
+      input.search === undefined ? {} : { search: input.search },
+    )).providers;
   });
 
   /** Parent machine: the lifecycle of each named thread here, subagents included. */
@@ -766,7 +780,10 @@ export const runDelivery = Effect.gen(function* () {
             parentThreadId: entry.source.threadId,
             taskId: remoteTaskId(descriptor.environmentId, threadId),
             title: shell.title,
-            link: formatThreadLink(threadId, shell.title),
+            link: formatThreadLink(
+              { environmentId: descriptor.environmentId, threadId: ThreadId.make(threadId) },
+              shell.title,
+            ),
             status: OrchestratorMcpService.taskStatusForRun(run),
             summary: subagentResultForRun(records, run).text,
             key: `fleet-task-result:${descriptor.environmentId}:${threadId}:${run.id}`,
