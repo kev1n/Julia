@@ -18,6 +18,7 @@ import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
 import * as ThreadLaunch from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
+import type { FleetSnapshot } from "./model.ts";
 import { makePeerHandlers, remoteChildrenToSettle } from "./remoteTasks.ts";
 
 const REPO = "github.com/example/t3code";
@@ -58,6 +59,11 @@ function machine(runs: ReadonlyArray<{ id: string; ordinal: number; status: stri
           id: threadId,
           title: "Review the parser",
           deletedAt: null,
+          archivedAt: null,
+          settledOverride: "settled",
+          settledAt: at,
+          activeRunId: null,
+          lineage: { parentThreadId: "p", relationshipToParent: "subagent", rootThreadId: "p" },
           runtimeMode: "approval-required",
           modelSelection: parentModelSelection,
         } as never),
@@ -225,28 +231,52 @@ describe("remote subagents follow their parent", () => {
       activeRunId: null,
       ...changes,
     }) as unknown as OrchestrationV2ThreadShell;
-  const parents = [
-    { threadId: "settled-parent", lifecycle: "settled" },
-    { threadId: "archived-parent", lifecycle: "archived" },
-    { threadId: "idle-parent", lifecycle: "idle" },
-  ] as const;
+  const macbook = { environmentId: "env-macbook", label: "MacBook" } as FleetSnapshot;
+  const mac-a = { environmentId: "env-mac-a", label: "mac-a" } as FleetSnapshot;
 
-  it("settles an idle child once its parent elsewhere is settled or archived", () => {
-    const local = child("local-parent", "x", { lineage: { relationshipToParent: null } });
-    expect(
-      remoteChildrenToSettle(
+  it.effect("settle an idle child once its parent's own machine says it is settled", () =>
+    Effect.gen(function* () {
+      const asked: string[] = [];
+      const settled = yield* remoteChildrenToSettle(
         [
           child("of-settled", "settled-parent"),
-          child("of-archived", "archived-parent"),
+          child("of-archived", "archived-subagent-parent"),
           child("of-idle", "idle-parent"),
           child("still-running", "settled-parent", { activeRunId: "run-1" }),
           child("already-settled", "settled-parent", { settledOverride: "settled" }),
-          // A local subagent follows its local parent, never a fleet entry of the same id.
-          local,
+          // Its parent's machine does not answer: nothing is assumed from older state.
+          child("of-unreachable", "parent-on-mac-a"),
+          // A local subagent follows its local parent, never another machine's thread.
+          child("local-parent", "x", { lineage: { relationshipToParent: null } }),
           child("of-local", "local-parent"),
         ],
-        [...parents, { threadId: "local-parent", lifecycle: "settled" }],
-      ),
-    ).toEqual(["of-settled", "of-archived"]);
+        [macbook, mac-a],
+        (machine, parentIds) => {
+          asked.push(`${machine.label}:${parentIds.join(",")}`);
+          return machine === mac-a
+            ? Effect.succeed(null)
+            : Effect.succeed({
+                "settled-parent": "settled",
+                "archived-subagent-parent": "archived",
+                "idle-parent": "idle",
+              } as const);
+        },
+      );
+      expect(settled).toEqual(["of-settled", "of-archived"]);
+      expect(asked).toContain(
+        "MacBook:settled-parent,archived-subagent-parent,idle-parent,parent-on-mac-a",
+      );
+    }),
+  );
+
+  it.effect("answer a parent's lifecycle from this machine's own threads, subagents too", () => {
+    const parent = machine([]);
+    return Effect.gen(function* () {
+      const handlers = yield* makePeerHandlers;
+      const answer = yield* handlers.get("peer/thread-lifecycles")!({
+        threadIds: ["subagent-parent"],
+      });
+      expect(answer).toEqual({ "subagent-parent": "settled" });
+    }).pipe(Effect.provide(parent.layer));
   });
 });
