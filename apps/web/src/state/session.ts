@@ -73,6 +73,18 @@ export function readEnvironmentScope(
   );
 }
 
+// Unlike readEnvironmentScope, an unloaded or failed session read is not a denial:
+// a remote environment's session fetch can lag or fail while its socket works,
+// and the server still checks the grant.
+export function readEnvironmentScopeDenied(
+  environmentId: EnvironmentId,
+  scope: AuthEnvironmentScope,
+): boolean {
+  const result = appAtomRegistry.get(environmentSession.sessionStateAtom(environmentId));
+  const session = Option.getOrNull(AsyncResult.value(result));
+  return result._tag !== "Failure" && session !== null && !sessionGrantsScope(session, scope);
+}
+
 const EMPTY_PREPARED_CONNECTION_ATOM = Atom.make(Option.none()).pipe(
   Atom.withLabel("web-prepared-connection:empty"),
 );
