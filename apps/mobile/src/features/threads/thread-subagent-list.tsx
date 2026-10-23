@@ -12,12 +12,18 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { cn } from "../../lib/cn";
 
-export function useThreadSubagentList(thread: EnvironmentThreadShell) {
+/** `tabs` is the thread's chat tab strip: the row lists every tab's subagents. */
+export function useThreadSubagentList(
+  thread: EnvironmentThreadShell,
+  tabs: ReadonlyArray<EnvironmentThreadShell>,
+) {
   const all = useAtomValue(
-    environmentThreadShells.subagentThreadShellsAtom({
-      environmentId: thread.environmentId,
-      threadId: thread.id,
-    }),
+    environmentThreadShells.chatSubagentThreadShellsAtom(
+      (tabs.length > 0 ? tabs : [thread]).map((tab) => ({
+        environmentId: tab.environmentId,
+        threadId: tab.id,
+      })),
+    ),
   );
   const [now, setNow] = useState(Date.now);
   // Native lists recycle row components; another parent must start expanded.
