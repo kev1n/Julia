@@ -239,15 +239,11 @@ environment and thread id plus the repository's canonical key; paths are reposit
 - No overlap alerts: nothing is ever sent into a thread. An earlier version had the hub steer
   overlap notes into both threads' turns whenever they changed the same file; it fired on overlaps
   nobody needed to act on (two branches adding an entry to the same `package.json`), so it was
-  removed. Quiet, dismissible suggestions in web/desktop and mobile compare user goals and
-  recent agent findings, not just shared files. A configured GPT-6-Luna or Haiku 5.5 judges
-  conflicting intents and duplicate investigations in one shared check per repository.
-  Unchanged evidence is free of new model calls; changed evidence is checked at most once
-  per five minutes, with a fleet-wide cap of three attempts per ten minutes on the hub, low reasoning,
-  and a 64,000-character input cap. Only viewed chats or explicit tool calls request checks. "Review with agent" only fills a draft; neither agent receives anything until
-  the user sends it. Agents can check the same reasons with `t3_coordination_suggestions`;
-  `t3_who_else` remains the separate raw file-evidence tool. Old servers may leave `fork-fleet-notices.json` and,
-  on mac-a, `fork-fleet-alerts-state.json` behind; nothing reads them now.
+  removed. A later model-judged "may be investigating the same bug" banner was removed too: it
+  flagged chats the user already knew were the same work (a thread's own predecessor in another
+  tab). `t3_who_else` is the only overlap tool, and it only answers when asked. Old servers may
+  leave `fork-fleet-notices.json` and, on mac-a, `fork-fleet-alerts-state.json` behind; nothing
+  reads them now.
 
 **Settled threads in Azure** (`apps/server/src/fork/threadHistory/`,
 `apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). A thread that
@@ -334,7 +330,7 @@ Staff"'s subagents and nothing resumed them for an hour.
   message until a person resumes it. A job scheduled from an agent's shell passes that agent's
   provider session (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`) as `requester`, and both answers
   leave that thread's own work out (logged as `Not waiting for the thread that scheduled this
-deploy`), so an agent can wait for its own deploy; the restart cuts that work off and wakes the
+  deploy`), so an agent can wait for its own deploy; the restart cuts that work off and wakes the
   thread. The drain is held in memory: the restart ends it, and the job cancels it whenever it will
   not install (work began, superseded, installer failed). A server without the drain (a release
   before it, or no

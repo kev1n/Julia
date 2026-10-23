@@ -63,8 +63,6 @@ export const FleetThread = Schema.Struct({
   lastActivityAt: Schema.NullOr(Schema.Number),
   intents: Schema.Array(FleetIntent),
   intentsAt: Schema.NullOr(Schema.Number),
-  /** Bounded user goals and recent agent findings; absent on older servers. */
-  workContext: Schema.optional(Schema.String),
 });
 export type FleetThread = typeof FleetThread.Type;
 

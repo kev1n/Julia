@@ -30,7 +30,6 @@ import {
   type FleetConfig,
 } from "./config.ts";
 import { forgetCheckoutsExcept, scanCheckout } from "./gitScan.ts";
-import { workContext } from "./workContext.ts";
 import type {
   FleetCheckout,
   FleetIntent,
@@ -44,7 +43,6 @@ let seq = 0;
 let config: FleetConfig | null = null;
 let latest: FleetSnapshot | null = null;
 const checkoutScans = new Map<string, FleetCheckout>();
-const contexts = new Map<string, { key: string; text: string }>();
 let lastScanAt: number | null = null;
 let intents = new Map<
   string,
@@ -173,28 +171,6 @@ const buildSnapshot = Effect.fn("fork.fleet.buildSnapshot")(function* (input: {
       activePaths.add(path);
     }
     const declared = intents.get(shell.id);
-    // Only read goals when activity changes, plus once a minute while running.
-    // User messages are sparse; agent messages are restricted to the latest run.
-    const contextKey = `${shell.latestUserMessageAt}:${shell.latestRunId}:${shell.latestRunCompletedAt}:${lifecycle === "running" ? Math.floor(Date.now() / 60_000) : ""}`;
-    if (
-      (lifecycle === "running" || lifecycle === "idle") &&
-      contexts.get(shell.id)?.key !== contextKey
-    ) {
-      const runId = shell.activeRunId ?? shell.latestRunId;
-      const context = yield* Effect.all([
-        orchestrator.getThreadRecords(shell.id, ["messages"], { messageRoles: ["user"] }),
-        runId === null
-          ? Effect.succeed({ messages: [] })
-          : orchestrator.getThreadRecords(shell.id, ["messages"], {
-              messageRoles: ["assistant"],
-              messageRunIds: [runId],
-            }),
-      ]).pipe(
-        Effect.map(([users, agent]) => workContext(users.messages, agent.messages)),
-        Effect.orElseSucceed(() => contexts.get(shell.id)?.text ?? ""),
-      );
-      contexts.set(shell.id, { key: contextKey, text: context });
-    }
     const times = [
       millis(shell.latestRunStartedAt),
       millis(shell.latestRunCompletedAt),
@@ -215,16 +191,9 @@ const buildSnapshot = Effect.fn("fork.fleet.buildSnapshot")(function* (input: {
       lastActivityAt: times.length === 0 ? null : Math.max(...times),
       intents: declared?.intents ?? [],
       intentsAt: declared?.at ?? null,
-      workContext: contexts.get(shell.id)?.text ?? "",
     });
   }
   // Only checkouts of active threads are published; a removed worktree drops out.
-  const activeThreadIds = new Set(
-    threads
-      .filter((thread) => thread.lifecycle === "running" || thread.lifecycle === "idle")
-      .map((thread) => thread.threadId),
-  );
-  for (const id of contexts.keys()) if (!activeThreadIds.has(id)) contexts.delete(id);
   // Deleting while iterating a Map is safe: visited entries are skipped.
   for (const path of checkoutScans.keys()) {
     if (!activePaths.has(path) || !NodeFS.existsSync(path)) checkoutScans.delete(path);
