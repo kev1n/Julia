@@ -769,6 +769,21 @@ export function createEnvironmentThreadShellAtoms(input: {
     });
   });
 
+  // Fork (Owner): a chat's tabs are one thread to the user, so its row lists
+  // every tab's subagents rather than changing with the selected tab.
+  const chatSubagentThreadShellsAtom = Atom.family((key: string) => {
+    const keys: ReadonlyArray<string> = JSON.parse(key);
+    let previous = EMPTY_SUBAGENT_SHELLS;
+    return Atom.make((get): ReadonlyArray<EnvironmentThreadShell> => {
+      if (keys.length === 1) return get(subagentThreadShellsAtom(keys[0]!));
+      const next = keys
+        .flatMap((tabKey) => get(subagentThreadShellsAtom(tabKey)))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+      if (!arrayElementsEqual(previous, next)) previous = next;
+      return previous;
+    });
+  });
+
   return {
     environmentThreadsAtom,
     environmentThreadIndexAtom,
@@ -784,6 +799,8 @@ export function createEnvironmentThreadShellAtoms(input: {
     delegatedUnderParentAtom,
     pendingSubagentRequestsAtom,
     subagentThreadShellsAtom: (ref: ScopedThreadRef) => subagentThreadShellsAtom(threadKey(ref)),
+    chatSubagentThreadShellsAtom: (tabs: ReadonlyArray<ScopedThreadRef>) =>
+      chatSubagentThreadShellsAtom(JSON.stringify(tabs.map(threadKey).sort())),
     threadShellsForProjectRefsAtom: (refs: ReadonlyArray<ScopedProjectRef>) =>
       threadShellsForProjectRefsAtomFamily(projectRefCollectionKey(refs)),
     threadShellAtom: (ref: ScopedThreadRef) => threadShellAtomFamily(threadKey(ref)),

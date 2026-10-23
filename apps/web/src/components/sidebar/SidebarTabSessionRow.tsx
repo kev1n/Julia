@@ -68,7 +68,9 @@ export function SortableTabSessionRow(
 export function SidebarTabSessionRow(props: SidebarTabSessionRowProps) {
   const { session } = props;
   const threadRef = scopeThreadRef(session.thread.environmentId, session.thread.id);
-  const subagents = useSidebarSubagents(threadRef);
+  const subagents = useSidebarSubagents(
+    session.chats.map((chat) => scopeThreadRef(chat.environmentId, chat.id)),
+  );
   const childSelected = subagents.all.some(
     (child) =>
       scopedThreadKey(scopeThreadRef(child.environmentId, child.id)) === props.activeThreadKey,
