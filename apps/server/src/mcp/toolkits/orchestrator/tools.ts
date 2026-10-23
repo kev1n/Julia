@@ -94,7 +94,7 @@ const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. Leave `runtimeMode` unset: delegated tasks never run in approval-required or auto-accept-edits. `machine` runs it on another of Owner's machines (MacBook, mac-a, build-mac; see `t3_fleet_list`) in a fresh worktree of the base branch without this checkout's uncommitted or unpushed work, so make the task self-contained; its taskId starts with fleet: and its result wakes this thread the same way.",
+    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. Leave `runtimeMode` unset: delegated tasks never run in approval-required or auto-accept-edits. `machine` runs it as a subagent of this thread on another of Owner's Macs (MacBook, mac-a, build-mac; see `t3_fleet_list`), only when the user names one or the task needs that Mac. It nests under this thread and its result wakes this thread the same way, but it starts in a fresh worktree of the base branch without this checkout's uncommitted or unpushed work, so make the task self-contained; its taskId starts with fleet:.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: OrchestratorMcpDelegateTaskResult,
   failure: OrchestratorMcpFailure,

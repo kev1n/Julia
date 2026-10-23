@@ -206,7 +206,7 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   machine: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Machine to run the child on: a label such as MacBook, mac-a or build-mac, or an environmentId from t3_fleet_list coverage. Omit to run on this machine.",
+        "Machine to run the child on: a label such as MacBook, mac-a or build-mac, or an environmentId from t3_fleet_list coverage. The child is still a subagent of this thread there. Omit to run on this machine.",
     }),
   ),
 });

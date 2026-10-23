@@ -2894,6 +2894,8 @@ export const OrchestrationV2Command = Schema.Union([
     chatGroupId: Schema.optional(ThreadId),
     /** Create the thread already snoozed until this time (fork). */
     snoozedUntil: Schema.optional(IsoDateTime),
+    /** Fork (Owner): a subagent of this thread on another machine (fork/fleet/remoteTasks.ts). */
+    remoteParentThreadId: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

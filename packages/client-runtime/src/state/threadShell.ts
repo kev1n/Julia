@@ -599,10 +599,27 @@ export function createEnvironmentThreadShellAtoms(input: {
 
   const subagentThreadShellsAtom = Atom.family((key: string) => {
     const ref = parseThreadKey(key);
-    return Atom.make(
-      (get): ReadonlyArray<EnvironmentThreadShell> =>
-        get(subagentsByParentAtom(ref.environmentId)).get(ref.threadId) ?? EMPTY_SUBAGENT_SHELLS,
-    );
+    let previous = EMPTY_SUBAGENT_SHELLS;
+    return Atom.make((get): ReadonlyArray<EnvironmentThreadShell> => {
+      const own =
+        get(subagentsByParentAtom(ref.environmentId)).get(ref.threadId) ?? EMPTY_SUBAGENT_SHELLS;
+      if (!get(environmentThreadIndexAtom(ref.environmentId)).has(ref.threadId)) return own;
+      // Fork (Owner): a subagent run on another machine (apps/server/src/fork/fleet/remoteTasks.ts)
+      // names a parent its own environment does not have; it nests under that parent here.
+      const remote = Array.from(enabledEnvironmentIds(get(input.catalogValueAtom))).flatMap(
+        (environmentId) =>
+          environmentId === ref.environmentId ||
+          get(environmentThreadIndexAtom(environmentId)).has(ref.threadId)
+            ? []
+            : (get(subagentsByParentAtom(environmentId)).get(ref.threadId) ?? []),
+      );
+      if (remote.length === 0) return own;
+      const next = [...own, ...remote].sort(
+        (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+      );
+      if (!arrayElementsEqual(previous, next)) previous = next;
+      return previous;
+    });
   });
 
   return {
