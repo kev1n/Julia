@@ -152,6 +152,43 @@ describe("v2 thread shell lists", () => {
     }
   });
 
+  // Fork (Owner): a chat's tabs are one thread, so its sidebar row lists every tab's agents.
+  it("lists the subagents of every tab in a chat, whichever tab is selected", () => {
+    const harness = makeHarness();
+    const tabIds = [ThreadId.make("original"), ThreadId.make("limit-failover:continuation")];
+    const child = (id: string, parentThreadId: ThreadId, createdAt: string) => ({
+      ...v2ThreadShell,
+      id: ThreadId.make(id),
+      createdAt: DateTime.makeUnsafe(createdAt),
+      lineage: {
+        parentThreadId,
+        rootThreadId: tabIds[0]!,
+        relationshipToParent: "subagent" as const,
+      },
+    });
+    harness.registry.set(harness.snapshotAtom(environmentId), {
+      ...v2ShellSnapshot,
+      threads: [
+        ...tabIds.map((id) => ({ ...v2ThreadShell, id })),
+        child("continuation-agent", tabIds[1]!, "2026-10-23T22:29:00.000Z"),
+        child("original-agent", tabIds[0]!, "2026-10-23T21:31:00.000Z"),
+      ],
+    });
+    const tabs = tabIds.map((threadId) => ({ environmentId, threadId }));
+    const atom = harness.threads.chatSubagentThreadShellsAtom(tabs);
+    const dispose = harness.registry.mount(atom);
+    try {
+      expect(harness.registry.get(atom).map((thread) => thread.id)).toEqual([
+        "original-agent",
+        "continuation-agent",
+      ]);
+      expect(harness.threads.chatSubagentThreadShellsAtom([...tabs].reverse())).toBe(atom);
+    } finally {
+      dispose();
+      harness.registry.dispose();
+    }
+  });
+
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {

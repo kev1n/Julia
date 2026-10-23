@@ -21,8 +21,8 @@ import { cn } from "../../lib/utils";
 import { Spinner } from "../ui/spinner";
 
 /** Shell-only subscription: showing children must not hydrate every parent's history. */
-export function useSidebarSubagents(ref: ScopedThreadRef) {
-  const all = useAtomValue(environmentThreadShells.subagentThreadShellsAtom(ref));
+export function useSidebarSubagents(tabs: ReadonlyArray<ScopedThreadRef>) {
+  const all = useAtomValue(environmentThreadShells.chatSubagentThreadShellsAtom(tabs));
   const [now, setNow] = useState(Date.now);
   const [expanded, setExpanded] = useState(true);
   const roster = visibleSubagentThreadList(all, now);

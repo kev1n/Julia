@@ -124,6 +124,18 @@ export function deriveThreadRelationshipGraph(input: {
   return { nodes, edges: [...edgesByKey.values()] };
 }
 
+/** Fork (Owner): whether either thread continued the other after a usage limit
+ * (`apps/server/src/fork/limitFailover.ts`). */
+export function isLimitFailoverContinuation(
+  left: Pick<OrchestrationV2ThreadShell, "id" | "limitRecovery"> | null | undefined,
+  right: Pick<OrchestrationV2ThreadShell, "id" | "limitRecovery"> | null | undefined,
+): boolean {
+  if (!left || !right) return false;
+  return (
+    left.limitRecovery?.continuedIn === right.id || right.limitRecovery?.continuedIn === left.id
+  );
+}
+
 export function immediateThreadRelationships(
   graph: ThreadRelationshipGraph,
   threadId: ThreadId,

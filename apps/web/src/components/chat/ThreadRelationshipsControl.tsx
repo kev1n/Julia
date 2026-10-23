@@ -16,6 +16,7 @@ import { deriveProviderSubagentStatus } from "@t3tools/client-runtime/state/thre
 import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
+  isLimitFailoverContinuation,
   isParentThreadRelationship,
   threadRelationshipRowStatus,
   orderWebThreadLineageRows,
@@ -430,16 +431,24 @@ export function ThreadRelationshipsPanel(props: {
     rows: immediateThreadRelationships(graph, props.threadId),
     currentThreadId: props.threadId,
     mergeTargetThreadId,
-  }).map((row) => {
-    const agent =
-      row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
-        ? subagentsByThreadId.get(row.threadId)
-        : undefined;
-    const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
-    return workflowGroup === undefined
-      ? row
-      : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
-  });
+  })
+    // Fork (Owner): a limit failover's continuation and the tab it continued are
+    // one conversation to the user, shown side by side in the tab strip.
+    .filter(
+      (row) =>
+        row.edge.kind !== "fork" ||
+        !isLimitFailoverContinuation(currentThread, graph.nodes.get(row.threadId)?.thread),
+    )
+    .map((row) => {
+      const agent =
+        row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
+          ? subagentsByThreadId.get(row.threadId)
+          : undefined;
+      const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
+      return workflowGroup === undefined
+        ? row
+        : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
+    });
   const canMerge = mergeTargetThreadId !== null && latestMergeBackRun !== null;
   const canDetach = projection ? canDetachThreadProviderSession(projection) : false;
 
