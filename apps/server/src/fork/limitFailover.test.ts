@@ -1,6 +1,9 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import {
   type OrchestrationV2AppThread,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2Run,
+  MessageId,
   type OrchestrationV2ServerCommand,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -118,7 +121,14 @@ describe("continueLimitedThreadElsewhere", () => {
     {
       at = NOW,
       reject = () => false,
-    }: { at?: number; reject?: (command: OrchestrationV2ServerCommand) => boolean } = {},
+      runs = [],
+      messages = [],
+    }: {
+      at?: number;
+      reject?: (command: OrchestrationV2ServerCommand) => boolean;
+      runs?: ReadonlyArray<Partial<OrchestrationV2Run>>;
+      messages?: ReadonlyArray<Partial<OrchestrationV2ConversationMessage>>;
+    } = {},
   ) =>
     Effect.gen(function* () {
       yield* TestClock.setTime(at);
@@ -136,6 +146,8 @@ describe("continueLimitedThreadElsewhere", () => {
           getThreadRecords: () =>
             Effect.succeed({
               thread: source,
+              runs,
+              messages,
               subagents: unresolvedDelegate
                 ? [
                     {
@@ -188,6 +200,71 @@ describe("continueLimitedThreadElsewhere", () => {
         continuedIn: fork.targetThreadId,
       });
     }),
+  );
+
+  it.effect(
+    "moves messages queued behind a limited /compact to the new tab instead of compacting",
+    () =>
+      Effect.gen(function* () {
+        const attachments = [
+          { type: "file", id: "upload-1", name: "notes.txt", mimeType: "text/plain", sizeBytes: 5 },
+        ] as never;
+        const { continued, dispatched } = yield* run(candidate, null, false, {
+          runs: [
+            {
+              id: RunId.make("run:before"),
+              ordinal: 1,
+              status: "completed",
+              userMessageId: MessageId.make("m:before"),
+            },
+            { id: runId, ordinal: 2, status: "failed", userMessageId: MessageId.make("m:compact") },
+            {
+              id: RunId.make("run:second"),
+              ordinal: 4,
+              status: "queued",
+              queuePosition: 2,
+              userMessageId: MessageId.make("m:second"),
+            },
+            {
+              id: RunId.make("run:first"),
+              ordinal: 3,
+              status: "queued",
+              queuePosition: 1,
+              userMessageId: MessageId.make("m:first"),
+            },
+          ],
+          messages: [
+            { id: MessageId.make("m:compact"), role: "user", text: "/compact", attachments: [] },
+            {
+              id: MessageId.make("m:first"),
+              role: "user",
+              text: "Fix the flaky test",
+              attachments,
+            },
+            { id: MessageId.make("m:second"), role: "user", text: "Then push", attachments: [] },
+          ],
+        });
+        assert.isTrue(continued);
+        const [fork, , first, second, ...cancels] = dispatched;
+        assert.ok(fork?.type === "thread.fork");
+        assert.deepEqual(fork.sourcePoint, { type: "run", runId: RunId.make("run:before") });
+        assert.ok(first?.type === "message.dispatch" && second?.type === "message.dispatch");
+        assert.equal(first.messageId, `${fork.targetThreadId}:continue`);
+        assert.equal(first.text, "Fix the flaky test");
+        assert.deepEqual(first.attachments, attachments);
+        assert.deepEqual(first.modelSelection, GPT);
+        assert.deepEqual(first.dispatchMode, { type: "start_immediately" });
+        assert.equal(second.text, "Then push");
+        assert.deepEqual(second.dispatchMode, { type: "queue_after_active" });
+        assert.deepEqual(
+          cancels.map((command) =>
+            command.type === "queued-run.cancel"
+              ? `${command.threadId} ${command.runId}`
+              : command.type,
+          ),
+          [`${threadId} run:first`, `${threadId} run:second`],
+        );
+      }),
   );
 
   it.effect.each(["running", "completed"] as const)(
