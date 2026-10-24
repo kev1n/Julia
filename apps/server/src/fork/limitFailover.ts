@@ -1,30 +1,16 @@
 /**
- * Fork (Owner): continue a usage-limited thread on another subscription.
- * When a turn stops on a usage limit, the thread is forked into a new tab of
- * the same chat and told to continue there on the first of
- * `limitFailoverModelSelections` whose provider has an account with usage left
- * (on the account Auto would pick, never the limited one). The source thread's
- * limit recovery is configured off for that run, which both records that
- * it was handled and keeps upstream's auto-resume from also resuming it, and
- * names the new tab in `continuedIn` so clients stop calling the source Limited. With no
- * account left anywhere, upstream's recovery (auto-resume, snooze) applies.
- *
- * The source names the new tab before the new tab gets its first message, so
- * anything that reads the source after the work moved (the Orchestrator bridge
- * settling a finished run) finds where it went.
- *
- * Called from `UsageLimitRecoveryWorker`'s sweep, so it shares its persisted
- * candidates and needs no timers of its own. Every command id derives from the
- * failed run and reset, so a sweep that dies halfway repeats the same commands,
- * except the first message's, which is new per attempt; a source that names a
- * tab with no first message yet stays a candidate (`getLimitRecoveryCandidates`)
- * until that message is sent.
+ * Fork (Owner): a turn stopped on a usage limit continues in a new tab on the first
+ * `limitFailoverModelSelections` account with usage left; the source's recovery is turned off and
+ * it names the tab in `continuedIn` before that tab's first message. Run from the
+ * UsageLimitRecoveryWorker sweep; command ids derive from the failed run, so retries repeat them.
  */
 import {
   CommandId,
   MessageId,
   type ModelSelection,
+  type OrchestrationV2Run,
   type ProviderInstanceId,
+  type RunId,
   type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
@@ -39,6 +25,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import type * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import { isForkableSourceRunStatus } from "../orchestration-v2/ThreadForkService.ts";
 import type * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 
 export const LIMIT_FAILOVER_PROMPT =
@@ -103,9 +90,11 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
   // A limit whose reset has passed is over; old stopped threads stay as they are.
   const now = yield* Clock.currentTimeMillis;
   if (Date.parse(resetAt) <= now) return false;
-  const { thread: source, subagents } = yield* projections.getThreadRecords(candidate.id, [
-    "subagents",
-  ]);
+  const {
+    thread: source,
+    subagents,
+    runs,
+  } = yield* projections.getThreadRecords(candidate.id, ["subagents", "runs"]);
   // A fork cannot adopt task ownership. Keep the parent here until all owed
   // results have been consumed; completion can wake it in place on another account.
   if (
@@ -128,6 +117,7 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     eligibleInstanceIds,
   );
   if (!modelSelection) return false;
+  const moved = yield* compactionHandover(candidate.id, runId, runs, projections);
 
   // Hashed because thread and run ids embed their source's id: a failover of a
   // failover would otherwise nest every id and grow past filename limits.
@@ -141,7 +131,7 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
     commandId: CommandId.make(`limit-failover:${identity}`),
     sourceThreadId: candidate.id,
     targetThreadId,
-    sourcePoint: { type: "run", runId },
+    sourcePoint: { type: "run", runId: moved?.forkRunId ?? runId },
     title: source.title,
     // A routine's thread was snoozed to keep it out of the inbox; its continuation is too.
     keepSnoozed: true,
@@ -165,24 +155,94 @@ export const continueLimitedThreadElsewhere = Effect.fn("LimitFailover.continue"
   // One command id per attempt: a rejected dispatch is recorded under its id and
   // would be rejected again on replay. The fixed message id is what ends the
   // retries (`getLimitRecoveryCandidates` drops the source once it exists).
-  yield* threads.dispatch({
-    type: "message.dispatch",
-    commandId: CommandId.make(`limit-failover:${identity}:continue:${now}`),
-    messageId: MessageId.make(`limit-failover:${identity}:continue`),
-    threadId: targetThreadId,
-    text: LIMIT_FAILOVER_PROMPT,
-    modelSelection,
-    attachments: [],
-    dispatchMode: { type: "start_immediately" },
-    keepSnoozed: true,
-    createdBy: "user",
-    creationSource: "server",
-  });
+  const continuations = moved?.messages ?? [
+    { text: LIMIT_FAILOVER_PROMPT, attachments: [], context: undefined },
+  ];
+  for (const [index, message] of continuations.entries()) {
+    const suffix = index === 0 ? "" : `:${index}`;
+    yield* threads.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make(`limit-failover:${identity}:continue${suffix}:${now}`),
+      messageId: MessageId.make(`limit-failover:${identity}:continue${suffix}`),
+      threadId: targetThreadId,
+      text: message.text,
+      ...(message.context === undefined ? {} : { context: message.context }),
+      attachments: message.attachments,
+      modelSelection,
+      dispatchMode: index === 0 ? { type: "start_immediately" } : { type: "queue_after_active" },
+      keepSnoozed: true,
+      createdBy: "user",
+      creationSource: "server",
+    });
+  }
+  for (const queuedRun of moved?.queuedRuns ?? []) {
+    yield* threads.dispatch({
+      type: "queued-run.cancel",
+      commandId: CommandId.make(`limit-failover:${identity}:moved:${queuedRun.id}`),
+      threadId: candidate.id,
+      runId: queuedRun.id,
+    });
+  }
   yield* Effect.logInfo("orchestration-v2.limit-failover.continued", {
     threadId: candidate.id,
     targetThreadId,
     instanceId: modelSelection.instanceId,
     model: modelSelection.model,
+    movedQueuedMessages: moved?.queuedRuns.length ?? 0,
   });
   return true;
+});
+
+/**
+ * When the limited run is a `/compact` with the user's messages queued behind
+ * it: the run to fork from instead (the one before the compaction, or the
+ * compaction itself when nothing precedes it) and the queued messages to send.
+ * Null when the limit hit anything else.
+ */
+const compactionHandover = Effect.fn("LimitFailover.compactionHandover")(function* (
+  threadId: ThreadId,
+  limitedRunId: RunId,
+  runs: ReadonlyArray<OrchestrationV2Run>,
+  projections: Pick<ProjectionStore.ProjectionStoreV2["Service"], "getThreadRecords">,
+) {
+  const limitedRun = runs.find((run) => run.id === limitedRunId);
+  if (limitedRun === undefined) return null;
+  const queued = runs
+    .filter((run) => run.status === "queued")
+    .toSorted(
+      (left, right) =>
+        (left.queuePosition ?? left.ordinal) - (right.queuePosition ?? right.ordinal) ||
+        left.ordinal - right.ordinal,
+    );
+  if (queued.length === 0) return null;
+  const { messages } = yield* projections.getThreadRecords(threadId, ["messages"], {
+    messageIds: [limitedRun.userMessageId, ...queued.map((run) => run.userMessageId)],
+  });
+  const messageFor = (run: OrchestrationV2Run) =>
+    messages.find((message) => message.id === run.userMessageId);
+  if (messageFor(limitedRun)?.text.trim().toLowerCase() !== "/compact") return null;
+  // Wakes and delegated results belong to the source's own runs, not the user's send.
+  const queuedRuns = queued.filter((run) => {
+    const message = messageFor(run);
+    return (
+      message?.role === "user" &&
+      message.notification === undefined &&
+      message.delegatedCompletion === undefined
+    );
+  });
+  if (queuedRuns.length === 0) return null;
+  const previous = runs
+    .filter((run) => run.ordinal < limitedRun.ordinal && isForkableSourceRunStatus(run.status))
+    .reduce<OrchestrationV2Run | null>(
+      (latest, run) => (latest === null || run.ordinal > latest.ordinal ? run : latest),
+      null,
+    );
+  return {
+    forkRunId: previous?.id ?? limitedRun.id,
+    queuedRuns,
+    messages: queuedRuns.map((run) => {
+      const { text, attachments, context } = messageFor(run)!;
+      return { text, attachments, context };
+    }),
+  };
 });
