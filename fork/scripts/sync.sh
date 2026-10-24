@@ -63,6 +63,18 @@ latest=$(git tag -l 'v*-nightly.*' | sort -V | tail -1)
 base=$(git describe --tags --abbrev=0 --match 'v*-nightly.*' HEAD)
 current_release=$(gh release list -R "$fork_repo" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null)
 echo "upstream latest $latest, fork based on $base, last release ${current_release:-none}"
+# Upstream is checked once a day (Owner, 2026-10-23). Any other run, mostly an
+# agent shipping a fork commit, builds on the fork's current base and starts no
+# auto-fix chat: upstream cuts several nightlies a day, and each used to start a
+# new hour-long chat. 23 h, not 24, so the 05:00 job's few seconds of drift never skip a day.
+checked="$state/upstream-checked"
+daily=true
+if ! $dry_run && [ -f "$checked" ] && [ $(($(date +%s) - $(stat -f %m "$checked"))) -lt $((23 * 3600)) ]; then
+  daily=false
+  latest=$base
+  echo "Upstream was checked $(date -r "$(stat -f %m "$checked")"); building on $base, no auto-fix."
+fi
+if ! $dry_run && $daily; then touch "$checked"; fi
 
 # Rebase onto $latest, check and build HEAD; on failure say why in $problem.
 prepare() {
@@ -107,6 +119,9 @@ $conflicts"
 # and then the very same prepare() above; otherwise the issue gets its report.
 autofix_note=
 if ! prepare; then
+  $daily || fail "$problem
+
+No auto-fix: upstream was already checked in the last 23 hours, so this run only rebuilt the fork on $base."
   echo "!! $problem"
   [ -n "${rebasing:-}" ] && git rebase --abort
   rebasing=
