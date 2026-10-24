@@ -672,10 +672,16 @@ kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub notifies O
 repo owner; the MacBook's daily deploy job also raises a macOS notification while that issue is
 open. The next successful sync closes it. Logs: `~/t3-fork/logs/` on each Mac.
 
+Only the first run in 23 hours (normally the 05:00 job) looks at upstream and may start an
+auto-fix chat; it records that in `~/t3-fork/upstream-checked`. Any later run builds and
+publishes the fork on its current base, and on a failure it only opens the issue. Upstream
+cuts several nightlies a day, and before this every manual ship started its own hour-long chat.
+Dry runs ignore the gate.
+
 Manual runs:
 
 ```
-ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh"'                  # sync + publish now
+ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh"'                  # publish now (rebase only if upstream unchecked for 23 h)
 ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run"'        # rebase+check+build (+auto-fix) only
 ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run upstream/main"'
 ~/t3-fork/pull-deploy.sh                                                       # on any Mac: install now
