@@ -298,6 +298,14 @@ export function shouldPublishShellApplicationEvent(
     // Replay and the live tail overlap; keep known IDs so late events stay filtered.
     return true;
   }
+  // Fork (Owner): a native subagent's runless root turn is its shell nativeSubagentActivity.
+  if (
+    event.type === "node.updated" &&
+    event.payload.kind === "root_turn" &&
+    event.payload.runId === null
+  ) {
+    return true;
+  }
   return !(
     subagentThreadIds.has(event.threadId) &&
     (event.type === "node.updated" ||

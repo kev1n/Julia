@@ -49,9 +49,15 @@ describe("subagent shell events", () => {
     expect(
       shouldPublishShellApplicationEvent(stored("child", "turn-item.updated"), subagents),
     ).toBe(false);
-    expect(shouldPublishShellApplicationEvent(stored("child", "node.updated"), subagents)).toBe(
-      false,
-    );
+    const node = (kind: string, runId: string | null) =>
+      ({
+        event: { threadId: "child", type: "node.updated", payload: { kind, runId } },
+      }) as ApplicationStoredEvent;
+    expect(shouldPublishShellApplicationEvent(node("tool_call", null), subagents)).toBe(false);
+    expect(shouldPublishShellApplicationEvent(node("root_turn", "run-1"), subagents)).toBe(false);
+    // A native subagent's runless root turn is its shell status; dropping it left finished
+    // subagents in the sidebar until a refresh.
+    expect(shouldPublishShellApplicationEvent(node("root_turn", null), subagents)).toBe(true);
     expect(
       shouldPublishShellApplicationEvent(stored("child", "runtime-request.updated"), subagents),
     ).toBe(true);
