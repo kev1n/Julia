@@ -431,7 +431,8 @@ it.effect.each(forkCases)(
         updatedAt: now,
       };
       for (const [index, text] of [
-        "EXCLUDED_COMMENTARY",
+        // Larger than the general handoff cap: a fork still carries mid-thread work.
+        `EXCLUDED_COMMENTARY ${"x".repeat(40_000)}`,
         "INCLUDED_HEADING_AND_TABLE",
         "INCLUDED_FINAL_REPLY",
       ].entries()) {
@@ -868,8 +869,8 @@ it.effect.each([
               contextHandoffId: null,
             },
           },
-          // Each message alone exceeds the default 64k-byte handoff budget, so a
-          // portable handoff omits both whole items.
+          // Each message alone exceeds the fork handoff budget, so a portable
+          // handoff omits both whole items.
           {
             id: EventId.make("fork-compact-user-item"),
             type: "turn-item.updated",
@@ -885,7 +886,7 @@ it.effect.each([
               creationSource: "web",
               inputIntent: "turn_start",
               messageId: userMessageId,
-              text: "u".repeat(65_000),
+              text: "u".repeat(300_000),
               attachments: [],
             },
           },
@@ -901,7 +902,7 @@ it.effect.each([
               ordinal: 2,
               type: "assistant_message",
               messageId: MessageId.make("fork-compact-assistant-message"),
-              text: "a".repeat(65_000),
+              text: "a".repeat(300_000),
               streaming: false,
             },
           },
