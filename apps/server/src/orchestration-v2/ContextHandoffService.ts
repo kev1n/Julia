@@ -85,6 +85,7 @@ export interface ContextHandoffServiceV2Shape {
     >;
     readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
     readonly includeWorkDetails?: boolean;
+    readonly budget?: number;
     readonly createdAt: DateTime.Utc;
   }) => Effect.Effect<OrchestrationV2ContextHandoff, ContextHandoffServiceV2Error>;
   /** Parent activity after the fork point, prepended to a side chat's first provider turn. */
@@ -505,6 +506,7 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
       >;
       readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
       readonly includeWorkDetails?: boolean;
+      readonly budget?: number;
       readonly createdAt: DateTime.Utc;
     }) {
       const handoffId = yield* idAllocator.allocate
@@ -543,7 +545,7 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
               ];
         }),
         coverage,
-        budget: tokenCap,
+        budget: input.budget ?? tokenCap,
       });
       return {
         id: handoffId,
