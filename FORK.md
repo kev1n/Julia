@@ -571,6 +571,9 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   terminal open, launching attach and restart takes the lease before the thread lock, so a user
   terminal on the same thread cannot deadlock that setup open; attaching to an existing session
   takes no lease. Tests in `WorktreeRestore.test.ts` and `terminal/Manager.test.ts`.
+- `apps/server/src/orchestration-v2/ShellStream.ts`: a native subagent's runless `root_turn`
+  `node.updated` still reaches the shell stream (upstream #23783 drops subagent node updates), so a
+  finished Task subagent leaves the sidebar without a refresh; test in `ShellStream.test.ts`.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
