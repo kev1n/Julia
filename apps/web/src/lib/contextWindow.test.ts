@@ -190,6 +190,21 @@ describe("latestProviderTurnTokenUsage", () => {
     ).toEqual(sourceUsage);
   });
 
+  it("does not reuse usage for a fork that leaves history behind", () => {
+    const projection = forkProjection();
+    for (const contextMode of ["without_tool_results", "final_messages"] as const) {
+      expect(
+        latestProviderTurnTokenUsage([], {
+          ...projection,
+          thread: {
+            ...projection.thread,
+            forkedFrom: { ...projection.thread.forkedFrom, contextMode },
+          },
+        }),
+      ).toBeNull();
+    }
+  });
+
   it("does not reuse usage for portable handoffs, different providers, or missing history", () => {
     const projection = forkProjection();
     const transfer = projection.contextTransfers[0]!;

@@ -148,6 +148,7 @@ import {
 import { ProviderAdapterRegistryV2 } from "./ProviderAdapterRegistry.ts";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { FORK_HANDOFF_BYTE_CAP } from "@t3tools/provider-core/server/handoffBudget";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { ProviderSwitchServiceV2 } from "./ProviderSwitchService.ts";
@@ -6493,6 +6494,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               includeWorkDetails:
                 projection.thread.forkedFrom?.type === "run" &&
                 projection.thread.forkedFrom.contextMode === "without_tool_results",
+              // Turn start trims this to the target model's window.
+              budget: FORK_HANDOFF_BYTE_CAP,
               runs: sourceProjection.runs,
               createdAt: now,
             })

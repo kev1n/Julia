@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
   contextUsageForHandoff,
+  FORK_HANDOFF_BYTE_CAP,
   handoffBudget,
   historyCost,
   historyResponseItems,
@@ -247,6 +248,25 @@ describe("handoff budget", () => {
       );
     }
     assert.equal(handoffBudget({ ...base, tokenCap: 2_000 }), 2_000);
+  });
+
+  it("lets a fork carry history past the handoff cap, bounded by the model window", () => {
+    const base = {
+      tokenCap: 16_000,
+      userText: "Continue",
+      attachments: [],
+      providerThread,
+      nativeContextEstimate: 0,
+      fork: true,
+    };
+    assert.equal(handoffBudget({ ...base, modelContextWindow: 1_000_000 }), FORK_HANDOFF_BYTE_CAP);
+    const smallWindow = handoffBudget({ ...base, modelContextWindow: 200_000 });
+    assert.isAbove(smallWindow, 64_000);
+    assert.isBelow(smallWindow, 200_000 - 50_000);
+    assert.equal(
+      handoffBudget({ ...base, modelContextWindow: 32_000, fork: false }),
+      handoffBudget({ ...base, modelContextWindow: 32_000 }),
+    );
   });
 
   it("keeps measured occupancy across a model change", () => {
