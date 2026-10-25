@@ -13,6 +13,9 @@ import * as Config from "effect/Config";
 
 export const DEFAULT_HANDOFF_TOKEN_CAP = 16_000;
 const HANDOFF_BYTE_CAP = 64_000;
+// A fork exists to continue its source conversation, so its handoff is bounded by the
+// model window rather than the general cap, which keeps only the ends of a long thread.
+export const FORK_HANDOFF_BYTE_CAP = 256_000;
 export const handoffTokenCapConfig = Config.Int("T3CODE_CONTEXT_HANDOFF_TOKEN_CAP").pipe(
   Config.withDefault(DEFAULT_HANDOFF_TOKEN_CAP),
   Config.map((value) => Math.max(1_024, Math.min(HANDOFF_BYTE_CAP, value))),
@@ -108,6 +111,7 @@ export function handoffBudget(input: {
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly nativeContextEstimate: number;
   readonly modelContextWindow?: number | undefined;
+  readonly fork?: boolean;
 }): number {
   const usage = input.providerThread.contextUsage;
   const window = Math.min(
@@ -121,9 +125,8 @@ export function handoffBudget(input: {
   return Math.max(
     0,
     Math.min(
-      input.tokenCap,
       // Cap imported history only; adapters own attachment transport limits.
-      HANDOFF_BYTE_CAP,
+      input.fork ? FORK_HANDOFF_BYTE_CAP : Math.min(input.tokenCap, HANDOFF_BYTE_CAP),
       window - native - current - Math.max(16_000, Math.ceil(window / 4)),
     ),
   );
