@@ -43,7 +43,9 @@ export function latestProviderTurnTokenUsage(
   }
   if (latest !== null || projection == null || providerThread?.contextUsage != null) return latest;
   const forkedFrom = projection.thread.forkedFrom;
-  if (forkedFrom?.type !== "run") return null;
+  // A filtered fork starts a fresh session from a handoff, so the source's size says nothing
+  // about its context.
+  if (forkedFrom?.type !== "run" || (forkedFrom.contextMode ?? "full") !== "full") return null;
   return (
     projection.contextTransfers.find(
       (transfer) =>

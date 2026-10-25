@@ -919,6 +919,11 @@ export const layer: Layer.Layer<
                 budgetProviderThread.contextUsage?.usedTokens === undefined
                   ? yield* nativeContextEstimate
                   : 0,
+              fork: effectiveHandoffs.some((handoff) =>
+                projection.contextTransfers.some(
+                  (transfer) => transfer.id === handoff.transferId && transfer.type === "fork",
+                ),
+              ),
             });
           }),
         };
