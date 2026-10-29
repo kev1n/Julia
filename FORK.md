@@ -574,6 +574,12 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/server/src/orchestration-v2/ShellStream.ts`: a native subagent's runless `root_turn`
   `node.updated` still reaches the shell stream (upstream #23783 drops subagent node updates), so a
   finished Task subagent leaves the sidebar without a refresh; test in `ShellStream.test.ts`.
+- `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts`: in a full-access thread, Claude
+  Code's dangerous-removal safety check (`Dangerous rm operation ...`, which bypass cannot allow)
+  is denied after Claude Code's own 120 s window when nobody answers, with a message telling the
+  agent how to rewrite it, and the card shows expired (`fork/claudeSafetyCheckAutoDeny.ts`). The
+  SDK passes no window or check kind to `canUseTool`, so the reason text identifies the check.
+  Tests in `ClaudeAdapterV2.test.ts`.
 
 Commit series on `owner` (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
