@@ -572,6 +572,7 @@ it.effect.each([
         Layer.mock(Orchestrator.OrchestratorV2)({
           getThreadEventSequence: () => Effect.succeed(0),
           restartContinuationPending: () => Effect.succeed(false),
+          getThreadShell: () => Effect.succeed(null),
           getThreadRecords: () =>
             Effect.succeed({
               thread: { id: threadId, projectId, deletedAt: null },
