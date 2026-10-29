@@ -1097,6 +1097,53 @@ const make = Effect.gen(function* () {
     return settledResult(yield* evaluate((yield* getProjectThreadRecords(input, ["runs"])).runs));
   });
 
+  // Fork (Owner): the client shows a thread's tabs as one row (client-runtime
+  // workspaceChatKey) that leaves the inbox only once every tab is settled, so a
+  // settle here moves the whole strip like the client's does. Busy tabs refuse it.
+  const settleWithTabs = Effect.fn("orchestrationV2.threadManagement.settleWithTabs")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly commandId: CommandId;
+      readonly expectedLatestRunId?: RunId;
+    }) {
+      const result = yield* dispatch({
+        type: "thread.settle",
+        commandId: input.commandId,
+        threadId: input.threadId,
+        ...(input.expectedLatestRunId === undefined
+          ? {}
+          : { expectedLatestRunId: input.expectedLatestRunId }),
+      });
+      const shell = yield* orchestrator.getThreadShell(input.threadId);
+      if (shell === null || shell.lineage.relationshipToParent === "subagent") return result;
+      const stripKey = (thread: OrchestrationV2ThreadShell) =>
+        JSON.stringify([thread.worktreePath?.replace(/[\\/]+$/, "") ?? null, thread.chatGroupId]);
+      const key = stripKey(shell);
+      const { threads } = yield* orchestrator.getShellSnapshot({
+        projectId: shell.projectId,
+        location: "active",
+      });
+      yield* Effect.forEach(
+        threads.filter(
+          (thread) =>
+            thread.id !== shell.id &&
+            thread.archivedAt === null &&
+            thread.lineage.relationshipToParent !== "subagent" &&
+            thread.settledOverride !== "settled" &&
+            stripKey(thread) === key,
+        ),
+        (tab) =>
+          dispatch({
+            type: "thread.settle",
+            commandId: CommandId.make(`${input.commandId}:tab:${tab.id}`),
+            threadId: tab.id,
+          }).pipe(Effect.ignoreCause({ log: true })),
+        { discard: true },
+      );
+      return result;
+    },
+  );
+
   const settleAfterRun: ThreadManagementServiceShape["settleAfterRun"] = Effect.fn(
     "orchestrationV2.threadManagement.settleAfterRun",
   )(function* (input) {
@@ -1168,8 +1215,7 @@ const make = Effect.gen(function* () {
         }
         const latest = latestRun(records);
         if (latest === undefined) return true;
-        return yield* dispatch({
-          type: "thread.settle",
+        return yield* settleWithTabs({
           commandId: CommandId.make(`server:settle-after-run:${input.runId}:${sequence}`),
           threadId: input.threadId,
           expectedLatestRunId: latest.id,
@@ -1223,11 +1269,7 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(layerScope));
       return { settlesWhenTurnEnds: true } as const;
     }
-    const result = yield* dispatch({
-      type: "thread.settle",
-      commandId: input.commandId,
-      threadId: input.threadId,
-    });
+    const result = yield* settleWithTabs(input);
     return { sequence: result.sequence };
   });
 

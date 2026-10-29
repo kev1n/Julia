@@ -5910,6 +5910,89 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("an agent settling its own tab settles the strip's other tabs too", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+      const projectId = ProjectId.make("runtime-layer-settle-strip-project");
+      const create = (id: string, worktreePath: string) =>
+        orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`runtime-layer-settle-strip-create-${id}`),
+          threadId: ThreadId.make(id),
+          projectId,
+          title: "Settle strip",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath,
+        });
+      const threadId = ThreadId.make("runtime-layer-settle-strip-agent");
+      const siblingId = ThreadId.make("runtime-layer-settle-strip-sibling");
+      const otherId = ThreadId.make("runtime-layer-settle-strip-other");
+      yield* create(siblingId, "/tmp/runtime-layer-settle-strip/");
+      yield* create(threadId, "/tmp/runtime-layer-settle-strip");
+      yield* create(otherId, "/tmp/runtime-layer-settle-strip-other");
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-settle-strip-message"),
+        threadId,
+        messageId: MessageId.make("runtime-layer-settle-strip-message"),
+        text: "Fix it and then settle this thread.",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0];
+      if (run === undefined) return yield* Effect.die(new Error("Run missing."));
+
+      const siblingSettled = yield* orchestrator
+        .streamStoredEventsFrom({
+          threadId: siblingId,
+          afterSequence: 0,
+          eventType: "thread.settled",
+        })
+        .pipe(Stream.runHead, Effect.forkChild);
+      const cleared = yield* settleRequestCleared(orchestrator, threadId);
+      yield* threadManagement.settleThread({
+        threadId,
+        commandId: CommandId.make("runtime-layer-settle-strip-settle"),
+        byOwnAgent: true,
+      });
+      assert.isNull((yield* orchestrator.getThreadProjection(siblingId)).thread.settledOverride);
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        commandId: CommandId.make("runtime-layer-settle-strip-completed"),
+        events: [
+          {
+            id: EventId.make("runtime-layer-settle-strip-completed"),
+            type: "run.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+          },
+        ],
+      });
+      yield* Fiber.join(siblingSettled);
+      yield* Fiber.join(cleared);
+
+      const settledOverride = (id: ThreadId) =>
+        orchestrator
+          .getThreadProjection(id)
+          .pipe(Effect.map((projection) => projection.thread.settledOverride));
+      assert.equal(yield* settledOverride(threadId), "settled");
+      assert.equal(yield* settledOverride(siblingId), "settled");
+      assert.isNull(yield* settledOverride(otherId));
+    }),
+  );
+
   // A restart drops the in-memory wait; startup reads the request back from the thread.
   it.effect("a settle its own agent asked for still runs after a restart", () =>
     Effect.gen(function* () {
