@@ -11,6 +11,10 @@ import {
   formatReadToolLabel,
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivity";
+import {
+  CLAUDE_SAFETY_CHECK_AUTO_DENY_MS,
+  claudeSafetyCheckAutoDenyMessage,
+} from "../../fork/claudeSafetyCheckAutoDeny.ts";
 import { field, text } from "../unknownField.ts";
 import { mergeWorkflowAgentMetadata, type WorkflowAgentMetadata } from "../workflowAgentAnswers.ts";
 import {
@@ -11637,9 +11641,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             { concurrency: 1 },
           );
 
-          const resolvedDecision = yield* awaitClaudeApprovalDecision(
-            decision,
-            callbackOptions.signal,
+          const autoDenyMessage = claudeSafetyCheckAutoDenyMessage({
+            runtimeMode: context.input.runtimePolicy.runtimeMode,
+            callbackOptions,
+          });
+          const autoDenied: ClaudeApprovalResponse = {
+            decision: "decline",
+            ...(autoDenyMessage === undefined ? {} : { feedback: autoDenyMessage }),
+          };
+          const awaitedDecision = awaitClaudeApprovalDecision(decision, callbackOptions.signal);
+          const resolvedDecision = yield* (
+            autoDenyMessage === undefined
+              ? awaitedDecision
+              : awaitedDecision.pipe(
+                  Effect.timeoutOrElse({
+                    duration: CLAUDE_SAFETY_CHECK_AUTO_DENY_MS,
+                    orElse: () => Effect.succeed(autoDenied),
+                  }),
+                )
           ).pipe(
             Effect.ensuring(
               Ref.update(pendingRuntimeRequests, (current) => {
@@ -11649,7 +11668,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               }),
             ),
           );
-          if (!(yield* Deferred.isDone(decision))) yield* cancelWithdrawnRequest(artifacts);
+          if (resolvedDecision === autoDenied) {
+            const now = yield* DateTime.now;
+            yield* Effect.all(
+              [
+                emitProviderEvent({
+                  type: "runtime_request.updated",
+                  driver: CLAUDE_PROVIDER,
+                  runtimeRequest: {
+                    ...artifacts.request,
+                    status: "expired",
+                    resolvedAt: now,
+                    decision: "decline",
+                  },
+                }),
+                emitProviderEvent({
+                  type: "node.updated",
+                  driver: CLAUDE_PROVIDER,
+                  node: { ...artifacts.node, status: "cancelled", completedAt: now },
+                }),
+                emitProviderEvent({
+                  type: "turn_item.updated",
+                  driver: CLAUDE_PROVIDER,
+                  turnItem: {
+                    ...artifacts.turnItem,
+                    status: "cancelled",
+                    completedAt: now,
+                    updatedAt: now,
+                  },
+                }),
+              ],
+              { concurrency: 1 },
+            );
+          } else if (!(yield* Deferred.isDone(decision))) yield* cancelWithdrawnRequest(artifacts);
 
           return permissionResultFromDecision({
             toolName,
