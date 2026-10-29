@@ -105,6 +105,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
+import { CLAUDE_SAFETY_CHECK_AUTO_DENY_MS } from "../../fork/claudeSafetyCheckAutoDeny.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ClaudeOrchestratorReplayHarness } from "./ClaudeAdapterV2.testkit.ts";
 import { provideDeterministicTestRuntime } from "../testkit/DeterministicRuntime.ts";
@@ -4818,6 +4819,111 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const event = yield* Queue.take(turn.planReceipts);
         assert.equal(event.plan.kind, "proposed_plan");
         assert.equal(event.plan.kind === "proposed_plan" ? event.plan.markdown : "", markdown);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    );
+  });
+
+  describe("Full-access safety-check asks", () => {
+    const DANGEROUS_RM_REASON = "Dangerous rm operation on statically-unresolvable target: $DIR/*";
+
+    const askInFullAccess = Effect.fn("askInFullAccess")(function* (decisionReason: string) {
+      // Under bypass the adapter denies a dangerous removal at once; the window covers a
+      // full-access thread whose settings disable bypass.
+      const harness = yield* makeWakeHarnessWithOptions({
+        settings: {
+          ...DEFAULT_CLAUDE_SETTINGS,
+          launchArgs: `--settings '{"permissions":{"disableBypassPermissionsMode":"disable"}}'`,
+        },
+      });
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: "/workspace",
+      });
+      const input = makeClaudeTestTurnInput({
+        threadId: harness.threadId,
+        providerThread: harness.providerThread,
+        now: yield* DateTime.now,
+        attemptId: RunAttemptId.make("attempt-claude-safety-check"),
+        text: "Clean the build output.",
+        attachments: [],
+        runtimePolicy,
+      });
+      yield* harness.runtime.startTurn({
+        ...input,
+        appThread: { ...input.appThread, runtimeMode: "full-access" },
+      });
+      const canUseTool = harness.getOpenedOptions()?.canUseTool;
+      assert.isDefined(canUseTool);
+      const decision = yield* Effect.promise(() =>
+        canUseTool!(
+          "Bash",
+          { command: 'rm -rf "$DIR"/*' },
+          {
+            signal: new AbortController().signal,
+            toolUseID: "tool-safety-check",
+            requestId: "request-safety-check",
+            decisionReason,
+          },
+        ),
+      ).pipe(Effect.forkScoped);
+      const pending = yield* Queue.take(harness.runtimeRequestReceipts);
+      assert.equal(pending.runtimeRequest.status, "pending");
+      return { ...harness, decision, request: pending.runtimeRequest };
+    });
+
+    it.effect("denies a dangerous removal nobody answers within Claude Code's window", () =>
+      Effect.gen(function* () {
+        const ask = yield* askInFullAccess(DANGEROUS_RM_REASON);
+        yield* TestClock.adjust(CLAUDE_SAFETY_CHECK_AUTO_DENY_MS);
+        const result = yield* Fiber.join(ask.decision);
+        assert.equal(result?.behavior, "deny");
+        if (result?.behavior === "deny") {
+          assert.include(result.message, DANGEROUS_RM_REASON);
+          assert.include(result.message, "find <absolute dir> -mindepth 1 -delete");
+        }
+        const expired = yield* Queue.take(ask.runtimeRequestReceipts);
+        assert.equal(expired.runtimeRequest.id, ask.request.id);
+        assert.equal(expired.runtimeRequest.status, "expired");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    );
+
+    it.effect.each([
+      { name: "a person's answer inside the window", reason: DANGEROUS_RM_REASON, wait: 0 },
+      {
+        name: "other full-access asks past the window",
+        reason: "Claude requested permissions to edit .claude/settings.json",
+        wait: CLAUDE_SAFETY_CHECK_AUTO_DENY_MS,
+      },
+    ])("keeps waiting for $name", ({ reason, wait }) =>
+      Effect.gen(function* () {
+        const ask = yield* askInFullAccess(reason);
+        yield* TestClock.adjust(wait);
+        yield* ask.runtime.respondToRuntimeRequest({
+          requestId: ask.request.id,
+          decision: "accept",
+        });
+        assert.equal((yield* Fiber.join(ask.decision))?.behavior, "allow");
       }).pipe(
         Effect.scoped,
         Effect.provide(
