@@ -729,6 +729,7 @@ it.effect.each([
               return sequence;
             }),
           restartContinuationPending: () => Effect.succeed(false),
+          getThreadShell: () => Effect.succeed(null),
           streamStoredEventsFrom: () =>
             Stream.fromEffect(Deferred.succeed(subscribed, undefined)).pipe(
               Stream.drain,
