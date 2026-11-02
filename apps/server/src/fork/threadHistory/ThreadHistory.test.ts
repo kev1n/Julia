@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -17,7 +18,9 @@ import {
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -33,6 +36,8 @@ import {
   HistoryBlobRejected,
   HistoryBlobUnavailable,
   type HistoryBlobStore,
+  asBlobError,
+  azureHistoryBlobStore,
   sha256Hex,
 } from "./blobStore.ts";
 import { decodeBundle, encodeBundle, MOVED_EVENT_TYPES, OFFLOAD_GRACE_MS } from "./historyStore.ts";
@@ -666,3 +671,24 @@ it.layer(layerTest)("ThreadHistory", (it) => {
     }),
   );
 });
+
+// mac-a 2026-11-02: an `az` that never answered held the one sign-in every restore waits on for 4h.
+it.live("a hung az fails the sign-in as unavailable instead of holding every restore", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const az = path.join(yield* fs.makeTempDirectoryScoped({ prefix: "hung-az-" }), "az");
+    yield* fs.writeFileString(az, "#!/bin/sh\nexec sleep 600\n", { mode: 0o755 });
+    const store = azureHistoryBlobStore("example-history-secret", {
+      file: az,
+      timeoutMs: 50,
+    });
+    const error = yield* Effect.flip(Effect.tryPromise({ try: store.ready, catch: asBlobError }));
+    assert.deepStrictEqual(
+      error,
+      new HistoryBlobUnavailable({
+        message: "Key Vault secret example-history-secret unreadable",
+      }),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
