@@ -13,6 +13,18 @@ import * as Data from "effect/Data";
 export const HISTORY_KEY_VAULT = "example-vault";
 export const HISTORY_DEFAULT_SECRET = "example-secret";
 const BLOB_API_VERSION = "2023-11-03";
+/**
+ * How long `az` may take to read the secret. A hung `az` otherwise holds the one sign-in every
+ * offload and restore waits on. 300 s is the bound Node's fetch (undici headersTimeout and
+ * bodyTimeout) already puts on the Azure calls below.
+ */
+const AZ_TIMEOUT_MS = 300_000;
+
+/** The `az` binary and its time limit; tests swap in a stand-in. */
+interface AzCommand {
+  readonly file: string;
+  readonly timeoutMs: number;
+}
 
 /** The blob is gone: the lifecycle rule deleted it, or it was never written. */
 export class HistoryBlobMissing extends Data.TaggedError("HistoryBlobMissing")<{
@@ -64,14 +76,15 @@ export function historySecretName(): string | null {
   return name === "off" ? null : name;
 }
 
-function readKeyVaultSecret(secret: string): Promise<Credential> {
+function readKeyVaultSecret(secret: string, az: AzCommand): Promise<Credential> {
   return new Promise((resolve, reject) => {
     NodeChildProcess.execFile(
-      "az",
+      az.file,
       ["keyvault", "secret", "show", "--vault-name", HISTORY_KEY_VAULT, "--name", secret],
       // The service runs under launchd, whose PATH lacks Homebrew.
       {
         env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}` },
+        timeout: az.timeoutMs,
       },
       (error, stdout) => {
         if (error)
@@ -93,14 +106,17 @@ function readKeyVaultSecret(secret: string): Promise<Credential> {
 }
 
 /** A store backed by the container the Key Vault secret names. */
-export function azureHistoryBlobStore(secret: string): HistoryBlobStore {
+export function azureHistoryBlobStore(
+  secret: string,
+  az: AzCommand = { file: "az", timeoutMs: AZ_TIMEOUT_MS },
+): HistoryBlobStore {
   let session: Promise<{ credential: Credential; token: string; expiresAt: number }> | null = null;
 
   const authorize = async () => {
     const current = await session?.catch(() => null);
     if (current && current.expiresAt > Date.now()) return current;
     session = (async () => {
-      const credential = await readKeyVaultSecret(secret);
+      const credential = await readKeyVaultSecret(secret, az);
       const response = await fetch(
         `https://login.microsoftonline.com/${credential.tenantId}/oauth2/v2.0/token`,
         {
