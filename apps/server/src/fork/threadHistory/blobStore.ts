@@ -15,8 +15,8 @@ export const HISTORY_DEFAULT_SECRET = "example-secret";
 const BLOB_API_VERSION = "2023-11-03";
 /**
  * How long `az` may take to read the secret. A hung `az` otherwise holds the one sign-in every
- * offload and restore waits on. 300 s is the bound Node's fetch (undici headersTimeout and
- * bodyTimeout) already puts on the Azure calls below.
+ * offload and restore waits on. 300 s matches Node's fetch defaults (undici headersTimeout and
+ * bodyTimeout) on the Azure calls below. The callback fires once `az` exits on SIGTERM.
  */
 const AZ_TIMEOUT_MS = 300_000;
 
