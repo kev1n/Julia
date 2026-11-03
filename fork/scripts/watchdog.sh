@@ -1,9 +1,9 @@
 #!/bin/bash
-# Every minute on every Mac (LaunchAgent com.example.t3code-fork.watchdog):
+# Every minute on every Mac (LaunchAgent <job_label_prefix>.watchdog):
 # restart the T3 service when it has stopped answering on localhost for three
 # checks in a row, or when its memory passes a ceiling. A hung server shows as
 # "<machine> is reconnecting" on every client until someone restarts it
-# (2026-10-15: the MacBook's server grew to 234 GB inside Node's HTTP/2 write
+# (2026-10-15: a laptop's server grew to 234 GB inside Node's HTTP/2 write
 # queue and stopped answering for good). Before restarting it saves a 5 s
 # `sample` of the process to logs/, so the cause can still be found.
 set -uo pipefail

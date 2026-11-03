@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): where a thread's history is. A settled or archived thread's
+ * Fork: where a thread's history is. A settled or archived thread's
  * history moves to Azure Blob Storage and is kept there 60 days from settling;
  * opening the thread brings it back. Subscribing to `fork.threadHistory` for a
  * thread whose history is away starts that restore, then reports each change.

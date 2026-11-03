@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): fleet records. Every server publishes a snapshot to the hub, which keeps the latest
+ * Fork: fleet records. Every server publishes a snapshot to the hub, which keeps the latest
  * per environment and never invents or deletes on absence. Declared intent, observed changes,
  * lifecycle and freshness (heartbeat, scan, activity) stay separate on purpose.
  */

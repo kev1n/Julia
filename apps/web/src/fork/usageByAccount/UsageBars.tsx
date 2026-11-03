@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): two stacked bars beside the composer's model name, session on
+ * Fork: two stacked bars beside the composer's model name, session on
  * top and week below, each filled to what is left with when it refills.
  */
 import type { ServerProviderUsageLimits } from "@t3tools/contracts";

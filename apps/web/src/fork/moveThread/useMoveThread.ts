@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): "Move to <machine>". The branch travels as a git bundle over the fleet
+ * Fork: "Move to <machine>". The branch travels as a git bundle over the fleet
  * (`fork.moveReceive`), the conversation becomes the new thread's first message, and the source is
  * renamed "Moved to …" and settled. A working thread, or one in the project checkout rather than
  * its own worktree, is refused, so a move never commits to a shared branch.

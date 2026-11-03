@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): work a restart would cut off, from projections: the query of
+ * Fork: work a restart would cut off, from projections: the query of
  * `fork/scripts/live-work.sh` plus thread ids (liveWork.test.ts checks they agree). Background work
  * counts only while its provider session is live; a held queued message survives a restart.
  */

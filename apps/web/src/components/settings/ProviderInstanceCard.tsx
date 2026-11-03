@@ -718,6 +718,8 @@ interface ProviderInstanceCardProps {
   readonly onDelete?: (() => void) | undefined;
   readonly headerAction?: ReactNode | undefined;
   readonly setup?: ReactNode;
+  /** Fork: the usage hub link row (`UsageSourceLinkRow`). */
+  readonly usageLink?: ReactNode;
   readonly runtime?: ReactNode;
   readonly hiddenModels: ReadonlyArray<string>;
   readonly favoriteModels: ReadonlyArray<string>;
@@ -792,6 +794,7 @@ export function ProviderInstanceCard({
   onDelete,
   headerAction,
   setup,
+  usageLink,
   runtime,
   hiddenModels,
   favoriteModels,
@@ -1407,6 +1410,7 @@ export function ProviderInstanceCard({
             </div>
           }
         />
+        {usageLink}
       </SettingsSection>
 
       {setup || environmentFields.length > 0 ? (

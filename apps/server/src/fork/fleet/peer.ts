@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 /**
- * Fork (Owner): who a peer request comes from. The source server vouches for
+ * Fork: who a peer request comes from. The source server vouches for
  * the calling thread; the receiving server acts for it as a client whose
  * permission ceiling is that thread's runtime mode.
  */

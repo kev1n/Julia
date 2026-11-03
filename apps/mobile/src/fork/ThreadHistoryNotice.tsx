@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the phone's notice for a settled thread whose history is in
+ * Fork: the phone's notice for a settled thread whose history is in
  * Azure. Subscribing starts the restore; the notice shows while it runs, and
  * says plainly when the history has expired or Azure could not be reached.
  * The web twin is `apps/web/src/fork/threadHistory/useThreadHistoryBanner.tsx`.

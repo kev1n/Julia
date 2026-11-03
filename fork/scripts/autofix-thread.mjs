@@ -1,5 +1,5 @@
 // Runs one agent chat on this Mac's T3 Code server and waits for it to finish,
-// so the sync's auto-fix shows up in Owner's app like any other thread.
+// so the sync's auto-fix shows up in the app like any other thread.
 //   node fork/scripts/autofix-thread.mjs <repo-root> <worktree> <title> <prompt-file> <limit-seconds>
 //   node fork/scripts/autofix-thread.mjs settle
 // Finds (or adds) the T3 project for <repo-root>, launches a thread bound to the
@@ -8,16 +8,15 @@
 // and blocks until its run ends or <limit-seconds> pass;
 // then it stops the chat's turn (as the Stop button does) and reports
 // status "timed out". Prints one JSON line: {"environmentId","threadId","status"}
-// `settle` settles every finished auto-fix chat, so Owner's list holds at most
+// `settle` settles every finished auto-fix chat, so the thread list holds at most
 // the one from the latest failed sync: the sync runs it before launching a new
-// chat and after accepting one. A chat Owner pinned or reopened is left alone.
+// chat and after accepting one. A chat someone pinned or reopened is left alone.
 // It speaks the server's WebSocket RPC (Effect RPC JSON) with a short-lived
 // session from `t3 auth session issue`, revoked on exit.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
-
 
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
 const settling = repoRoot === "settle";

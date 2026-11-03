@@ -20,7 +20,7 @@ import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionMana
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ForkDrain from "./drain.ts";
 
-const RELEASE = "owner-1.0.0-abc1234";
+const RELEASE = "fork-1.0.0-abc1234";
 
 /** The real dispatch chokepoint over a mocked orchestrator that records what reached it. */
 const layerTest = (dispatched: Array<string>) =>

@@ -159,6 +159,7 @@ function cursorUsageWindowRank(id: string): number {
   return rank < 0 ? CURSOR_USAGE_WINDOWS.length : rank;
 }
 
+// Fork: an instance linked to a usage limit source shows through that source's accounts.
 export function providersWithLimits(
   providers: readonly ServerProvider[],
 ): readonly ServerProvider[] {
@@ -167,7 +168,8 @@ export function providersWithLimits(
       provider.enabled &&
       provider.installed &&
       isProviderAvailable(provider) &&
-      provider.usageLimits !== undefined,
+      provider.usageLimits !== undefined &&
+      provider.usageLimits.pool === undefined,
   );
 }
 

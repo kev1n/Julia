@@ -22,19 +22,19 @@ const machine = (id: string, overrides: Partial<FanOutCandidate> = {}): FanOutCa
 describe("planProviderFanOut", () => {
   it("adds to every other reachable machine and says why the rest were skipped", () => {
     const plan = planProviderFanOut({
-      sourceEnvironmentId: EnvironmentId.make("build-mac"),
+      sourceEnvironmentId: EnvironmentId.make("studio-b"),
       instanceId: "claude_work",
       candidates: [
-        machine("build-mac"),
-        machine("MacBook"),
-        machine("mac-a", { connected: false }),
+        machine("studio-b"),
+        machine("laptop"),
+        machine("studio-a", { connected: false }),
         machine("old-laptop", { canManageProviders: false }),
         machine("spare", { instanceIds: new Set(["claude_work"]) }),
       ],
     });
-    expect(plan.targets.map((target) => target.label)).toEqual(["MacBook"]);
+    expect(plan.targets.map((target) => target.label)).toEqual(["laptop"]);
     expect(plan.skipped).toEqual([
-      { label: "mac-a", reason: "offline" },
+      { label: "studio-a", reason: "offline" },
       { label: "old-laptop", reason: "no-permission" },
       { label: "spare", reason: "exists" },
     ]);
@@ -44,8 +44,10 @@ describe("planProviderFanOut", () => {
 describe("describeFanOut", () => {
   it("summarizes added, failed and skipped machines in one line", () => {
     expect(
-      describeFanOut(["MacBook", "mac-a"], ["spare"], [{ label: "build-mac", reason: "offline" }]),
-    ).toBe("Also added to MacBook and mac-a. Could not add to spare. Skipped build-mac (offline).");
+      describeFanOut(["laptop", "studio-a"], ["spare"], [{ label: "studio-b", reason: "offline" }]),
+    ).toBe(
+      "Also added to laptop and studio-a. Could not add to spare. Skipped studio-b (offline).",
+    );
     expect(describeFanOut([], [], [])).toBe("");
   });
 });

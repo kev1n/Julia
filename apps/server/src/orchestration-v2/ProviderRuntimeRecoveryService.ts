@@ -986,7 +986,7 @@ export const make = Effect.gen(function* () {
           },
         });
       }
-      // Fork (Owner): after a crash, also wake a settled turn whose background work was live.
+      // Fork: after a crash, also wake a settled turn whose background work was live.
       const continuationRun =
         continueAfterRestart && trigger === "startup"
           ? (() => {
@@ -1207,7 +1207,7 @@ export const make = Effect.gen(function* () {
               .continueThreadsAfterServerUpdate
           )
             return;
-          // Fork (Owner): providers are still live here, so their background work is too.
+          // Fork: providers are still live here, so their background work is too.
           const recovered = yield* rewindUnacceptedRuns(projection);
           const run =
             restartContinuationRun(recovered, yield* DateTime.now) ??

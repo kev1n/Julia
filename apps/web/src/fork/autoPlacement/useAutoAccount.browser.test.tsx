@@ -86,7 +86,7 @@ function Composer({
   const [draft, setDraft] = useState(1);
   useAutoAccount({
     enabled: auto && !started,
-    environmentId: "build-mac",
+    environmentId: "studio-b",
     providers,
     driver:
       providers.find((provider) => provider.instanceId === selection.instanceId)?.driver ??

@@ -50,20 +50,20 @@ describe("accountLimitSummary", () => {
       accountLimitSummary(
         provider({
           displayName: "Claude",
-          email: "owner@gmail.com",
+          email: "bob@example.com",
           plan: "Claude Max 20x Subscription",
           session: 12,
           weekly: 39,
         }),
         NOW,
       ),
-    ).toMatch(/^owner · Max 20x · 88% session · resets .+ · 61% week$/);
+    ).toMatch(/^bob · Max 20x · 88% session · resets .+ · 61% week$/);
   });
 
   it("leaves out the login when the instance is already named after it", () => {
     expect(
       accountLimitSummary(
-        provider({ displayName: "Claude owner", email: "owner@gmail.com", session: 50 }),
+        provider({ displayName: "Claude bob", email: "bob@example.com", session: 50 }),
         NOW,
       ),
     ).toMatch(/^50% session · resets /);

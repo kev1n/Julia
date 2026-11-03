@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): open the moved thread only once this client knows it. A thread route without its
+ * Fork: open the moved thread only once this client knows it. A thread route without its
  * shell redirects to a new draft, and the target's shell stream can lag the move's launch;
  * upstream's fork-from-run waits the same way (`waitForThreadShell`).
  */
