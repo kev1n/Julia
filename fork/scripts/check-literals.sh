@@ -7,11 +7,15 @@
 # ~/.config/julia/fork.env (FORK.md), never in the repository.
 # Checked: every line the fork adds or changes against the upstream nightly tag it
 # is based on (committed, uncommitted or untracked), so upstream's own lines are not.
-#   fork/scripts/check-literals.sh [upstream-base-ref]
+# With --commit, only the lines that commit adds (the pre-push hook checks what is
+# pushed, so a scratch file in the working tree does not block it).
+#   fork/scripts/check-literals.sh [--commit <commit>] [upstream-base-ref]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 cd "$(git -C "$here" rev-parse --show-toplevel)"
-base=${1:-$(git describe --tags --abbrev=0 --match 'v*-nightly.*' HEAD)}
+commit=
+if [ "${1:-}" = "--commit" ]; then commit=${2:?commit}; shift 2; fi
+base=${1:-$(git describe --tags --abbrev=0 --match 'v*-nightly.*' "${commit:-HEAD}")}
 denylist="$HOME/.config/julia/denylist"
 patterns=(
   'tail[0-9a-f]{6,}\.ts\.net'
@@ -22,12 +26,12 @@ patterns=(
 # Every added line as <file>:<line>:<text>.
 added=$(
   {
-    git diff -U0 --no-color --no-ext-diff --no-renames "$base" -- . | awk '
+    git diff -U0 --no-color --no-ext-diff --no-renames "$base" ${commit:+"$commit"} -- . | awk '
       /^diff --git / { header = 1; next }
       header && /^\+\+\+ / { file = substr($0, 7); next }
       /^@@ / { header = 0; split($3, range, ","); line = substr(range[1], 2); next }
       !header && /^\+/ { print file ":" line ":" substr($0, 2); line++ }'
-    git ls-files --others --exclude-standard -z | xargs -0 grep -nHI '' -- 2>/dev/null || true
+    [ -n "$commit" ] || git ls-files --others --exclude-standard -z | xargs -0 grep -nHI '' -- 2>/dev/null || true
   }
 )
 found=0
@@ -44,4 +48,4 @@ if [ "$found" = 1 ]; then
   exit 1
 fi
 [ -f "$denylist" ] && checked="generic patterns and $denylist" || checked="generic patterns only (no $denylist)"
-echo "ok: no personal host or ID in the fork's changes since $base ($checked)"
+echo "ok: no personal host or ID in the fork's changes since $base${commit:+ in $commit} ($checked)"
