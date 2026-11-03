@@ -3,6 +3,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
+  ServerSettingsError,
   UsageLimitSourceId,
   type ServerProvider,
   type UsageLimitSourceSnapshot,
@@ -55,9 +56,24 @@ const hub = (sessionUsed: number): ReadonlyArray<UsageLimitSourceSnapshot> => [
 const providers = [instance("proxy", 0), instance("direct", 50)];
 const PROXY = { instanceId: ProviderInstanceId.make("proxy"), model: MODEL };
 
+const SETTINGS = {
+  ...DEFAULT_SERVER_SETTINGS,
+  providerInstances: {
+    [ProviderInstanceId.make("proxy")]: {
+      driver,
+      usageLimitSourceId: UsageLimitSourceId.make("hub"),
+    },
+  },
+};
+const settingsReadFails = new ServerSettingsError({
+  settingsPath: "<test>",
+  operation: "normalize",
+});
+
 const testLayer = (
   current: Ref.Ref<ReadonlyArray<UsageLimitSourceSnapshot>>,
   changes: Queue.Queue<ReadonlyArray<UsageLimitSourceSnapshot>>,
+  settingsFail: Ref.Ref<boolean> = Ref.makeUnsafe(false),
 ) =>
   LinkedUsageProviderRegistry.layer.pipe(
     Layer.provide(
@@ -74,15 +90,11 @@ const testLayer = (
           ),
         }),
         Layer.mock(ServerSettings.ServerSettingsService)({
-          getSettings: Effect.succeed({
-            ...DEFAULT_SERVER_SETTINGS,
-            providerInstances: {
-              [ProviderInstanceId.make("proxy")]: {
-                driver,
-                usageLimitSourceId: UsageLimitSourceId.make("hub"),
-              },
-            },
-          }),
+          getSettings: Ref.get(settingsFail).pipe(
+            Effect.flatMap((fail) =>
+              fail ? Effect.fail(settingsReadFails) : Effect.succeed(SETTINGS),
+            ),
+          ),
         }),
       ),
     ),
@@ -105,12 +117,61 @@ it.effect("re-emits the providers when only the hub's usage changes", () =>
     const current = yield* Ref.make(hub(10));
     const changes = yield* Queue.unbounded<ReadonlyArray<UsageLimitSourceSnapshot>>();
     const registry = yield* ProviderRegistry.pipe(Effect.provide(testLayer(current, changes)));
-    const next = yield* registry.streamChanges.pipe(Stream.runHead, Effect.forkChild);
+    // The first value is the current pair; the second is the hub's change alone.
+    const next = yield* registry.streamChanges.pipe(
+      Stream.take(2),
+      Stream.runCollect,
+      Effect.forkChild,
+    );
     yield* Ref.set(current, hub(97));
     yield* Queue.offer(changes, hub(97));
-    const emitted = yield* Fiber.join(next);
+    const emitted = Array.from(yield* Fiber.join(next));
+    expect(accountWithLimitLeft(PROXY, emitted[1] ?? [], NOW).instanceId).toBe("direct");
+  }),
+);
+
+it.effect("a hub change between a read and a subscription reaches the subscriber", () =>
+  Effect.gen(function* () {
+    const current = yield* Ref.make(hub(10));
+    const changes = yield* Queue.unbounded<ReadonlyArray<UsageLimitSourceSnapshot>>();
+    const registry = yield* ProviderRegistry.pipe(Effect.provide(testLayer(current, changes)));
+    const read = yield* registry.getProviders;
+    expect(accountWithLimitLeft(PROXY, read, NOW).instanceId).toBe("proxy");
+    // The hub is used up before the caller subscribes; no further change follows.
+    yield* Ref.set(current, hub(97));
+    const emitted = yield* registry.streamChanges.pipe(Stream.runHead);
     expect(emitted._tag).toBe("Some");
     if (emitted._tag !== "Some") return;
     expect(accountWithLimitLeft(PROXY, emitted.value, NOW).instanceId).toBe("direct");
+  }),
+);
+
+it.effect("a failed settings read keeps the last links, not the instance's own login", () =>
+  Effect.gen(function* () {
+    const current = yield* Ref.make(hub(97));
+    const changes = yield* Queue.unbounded<ReadonlyArray<UsageLimitSourceSnapshot>>();
+    const settingsFail = yield* Ref.make(false);
+    const registry = yield* ProviderRegistry.pipe(
+      Effect.provide(testLayer(current, changes, settingsFail)),
+    );
+    yield* registry.getProviders;
+    yield* Ref.set(settingsFail, true);
+    const listed = yield* registry.getProviders;
+    expect(accountWithLimitLeft(PROXY, listed, NOW).instanceId).toBe("direct");
+  }),
+);
+
+it.effect("with no links ever read, no instance shows its own login's usage", () =>
+  Effect.gen(function* () {
+    const current = yield* Ref.make(hub(97));
+    const changes = yield* Queue.unbounded<ReadonlyArray<UsageLimitSourceSnapshot>>();
+    const registry = yield* ProviderRegistry.pipe(
+      Effect.provide(testLayer(current, changes, Ref.makeUnsafe(true))),
+    );
+    const listed = yield* registry.getProviders;
+    for (const provider of listed) {
+      expect(provider.usageLimits?.windows).toEqual([]);
+      expect(provider.usageLimits?.unavailable?.reason).toBe("probeFailed");
+    }
   }),
 );
