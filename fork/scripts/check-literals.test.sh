@@ -1,7 +1,8 @@
 #!/bin/bash
 # check-literals.sh fails on a personal host or ID in a line the fork adds against its
 # upstream base tag (committed, uncommitted or untracked), from its built-in patterns and
-# from the denylist in ~/.config/julia/denylist, and ignores upstream's own lines.
+# from the denylist in ~/.config/julia/denylist, and ignores upstream's own lines; with
+# --commit (the pre-push hook) it checks only that commit's lines, never the working tree.
 #   fork/scripts/check-literals.test.sh
 # Runs the real script in a scratch repository with a scratch HOME.
 set -uo pipefail
@@ -22,7 +23,7 @@ echo 'fork line' >> "$repo/upstream.txt"
 git commit -qam fork
 status=0
 fail() { echo "FAIL: $1"; printf 'output:\n%s\n' "$out"; status=1; }
-run() { out=$(cd "$repo" && env -i HOME="$tmp/home" PATH="$PATH" /bin/bash fork/scripts/check-literals.sh 2>&1); }
+run() { out=$(cd "$repo" && env -i HOME="$tmp/home" PATH="$PATH" /bin/bash fork/scripts/check-literals.sh "$@" 2>&1); }
 
 run || fail "flagged upstream's own line or a clean fork change"
 
@@ -43,6 +44,11 @@ mkdir -p "$tmp/home/.config/julia"
 printf 'other-name\nalice-example' > "$tmp/home/.config/julia/denylist" # no final newline
 run && fail "missed a committed denylisted string (case-insensitive, last line)"
 grep -q '^fork/owner.txt:1:owner: Alice-Example' <<<"$out" || fail "did not name the denylisted line"
+
+run --commit HEAD && fail "--commit missed a denylisted string in the commit"
+grep -q '^fork/owner.txt:1:' <<<"$out" || fail "--commit did not name the denylisted line"
+echo 'scratch: alice-example' > "$repo/fork/scratch.txt"
+run --commit HEAD~1 || fail "--commit read the working tree (a committed file the commit lacks, or an untracked one)"
 
 [ "$status" = 0 ] && echo ok
 exit "$status"

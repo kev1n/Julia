@@ -1,0 +1,8 @@
+#!/bin/sh
+# Julia fork: refuse a push whose commits write a personal host or ID into what the fork
+# adds to upstream (fork/scripts/check-literals.sh, FORK.md). Checks each pushed commit as
+# committed, so uncommitted and untracked files never block a push.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case $local_sha in *[!0]*) ;; *) continue ;; esac # a deletion pushes nothing
+  fork/scripts/check-literals.sh --commit "$local_sha"
+done
