@@ -759,6 +759,34 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <SettingsRow
+          serverScoped
+          settingKeys={["threadAlertsEnabled"]}
+          {...searchableSetting("project-thread-alerts")}
+          description="Sound, notifications, and toasts when a thread finishes, fails, or needs you. Turn off for a project of unattended automation threads."
+          resetAction={
+            settings.threadAlertsEnabled !== DEFAULT_UNIFIED_SETTINGS.threadAlertsEnabled ? (
+              <SettingResetButton
+                label="thread alerts"
+                onClick={() =>
+                  updateSettings({
+                    threadAlertsEnabled: DEFAULT_UNIFIED_SETTINGS.threadAlertsEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ScopedSwitch
+              settingKeys={["threadAlertsEnabled"]}
+              checked={settings.threadAlertsEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ threadAlertsEnabled: Boolean(checked) })
+              }
+              aria-label="Thread alerts"
+            />
+          }
+        />
       </SettingsSection>
 
       <SettingsSection id="sidebar" title={gt("Sidebar")}>

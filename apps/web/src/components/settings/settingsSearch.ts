@@ -664,6 +664,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification toast popup completion input approval failure"],
   },
   {
+    id: "project-thread-alerts",
+    title: "Thread alerts",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["notification sound toast mute quiet automation unattended project"],
+  },
+  {
     id: "language",
     title: msg("Language"),
     to: "/settings/general",
