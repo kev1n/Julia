@@ -1,7 +1,8 @@
 /**
- * Fork (Owner): the one rule for which account Auto uses (`chooseAutoAccount`). Skip accounts under
+ * Fork: the one rule for which account Auto uses (`chooseAutoAccount`). Skip accounts under
  * 5% in any window, then most left in the tightest window, then most session, then most weekly
- * left. Accounts without usage rank after; ties keep the caller's order.
+ * left. Accounts without usage rank after; ties keep the caller's order. An instance linked to
+ * a usage limit source (`withLinkedUsage`) stands as the best of that source's accounts.
  */
 import {
   isProviderAvailable,
@@ -9,6 +10,8 @@ import {
   type ServerProvider,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
+  type UsageLimitSourceId,
+  type UsageLimitSourceSnapshot,
 } from "@t3tools/contracts";
 
 /** Percent left in a window. A window whose reset time has passed is full again. */
@@ -34,11 +37,20 @@ export interface AccountStanding {
   readonly limited: boolean;
 }
 
+const UNKNOWN_STANDING: AccountStanding = {
+  sessionLeft: null,
+  weeklyLeft: null,
+  monthlyLeft: null,
+  tightestLeft: null,
+  limited: false,
+};
+
 export function accountStanding(
   limits: ServerProviderUsageLimits | undefined,
   now: number,
   model?: string,
 ): AccountStanding {
+  if (limits?.pool) return poolStanding(limits, limits.pool.accounts, now, model);
   const windows = (limits?.windows ?? []).filter((window) => {
     if (model === undefined) return true;
     // Older Claude snapshots predate modelScope. Never count their scoped
@@ -65,6 +77,64 @@ export function accountStanding(
     tightestLeft,
     limited: tightestLeft !== null && tightestLeft < LIMITED_BELOW_PERCENT,
   };
+}
+
+/**
+ * A linked instance stands as the source's best complete account (never a sum, average or
+ * per-window maximum: accounts at 90/10 and 10/90 each have 10% left). An unreadable source is
+ * unknown; a readable source with no account for the driver, or only used-up ones, is limited.
+ */
+function poolStanding(
+  limits: ServerProviderUsageLimits,
+  accounts: NonNullable<ServerProviderUsageLimits["pool"]>["accounts"],
+  now: number,
+  model: string | undefined,
+): AccountStanding {
+  if (limits.unavailable) return UNKNOWN_STANDING;
+  const first = accounts[0];
+  if (first === undefined) return { ...UNKNOWN_STANDING, limited: true };
+  const limitsOf = (account: typeof first) => ({ checkedAt: limits.checkedAt, ...account });
+  const best = chooseAutoAccount(accounts, limitsOf, now, model);
+  return best ? best.standing : accountStanding(limitsOf(first), now, model);
+}
+
+/**
+ * Replaces the usage of every instance linked to a usage limit source with that source's
+ * accounts for its driver. A linked instance never keeps its own login's usage: a source that
+ * is missing, disabled or failed to read leaves it unknown.
+ */
+export function withLinkedUsage(
+  providers: ReadonlyArray<ServerProvider>,
+  instances: Readonly<
+    Record<string, { readonly usageLimitSourceId?: UsageLimitSourceId | undefined }>
+  >,
+  sources: ReadonlyArray<UsageLimitSourceSnapshot>,
+): ReadonlyArray<ServerProvider> {
+  if (!providers.some((provider) => instances[provider.instanceId]?.usageLimitSourceId)) {
+    return providers;
+  }
+  return providers.map((provider) => {
+    const sourceId = instances[provider.instanceId]?.usageLimitSourceId;
+    if (!sourceId) return provider;
+    const source = sources.find((candidate) => candidate.id === sourceId);
+    const error = source
+      ? source.error
+      : "The linked usage limit source is missing, disabled or not read yet.";
+    const usageLimits: ServerProviderUsageLimits = {
+      checkedAt: source?.checkedAt ?? provider.checkedAt,
+      windows: [],
+      ...(error ? { unavailable: { reason: "probeFailed" as const, message: error } } : {}),
+      pool: {
+        sourceId,
+        accounts: error
+          ? []
+          : (source?.accounts ?? [])
+              .filter((account) => account.driver === provider.driver)
+              .map((account) => ({ id: account.id, windows: account.usageLimits.windows })),
+      },
+    };
+    return { ...provider, usageLimits };
+  });
 }
 
 /** Descending, with unknown (null) after every known value. */

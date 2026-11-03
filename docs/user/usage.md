@@ -39,12 +39,19 @@ Usage aggregates history across Codex, Claude Code, Grok Build, OpenCode, Antigr
   - **Cursor**: Reports monthly Auto + API quotas via `CURSOR_AUTH_TOKEN` or default-endpoint sign-in/`CURSOR_API_KEY`.
   - **Grok**: Reports billing-period quotas for `grok login` (not `XAI_API_KEY`).
   - **Muse Code**: Reports session/weekly limits after running in a thread (not persisted across restarts).
-  - Pure API-key accounts generally do not report subscription limits.
+  - Pure API-key accounts, including Claude through a proxy via `ANTHROPIC_AUTH_TOKEN`, generally do not report subscription limits unless the instance is linked to a hub (below).
 - **Mobile widget**: Add the **Subscription usage** widget on iOS or Android to monitor Codex and Claude quotas from your home screen.
 
 ## Connect a CLIProxyAPI hub
 
 Open **Settings → Providers → Usage providers → Add hub**, choose the environment, and enter the hub URL and management key. Pools Codex, Claude, and Grok accounts under **Usage → Limits** (including Codex **Use reset**). Configure the provider's endpoint to the same URL if you want threads to display that hub's limits.
+
+To send agent requests through the hub, point a provider instance at it: for Claude, set `ANTHROPIC_BASE_URL` to the hub's address and `ANTHROPIC_AUTH_TOKEN` to its client key in the instance's environment variables; for Codex, add a `cliproxy` model provider with `base_url="<hub>/v1"` in its launch arguments ([example](../../README.md#pooling-accounts)). Then choose the hub under **Usage from hub** in that instance's settings. T3 Code offers the link when the instance's base URL matches a hub, but links nothing until you choose it. A linked instance:
+
+- reports the hub's accounts for its provider instead of this machine's login;
+- ranks in Auto account choice by the hub's best account, judged by its tightest window (90% session / 10% week counts as 10%);
+- counts as out of usage when every hub account for that provider is used up, or the hub lists none;
+- counts as unknown while the hub cannot be read.
 
 ## Connect an HTTP quota source
 

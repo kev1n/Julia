@@ -57,7 +57,25 @@ export function UsageProviderSettings({
         }
       >
         {entries.length === 0 ? (
-          <SettingsRow title={gt("No usage sources configured.")} />
+          <SettingsRow
+            title={gt("No usage sources configured.")}
+            description={
+              <span>
+                <T>
+                  To pool several Claude or Codex logins, run{" "}
+                  <a
+                    className="underline underline-offset-2"
+                    href="https://github.com/router-for-me/CLIProxyAPI"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CLIProxyAPI
+                  </a>
+                  , add it here, and link your proxy instances to it.
+                </T>
+              </span>
+            }
+          />
         ) : (
           entries.map(([id, source]) => {
             const kindLabel = source.kind === "http" ? gt("HTTP quota source") : CLI_PROXY_NAME;

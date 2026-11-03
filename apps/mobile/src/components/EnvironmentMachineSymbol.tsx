@@ -31,7 +31,7 @@ export function EnvironmentMachineSymbol(props: {
 }) {
   const m = useMessages();
   if (hasMachinePicture(props.kind)) {
-    // Fork (Owner): machine pictures
+    // Fork: machine pictures
     return (
       <MachinePicture
         kind={props.kind}

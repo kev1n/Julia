@@ -1,13 +1,13 @@
 #!/bin/bash
-# The checks a synced fork must pass before it is built: no host or ID written
-# outside fork.env, typecheck of every package the fork touches, lint of every
+# The checks a synced fork must pass before it is built: no personal host or ID
+# in what the fork adds, typecheck of every package the fork touches, lint of every
 # file it touches, the fork's own tests, and the upstream tests that sit beside
 # the upstream files it changes.
 #   fork/scripts/checks.sh <upstream-base-ref>
 set -euo pipefail
 base=${1:?upstream base ref}
 cd "$(git rev-parse --show-toplevel)"
-fork/scripts/check-literals.sh
+fork/scripts/check-literals.sh "$base"
 export PATH="$HOME/.local/share/vite-plus/bin:$PATH"
 vp i # a new upstream base can change dependencies
 # macOS ships bash 3.2 (no mapfile); file names here contain no newlines.

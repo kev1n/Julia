@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): signs one Claude account in on every connected machine with Claude's own login, so
+ * Fork: signs one Claude account in on every connected machine with Claude's own login, so
  * each shows the account's email, plan and usage (a `setup-token` token does not). One sign-in
  * page per machine; each code is pasted back into that machine's row.
  */

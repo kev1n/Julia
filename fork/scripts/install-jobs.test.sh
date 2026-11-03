@@ -8,7 +8,9 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/bin"
+mkdir -p "$tmp/bin" "$tmp/.config/julia"
+# The labels come from the local config that fork.env reads.
+echo 'job_label_prefix=org.example.fork' > "$tmp/.config/julia/fork.env"
 printf '#!/bin/bash\necho "$*" >> "%s/launchctl"\n' "$tmp" > "$tmp/bin/launchctl"
 chmod +x "$tmp/bin/launchctl"
 export PATH="$tmp/bin:$PATH"
@@ -25,9 +27,9 @@ check() {
     "$agents/$1.plist" "$2" "$tmp"
 }
 
-# No launcher (the MacBook): the job runs its script with bash, logging under ~/t3-fork.
+# No launcher: the job runs its script with bash, logging under ~/t3-fork.
 run watchdog
-check com.example.t3code-fork.watchdog \
+check org.example.fork.watchdog \
   'd["ProgramArguments"] == ["/bin/bash", h+"/t3-fork/watchdog.sh"] and d["StandardOutPath"] == h+"/t3-fork/logs/watchdog.log" and "WorkingDirectory" not in d' ||
   fail "without ExternalLauncher the watchdog does not run its script directly"
 
@@ -39,15 +41,15 @@ printf '\0t3-deploy\0t3-watchdog\0' > "$launcher"
 chmod 755 "$launcher"
 logs="h+\"/Library/Logs/external-launcher\""
 run watchdog deploy
-check com.example.t3code-fork.watchdog \
-  "d == {'Label': 'com.example.t3code-fork.watchdog', 'ProgramArguments': [h+'/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher', 't3-watchdog'], 'StartInterval': 60, 'WorkingDirectory': $logs, 'StandardOutPath': $logs+'/com.example.t3code-fork.watchdog.log', 'StandardErrorPath': $logs+'/com.example.t3code-fork.watchdog.log'}" ||
+check org.example.fork.watchdog \
+  "d == {'Label': 'org.example.fork.watchdog', 'ProgramArguments': [h+'/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher', 't3-watchdog'], 'StartInterval': 60, 'WorkingDirectory': $logs, 'StandardOutPath': $logs+'/org.example.fork.watchdog.log', 'StandardErrorPath': $logs+'/org.example.fork.watchdog.log'}" ||
   fail "with ExternalLauncher the watchdog does not run through it"
-check com.example.t3code-fork.deploy \
-  "d['ProgramArguments'][1:] == ['t3-deploy'] and d['StartCalendarInterval'] == {'Hour': 5, 'Minute': 45} and d['StandardErrorPath'] == $logs+'/com.example.t3code-fork.deploy.log'" ||
+check org.example.fork.deploy \
+  "d['ProgramArguments'][1:] == ['t3-deploy'] and d['StartCalendarInterval'] == {'Hour': 5, 'Minute': 45} and d['StandardErrorPath'] == $logs+'/org.example.fork.deploy.log'" ||
   fail "with ExternalLauncher the deploy job does not run through it"
 # A job the launcher has no service for is refused rather than left looping.
 run sync && fail "installed sync though ExternalLauncher has no t3-sync"
-[ ! -e "$agents/com.example.t3code-fork.sync.plist" ] || fail "wrote a sync plist ExternalLauncher cannot run"
+[ ! -e "$agents/org.example.fork.sync.plist" ] || fail "wrote a sync plist ExternalLauncher cannot run"
 
 [ "$status" = 0 ] && echo ok
 exit "$status"

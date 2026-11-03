@@ -47,7 +47,7 @@ const fixture = vi.hoisted(() => ({
     "readFile" | "optimisticFile"
   >,
   route: {
-    state: { location: { href: "/build-mac/existing" }, matches: [{ params: {} }] },
+    state: { location: { href: "/office/existing" }, matches: [{ params: {} }] },
     navigate: vi.fn(async (request: { params: { draftId: string } }) => {
       fixture.route.state.location.href = `/draft/${request.params.draftId}`;
     }),
@@ -134,20 +134,20 @@ import { getProjectFileQueryAtom } from "../components/files/projectFilesQuerySt
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 
-const build-mac = EnvironmentId.make("build-mac");
-const mac-a = EnvironmentId.make("mac-a");
-const project1 = ProjectId.make("t3code-build-mac");
-const project0 = ProjectId.make("t3code-mac-a");
-const sourceRef = scopeProjectRef(build-mac, project1);
-const destinationRef = scopeProjectRef(mac-a, project0);
-const sourceRoot = "/fixtures/build-mac/t3code";
+const office = EnvironmentId.make("office");
+const studio = EnvironmentId.make("studio");
+const project1 = ProjectId.make("t3code-office");
+const project0 = ProjectId.make("t3code-studio");
+const sourceRef = scopeProjectRef(office, project1);
+const destinationRef = scopeProjectRef(studio, project0);
+const sourceRoot = "/fixtures/office/t3code";
 const repo = {
   locator: {
     source: "git-remote" as const,
     remoteName: "origin",
-    remoteUrl: "https://github.com/owner/t3code.git",
+    remoteUrl: "https://github.com/example-org/t3code.git",
   },
-  canonicalKey: "github.com/owner/t3code",
+  canonicalKey: "github.com/example-org/t3code",
   name: "t3code",
   rootPath: sourceRoot,
 };
@@ -164,7 +164,7 @@ const setup = Effect.fn("OfflineNewThreadRepro.setup")(function* (
   fixture.projects = [
     {
       id: project1,
-      environmentId: build-mac,
+      environmentId: office,
       title: "t3code",
       workspaceRoot: sourceRoot,
       repositoryIdentity: repo,
@@ -175,10 +175,10 @@ const setup = Effect.fn("OfflineNewThreadRepro.setup")(function* (
     },
     {
       id: project0,
-      environmentId: mac-a,
+      environmentId: studio,
       title: "t3code",
-      workspaceRoot: "/fixtures/mac-a/t3code",
-      repositoryIdentity: { ...repo, rootPath: "/fixtures/mac-a/t3code" },
+      workspaceRoot: "/fixtures/studio/t3code",
+      repositoryIdentity: { ...repo, rootPath: "/fixtures/studio/t3code" },
       defaultModelSelection: null,
       scripts: [],
       createdAt: "2026-10-08T03:00:00.000Z",
@@ -186,14 +186,14 @@ const setup = Effect.fn("OfflineNewThreadRepro.setup")(function* (
     },
   ];
   fixture.settings = new Map(
-    [build-mac, mac-a].map((id) => [
+    [office, studio].map((id) => [
       id,
       {
         settings: { ...DEFAULT_SERVER_SETTINGS, defaultThreadEnvMode: envMode },
       },
     ]),
   );
-  fixture.route.state.location.href = "/build-mac/existing";
+  fixture.route.state.location.href = "/office/existing";
   fixture.route.navigate.mockClear();
   useComposerDraftStore.setState({
     draftsByThreadKey: {},
@@ -230,18 +230,18 @@ const setup = Effect.fn("OfflineNewThreadRepro.setup")(function* (
   const sessionFixture = {
     client: { [WS_METHODS.projectsReadFile]: rpcRead },
   } as unknown as RpcSession;
-  for (const id of [build-mac, mac-a]) {
+  for (const id of [office, studio]) {
     const state = yield* SubscriptionRef.make<SupervisorConnectionState>({
       ...AVAILABLE_CONNECTION_STATE,
       desired: true,
       network: "online",
-      phase: id === build-mac ? phase : "connected",
+      phase: id === office ? phase : "connected",
       attempt: 1,
       generation: 1,
-      lastFailure: id === build-mac && phase !== "connected" ? lostTransport : null,
+      lastFailure: id === office && phase !== "connected" ? lostTransport : null,
     } satisfies SupervisorConnectionState);
     const session = yield* SubscriptionRef.make(
-      id === mac-a || phase === "connected"
+      id === studio || phase === "connected"
         ? Option.some(sessionFixture)
         : Option.none<RpcSession>(),
     );
@@ -319,7 +319,7 @@ describe("offline source New Thread", () => {
     { phase: "connecting" as const, reuseEmptyDraft: false },
     { phase: "backoff" as const, reuseEmptyDraft: true },
   ])(
-    "opens before recovery: build-mac=$phase, reusable=$reuseEmptyDraft, mac-a=healthy",
+    "opens before recovery: office=$phase, reusable=$reuseEmptyDraft, studio=healthy",
     ({ phase, reuseEmptyDraft }) =>
       Effect.gen(function* () {
         const harness = yield* setup(phase);
@@ -339,7 +339,7 @@ describe("offline source New Thread", () => {
         const pending = open();
         // A healthy destination answers its own file query before the source is recovered.
         expect(
-          yield* Effect.promise(() => readT3ProjectFile(mac-a, "/fixtures/mac-a/t3code")),
+          yield* Effect.promise(() => readT3ProjectFile(studio, "/fixtures/studio/t3code")),
         ).toEqual({
           defaultThreadEnvMode: "worktree",
         });
@@ -349,10 +349,10 @@ describe("offline source New Thread", () => {
           .getDraftSessionByLogicalProjectKey(repo.canonicalKey);
         // Recovery unblocks the exact pending click, proving the dependency.
         yield* SubscriptionRef.set(
-          harness.sessions.get(build-mac)!,
+          harness.sessions.get(office)!,
           Option.some(harness.sessionFixture),
         );
-        yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(build-mac)!, {
+        yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(office)!, {
           ...AVAILABLE_CONNECTION_STATE,
           desired: true,
           network: "online",
@@ -373,11 +373,11 @@ describe("offline source New Thread", () => {
   it.effect("cached t3.json does not make a fresh draft depend on recovery", () =>
     Effect.gen(function* () {
       const harness = yield* setup("connected");
-      expect(yield* Effect.promise(() => readT3ProjectFile(build-mac, sourceRoot))).toEqual({
+      expect(yield* Effect.promise(() => readT3ProjectFile(office, sourceRoot))).toEqual({
         defaultThreadEnvMode: "worktree",
       });
-      yield* SubscriptionRef.set(harness.sessions.get(build-mac)!, Option.none());
-      yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(build-mac)!, {
+      yield* SubscriptionRef.set(harness.sessions.get(office)!, Option.none());
+      yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(office)!, {
         ...AVAILABLE_CONNECTION_STATE,
         desired: true,
         network: "online",
@@ -389,24 +389,27 @@ describe("offline source New Thread", () => {
       // Observe the source query suspended on reconnection before clicking.
       // A cached value read before this propagation can still open successfully.
       const releaseCachedFile = fixture.registry.mount(
-        getProjectFileQueryAtom(build-mac, sourceRoot, "t3.json"),
+        getProjectFileQueryAtom(office, sourceRoot, "t3.json"),
       );
       yield* AtomRegistry.toStream(
         fixture.registry,
-        getProjectFileQueryAtom(build-mac, sourceRoot, "t3.json"),
+        getProjectFileQueryAtom(office, sourceRoot, "t3.json"),
       ).pipe(
         Stream.filter((result) => result.waiting),
         Stream.runHead,
       );
       const pending = open();
       expect(
-        yield* Effect.promise(() => readT3ProjectFile(mac-a, "/fixtures/mac-a/t3code")),
+        yield* Effect.promise(() => readT3ProjectFile(studio, "/fixtures/studio/t3code")),
       ).toEqual({
         defaultThreadEnvMode: "worktree",
       });
       const routeBeforeRecovery = fixture.route.state.location.href;
-      yield* SubscriptionRef.set(harness.sessions.get(build-mac)!, Option.some(harness.sessionFixture));
-      yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(build-mac)!, {
+      yield* SubscriptionRef.set(
+        harness.sessions.get(office)!,
+        Option.some(harness.sessionFixture),
+      );
+      yield* SubscriptionRef.set<SupervisorConnectionState>(harness.states.get(office)!, {
         ...AVAILABLE_CONNECTION_STATE,
         desired: true,
         network: "online",
@@ -427,11 +430,14 @@ describe("offline source New Thread", () => {
         const harness = yield* setup("connected", null, true);
         const pending = open();
         yield* Deferred.await(harness.sourceReadEntered);
-        yield* SubscriptionRef.set(harness.sessions.get(build-mac)!, Option.none());
-        yield* SubscriptionRef.update(harness.states.get(build-mac)!, (state) => ({ ...state, phase }));
+        yield* SubscriptionRef.set(harness.sessions.get(office)!, Option.none());
+        yield* SubscriptionRef.update(harness.states.get(office)!, (state) => ({
+          ...state,
+          phase,
+        }));
         yield* Effect.promise(() => pending);
         expect(fixture.route.state.location.href).toMatch(/^\/draft\//);
-        expect(Option.isNone(yield* SubscriptionRef.get(harness.sessions.get(build-mac)!))).toBe(true);
+        expect(Option.isNone(yield* SubscriptionRef.get(harness.sessions.get(office)!))).toBe(true);
       }),
   );
   it.effect("connected source retains its project-file workspace default", () =>

@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): a phone task's default model moves to the account Auto would use, the instance of
+ * Fork: a phone task's default model moves to the account Auto would use, the instance of
  * its provider with the most usage left; with all compatible accounts exhausted, the other
  * preferred or pinned models are tried. A model picked by hand in the draft stays as picked.
  */

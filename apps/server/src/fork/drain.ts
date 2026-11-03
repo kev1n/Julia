@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the drain before a planned restart (FORK.md, "Restarts keep background work").
+ * Fork: the drain before a planned restart (FORK.md, "Restarts keep background work").
  * While draining, ThreadManagementService.dispatch refuses new work from clients and agents but
  * not the server's own continuations; it refuses rather than queues, since startup recovery holds
  * queued messages. In memory only: the restart, or the deploy script cancelling, ends it.

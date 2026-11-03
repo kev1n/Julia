@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Claude Code's dangerous-removal safety check asks even under bypass, and its own
+ * Fork: Claude Code's dangerous-removal safety check asks even under bypass, and its own
  * TUI denies that ask when nobody answers in time. The SDK forwards the ask to canUseTool with no
  * such window (nor the check's kind), so a full-access T3 thread would wait on it forever.
  */

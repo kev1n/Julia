@@ -133,7 +133,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
   const readRefs = useAtomCommand(vcsEnvironment.readRefs, { reportFailure: false });
   const { openScratchProject } = useScratchProject();
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
-  // Fork (Owner): kept while Auto is on, so a resolved draft can still say why.
+  // Fork: kept while Auto is on, so a resolved draft can still say why.
   const loadBalancingCandidates = automaticEnvironment
     ? logicalProjectEnvironments
         .filter((candidate) => {

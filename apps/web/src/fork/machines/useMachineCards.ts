@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): live host resources for every paired environment while the
+ * Fork: live host resources for every paired environment while the
  * Machines view is open and the window is visible. Idle clients never poll
  * hosts (the rule upstream's `useLoadBalancedEnvironment` states); the server
  * caches its snapshot for 5 seconds, which is the poll interval.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# The fork's Android app, T3 Code (Owner) (apps/mobile/src/fork/appConfig.ts).
+# The fork's Android app, Julia (apps/mobile/src/fork/appConfig.ts).
 #   fork/scripts/build-mobile.sh build <version> <out-dir> <published-dir>
 #   fork/scripts/build-mobile.sh publish <out-dir> <published-dir>
 # build stages <out-dir>/mobile: the JavaScript update (expo export) with its
@@ -8,18 +8,20 @@
 # the stage into <published-dir> (served by artifacts-server.py), writing the
 # manifest last so a phone never sees a manifest whose files are missing.
 #
-# Layout of <published-dir> (~/t3-fork/out/mobile on build-mac):
-#   android/<runtime>/T3-Code-Owner-<version>.apk    the binary for that fingerprint
+# Layout of <published-dir> (~/t3-fork/out/mobile on the build Mac), <apk> being
+# fork.env's mobile_apk_name:
+#   android/<runtime>/<apk>-<version>.apk             the binary for that fingerprint
 #   android/<runtime>/updates/<update id>/...         an exported bundle and its assets
 #   android/<runtime>/manifest.json                   the newest update for that binary
-#   T3-Code-Owner.apk                                 the newest APK (the install link)
+#   <apk>.apk                                         the newest APK (the install link)
 set -euo pipefail
+# mobile_package, mobile_scheme, mobile_apk_name, mobile_keystore, mobile_keystore_pass
 . "$(dirname "$0")/fork.env"
 artifacts_url=${T3CODE_ARTIFACTS_URL:-$artifacts_url}
-# The release signing key: Android installs an APK over an older one only when both are
-# signed with the same key, so it never changes. Made once on build-mac; never in git.
-keystore="$HOME/t3-fork/keys/julia-fork-release.jks"
-keystore_pass="$HOME/t3-fork/keys/julia-fork-release.pass"
+# The release signing key (fork.env): Android installs an APK over an older one only when
+# both are signed with the same key, so it never changes. Made once on the build Mac; never in git.
+keystore=$mobile_keystore
+keystore_pass=$mobile_keystore_pass
 
 stage_dir() { echo "$1/mobile"; }
 
@@ -33,7 +35,9 @@ build() {
   export PATH="$HOME/.local/share/vite-plus/bin:$PATH"
   export JAVA_HOME=${JAVA_HOME:-$HOME/t3-fork/toolchain/jdk21/Contents/Home}
   export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
-  export T3CODE_MOBILE_OWNER=1 APP_VARIANT=preview T3CODE_MOBILE_UPDATES_URL="$artifacts_url/mobile/manifest"
+  [ -n "$artifacts_url" ] || { echo "mobile: set build_mac_url or artifacts_url in $fork_local_config (FORK.md)" >&2; exit 1; }
+  export T3CODE_MOBILE_FORK=1 APP_VARIANT=preview T3CODE_MOBILE_UPDATES_URL="$artifacts_url/mobile/manifest"
+  export T3CODE_MOBILE_PACKAGE="$mobile_package" T3CODE_MOBILE_SCHEME="$mobile_scheme"
   export EXPO_NO_TELEMETRY=1 EXPO_NO_GIT_STATUS=1 CI=1
   cd "$repo/apps/mobile"
 
@@ -47,7 +51,7 @@ build() {
   else
     echo "mobile: no APK for $rv yet; building one"
     npx expo prebuild --clean --platform android --no-install
-    # arm64 only: Owner's phone (Galaxy S24 Ultra) and the Apple-silicon emulator.
+    # arm64 only: current Android phones and the Apple-silicon emulator.
     (cd android && ./gradlew --no-daemon -PreactNativeArchitectures=arm64-v8a :app:assembleRelease)
     local built=android/app/build/outputs/apk/release/app-release.apk
     local embedded
@@ -57,8 +61,8 @@ build() {
     local build_tools
     build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
     "$build_tools/apksigner" sign --v4-signing-enabled false --ks "$keystore" --ks-pass "file:$keystore_pass" \
-      --out "$stage/T3-Code-Owner-$version.apk" "$built"
-    "$build_tools/apksigner" verify "$stage/T3-Code-Owner-$version.apk"
+      --out "$stage/$mobile_apk_name-$version.apk" "$built"
+    "$build_tools/apksigner" verify "$stage/$mobile_apk_name-$version.apk"
   fi
 
   npx expo export --platform android --output-dir "$stage/dist"
@@ -125,7 +129,7 @@ publish() {
   [ -d "$dst/updates/$id" ] || cp -R "$stage/dist" "$dst/updates/$id"
   if ls "$stage"/*.apk >/dev/null 2>&1; then
     cp "$stage"/*.apk "$dst/"
-    ln -sfn "android/$rv/$(basename "$stage"/*.apk)" "$published/T3-Code-Owner.apk"
+    ln -sfn "android/$rv/$(basename "$stage"/*.apk)" "$published/$mobile_apk_name.apk"
     echo "mobile: published a new APK for $rv"
   fi
   cp "$stage/manifest.json" "$dst/manifest.json.partial"

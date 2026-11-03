@@ -64,7 +64,7 @@ function EnvironmentPickerRow(props: {
   disabled: boolean;
   isLast: boolean;
   onPress: () => void;
-  /** Fork (Owner): the machine's CPU, memory and disk. */
+  /** Fork: the machine's CPU, memory and disk. */
   subtitle?: string | undefined;
 }) {
   const gt = useGT();
@@ -201,7 +201,7 @@ export function NewTaskEnvironmentPickerRouteScreen() {
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  // Fork (Owner): each machine's live CPU, memory and disk under its name.
+  // Fork: each machine's live CPU, memory and disk under its name.
   const focused = useIsFocused();
   const machineUsage = useMachineSummaries(focused);
   return (

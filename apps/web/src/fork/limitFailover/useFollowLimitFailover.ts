@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): when limit failover continues the open thread in a new tab
+ * Fork: when limit failover continues the open thread in a new tab
  * (`limitRecovery.continuedIn`), take the user there with any unsent draft.
  * Reopening a thread that already moved on stays put.
  */

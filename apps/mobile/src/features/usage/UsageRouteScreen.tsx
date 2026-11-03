@@ -56,7 +56,7 @@ const VIEW_OPTIONS = [
   { value: "cost", label: msg("Cost", { $context: "usage view tab" }) },
   { value: "tokens", label: msg("Tokens", { $context: "usage view tab" }) },
   { value: "limits", label: msg("Limits", { $context: "usage view tab, subscription limits" }) },
-  // Fork (Owner): Usage > Machines
+  // Fork: Usage > Machines
   { value: "machines", label: msg("Machines", { $context: "usage view tab" }) },
 ] as const satisfies readonly { value: UsageView; label: string }[];
 

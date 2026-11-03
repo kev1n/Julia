@@ -1,6 +1,6 @@
 /**
- * Fork (Owner): a paired client that can already run agents gets every standard permission at
- * read time, since upstream never widens a stored grant and Owner pairs only his own devices.
+ * Fork: a paired client that can already run agents gets every standard permission at
+ * read time, since upstream never widens a stored grant and the fork pairs only its owner's devices.
  * Read-only pairings, agent MCP tokens and CLI-issued sessions keep exactly what they were given.
  */
 import {

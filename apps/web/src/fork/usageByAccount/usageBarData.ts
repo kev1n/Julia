@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the session and weekly windows of the composer's selected
+ * Fork: the session and weekly windows of the composer's selected
  * account, as two stacked bars beside the model name (`UsageBars`).
  */
 import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";

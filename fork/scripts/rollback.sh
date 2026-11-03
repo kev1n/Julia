@@ -7,7 +7,8 @@ set -euo pipefail
 version=${1:?runtime version under ~/.t3/runtime/versions}
 state="$HOME/.t3/runtime/service-state.json"
 [ -x "$HOME/.t3/runtime/versions/$version/t3" ] || { echo "Not installed: $version" >&2; exit 1; }
-launchctl bootout "gui/$(id -u)/com.example.t3code-fork.deploy" 2>/dev/null || true
+. "$(dirname "$0")/fork.env" # job_label_prefix
+launchctl bootout "gui/$(id -u)/$job_label_prefix.deploy" 2>/dev/null || true
 /usr/bin/python3 - "$state" "$version" <<'PY'
 import json, os, sys
 path, version = sys.argv[1], sys.argv[2]

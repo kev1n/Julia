@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the account the daily sync's auto-fix chat runs on (imported with plain Node by
+ * Fork: the account the daily sync's auto-fix chat runs on (imported with plain Node by
  * `fork/scripts/autofix-thread.mjs`): the first of `syncAutofixModelSelections` with an account
  * with usage left, on the account Auto would pick. With none left, the first model runs and fails.
  */
@@ -15,7 +15,7 @@ export function autofixModelSelection(
     const driver = providers.find(
       (provider) => provider.instanceId === selection.instanceId,
     )?.driver;
-    const choice = driver ? chooseAutoInstance(providers, driver, now) : null;
+    const choice = driver ? chooseAutoInstance(providers, driver, now, selection.model) : null;
     if (choice) return { ...selection, instanceId: choice.account.instanceId };
   }
   return selections[0] ?? null;

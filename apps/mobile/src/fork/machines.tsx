@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Machines on the phone. Cards come from the web fork's `machineCards.ts`;
+ * Fork: Usage > Machines on the phone. Cards come from the web fork's `machineCards.ts`;
  * this file reads the atoms and draws. Polls each server every 5 seconds only while the tab is on
  * screen and the app is in front, so the tab has no pull to refresh.
  */

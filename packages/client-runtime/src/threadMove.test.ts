@@ -20,8 +20,8 @@ import {
   type ThreadMoveSource,
 } from "./threadMove.ts";
 
-const sourceEnvironmentId = EnvironmentId.make("build-mac");
-const targetEnvironmentId = EnvironmentId.make("macbook");
+const sourceEnvironmentId = EnvironmentId.make("office");
+const targetEnvironmentId = EnvironmentId.make("laptop");
 const now = Date.parse("2026-10-07T21:00:00Z");
 const source: ThreadMoveSource = {
   id: ThreadId.make("original"),
@@ -55,10 +55,10 @@ function fixture() {
   return {
     source,
     sourceEnvironmentId,
-    sourceLabel: "build-mac",
+    sourceLabel: "office",
     targetEnvironmentId,
-    targetLabel: "MacBook",
-    targetProject: { id: ProjectId.make("target-project"), workspaceRoot: "/Users/owner/src/repo" },
+    targetLabel: "laptop",
+    targetProject: { id: ProjectId.make("target-project"), workspaceRoot: "/Users/alice/src/repo" },
     targetProviders: [provider],
     driver: "codex",
     messages: [
@@ -85,14 +85,14 @@ describe("moving a thread between Macs", () => {
     expect(result).toEqual({
       environmentId: targetEnvironmentId,
       threadId: input.threadId,
-      machine: "MacBook",
+      machine: "laptop",
     });
     expect(input.receive).toHaveBeenCalledWith({
       sourceEnvironmentId,
       sourceWorktreePath: source.worktreePath,
       branch: source.branch,
       projectRoot: input.targetProject.workspaceRoot,
-      commitMessage: "WIP: move to MacBook",
+      commitMessage: "WIP: move to laptop",
     });
     const launch = input.start.mock.calls[0]?.[0];
     expect(launch).toMatchObject({
@@ -112,7 +112,7 @@ describe("moving a thread between Macs", () => {
     });
     expect(launch?.message.text).toContain("Please fix the bug");
     expect(launch?.message.text).toContain("Found the cause");
-    expect(input.markSource).toHaveBeenCalledWith("Moved to MacBook · Fix the bug");
+    expect(input.markSource).toHaveBeenCalledWith("Moved to laptop · Fix the bug");
     expect(input.receive.mock.invocationCallOrder[0]).toBeLessThan(
       input.start.mock.invocationCallOrder[0]!,
     );
@@ -205,12 +205,12 @@ function project(environmentId: EnvironmentId, rootPath: string, subdir = ""): E
     title: "Repo",
     workspaceRoot: `${rootPath}${subdir}`,
     repositoryIdentity: {
-      canonicalKey: "github.com/owner/t3code",
+      canonicalKey: "github.com/example-org/t3code",
       rootPath,
       locator: {
         source: "git-remote",
         remoteName: "origin",
-        remoteUrl: "https://github.com/owner/t3code.git",
+        remoteUrl: "https://github.com/example-org/t3code.git",
       },
     },
     defaultModelSelection: null,
@@ -222,8 +222,8 @@ function project(environmentId: EnvironmentId, rootPath: string, subdir = ""): E
 
 describe("move destinations", () => {
   it("matches a checkout on another Mac even though the usernames and paths differ", () => {
-    const original = project(sourceEnvironmentId, "/Users/user-b/repo");
-    const target = project(targetEnvironmentId, "/Users/owner/src/repo");
+    const original = project(sourceEnvironmentId, "/Users/bob/repo");
+    const target = project(targetEnvironmentId, "/Users/alice/src/repo");
     expect(threadMoveProject(original, [original, target], targetEnvironmentId)).toBe(target);
     expect(threadMoveProject(original, [original, target], sourceEnvironmentId)).toBeNull();
   });

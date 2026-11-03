@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Machines cards (CPU, memory, disk) from each server's
+ * Fork: Usage > Machines cards (CPU, memory, disk) from each server's
  * `server.getHostResources`. The phone draws the same cards from this file
  * (apps/mobile/src/fork/machines.tsx), so it holds no React or atom state.
  */

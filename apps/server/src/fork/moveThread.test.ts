@@ -49,7 +49,7 @@ describe("moving a thread's branch between machines", () => {
     const packed = await packBranch({
       worktreePath: worktree,
       branch: "t3/feature",
-      commitMessage: "WIP: move to build-mac",
+      commitMessage: "WIP: move to office",
       haves: await refTips(target),
     });
     expect(packed.bundle).not.toBeNull();
@@ -61,7 +61,7 @@ describe("moving a thread's branch between machines", () => {
     expect(git(target, "show", `${packed.head}:a.txt`)).toBe("edited");
     expect(git(target, "show", `${packed.head}:new.txt`)).toBe("untracked");
     expect(git(target, "show", `${packed.head}:b.txt`)).toBe("committed");
-    expect(git(target, "log", "-1", "--format=%s", packed.head)).toBe("WIP: move to build-mac");
+    expect(git(target, "log", "-1", "--format=%s", packed.head)).toBe("WIP: move to office");
     // Nothing on the target moved: the new worktree's branch is made by the launch.
     expect(git(target, "branch", "--list", "t3/feature")).toBe("");
   });

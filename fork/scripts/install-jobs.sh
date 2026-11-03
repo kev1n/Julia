@@ -4,12 +4,13 @@
 #   fork/scripts/install-jobs.sh watchdog      every Mac: restart a hung T3 service (each
 #                                              release's installer refreshes it)
 #   fork/scripts/install-jobs.sh sync artifacts deploy
-#                                              the build Mac (build-mac): daily sync + build, and
+#                                              the build Mac: daily sync + build, and
 #                                              its build outputs served to the tailnet on :8444
-# Times are local: sync at 05:00, deploy at 05:45 (a missed run, e.g. while the
-# MacBook sleeps, runs at wake).
+# Times are local: sync at 05:00, deploy at 05:45 (a missed run, e.g. while a
+# laptop sleeps, runs at wake). Labels are <job_label_prefix>.<job> (fork.env).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/fork.env" # job_label_prefix
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$HOME/Library/LaunchAgents"
 launcher="$HOME/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
@@ -62,19 +63,19 @@ PLIST
 }
 for job in "$@"; do
   case "$job" in
-    sync) install_job com.example.t3code-fork.sync "$HOME/src/t3code-fork/fork/scripts/sync.sh" 5 0 t3-sync ;;
+    sync) install_job "$job_label_prefix.sync" "$HOME/src/t3code-fork/fork/scripts/sync.sh" 5 0 t3-sync ;;
     deploy)
       install -S -m 600 "$here/fork.env" "$state/"
       install -S -m 700 "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
-      install_job com.example.t3code-fork.deploy "$state/pull-deploy.sh" 5 45 t3-deploy ;;
+      install_job "$job_label_prefix.deploy" "$state/pull-deploy.sh" 5 45 t3-deploy ;;
     watchdog)
       install -S -m 700 "$here/watchdog.sh" "$state/"
-      load_job com.example.t3code-fork.watchdog t3-watchdog <<PLIST
+      load_job "$job_label_prefix.watchdog" t3-watchdog <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.example.t3code-fork.watchdog</string>
+  <key>Label</key><string>$job_label_prefix.watchdog</string>
   <key>ProgramArguments</key>
   <array><string>/bin/bash</string><string>$state/watchdog.sh</string></array>
   <key>StartInterval</key><integer>60</integer>
@@ -83,19 +84,19 @@ for job in "$@"; do
 </dict>
 </plist>
 PLIST
-      echo "installed com.example.t3code-fork.watchdog (every 60 s) -> $state/watchdog.sh" ;;
+      echo "installed $job_label_prefix.watchdog (every 60 s) -> $state/watchdog.sh" ;;
     artifacts)
       # A static file server on localhost (plus the phone app's update manifest),
       # published to the tailnet only by Tailscale Serve (the macOS Tailscale app
       # cannot serve a directory itself).
       mkdir -p "$state/out"
       cp "$here/artifacts-server.py" "$state/"
-      load_job com.example.t3code-fork.artifacts t3-artifacts <<PLIST
+      load_job "$job_label_prefix.artifacts" t3-artifacts <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.example.t3code-fork.artifacts</string>
+  <key>Label</key><string>$job_label_prefix.artifacts</string>
   <key>ProgramArguments</key>
   <array><string>/usr/bin/python3</string><string>$state/artifacts-server.py</string>
     <string>8790</string><string>$state/out</string></array>
@@ -107,7 +108,7 @@ PLIST
 </plist>
 PLIST
       /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg --https=8444 http://127.0.0.1:8790
-      echo "installed com.example.t3code-fork.artifacts ($state/out on tailnet :8444)" ;;
+      echo "installed $job_label_prefix.artifacts ($state/out on tailnet :8444)" ;;
     *) echo "unknown job $job" >&2; exit 1 ;;
   esac
 done

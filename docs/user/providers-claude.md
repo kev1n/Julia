@@ -14,6 +14,13 @@ Use a separate Claude config directory (`CLAUDE_CONFIG_DIR`) for each account or
 - Put API keys and endpoint overrides in **Environment variables** (not **Launch arguments**).
 - Paths in `--settings` and `--append-system-prompt-file` expand `~` to the server's home directory; other relative paths resolve from the thread's workspace.
 
+### Many accounts through a proxy
+
+For more than a couple of accounts, run [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+and route one Claude instance through it with `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`,
+then link the instance to the hub so its usage reflects the proxy's accounts.
+[Connect a CLIProxyAPI hub](./usage.md#connect-a-cliproxyapi-hub)
+
 ### Using an account on other machines
 
 **Copy account slot to other machines** copies the account's settings and ID to connected, paired T3 servers, but not Claude's credentials; each server uses its own login directory.

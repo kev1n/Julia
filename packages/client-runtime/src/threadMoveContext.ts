@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): a moved thread's first message. The new server has none of its history, so the
+ * Fork: a moved thread's first message. The new server has none of its history, so the
  * client selects like T3's portable handoff: the original request, then the latest whole messages
  * that fit T3's handoff default (16,000 tokens, one per UTF-8 byte).
  */

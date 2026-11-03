@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Claude sign in and out from Settings, running Claude's own login in the sign-in
+ * Fork: Claude sign in and out from Settings, running Claude's own login in the sign-in
  * terminal with this instance's CLAUDE_CONFIG_DIR. The "token" method runs `claude setup-token`,
  * which stores nothing: the client saves the printed token as CLAUDE_CODE_OAUTH_TOKEN everywhere.
  */

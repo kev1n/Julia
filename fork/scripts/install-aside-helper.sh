@@ -1,17 +1,18 @@
 #!/bin/bash
 # Runs Aside under aside-cdp-helper.mjs, so T3's "Aside" browser profile can stream and
 # drive real Aside tabs over a private socket. Replaces the LaunchAgent that opens Aside
-# at login. Quitting Aside here relocks 1Password on the minis until it is unlocked again.
+# at login. Quitting Aside here relocks a password manager running inside it until it is unlocked again.
 #
 #   install-aside-helper.sh              install or update, then (re)start Aside under it
 #   install-aside-helper.sh --uninstall  back to the normal Aside launch
 set -euo pipefail
 
-label=com.example.t3code-fork.aside-helper
+. "$(dirname "$0")/fork.env" # job_label_prefix, aside_login_label
+label=$job_label_prefix.aside-helper
 plist="$HOME/Library/LaunchAgents/$label.plist"
-. "$(dirname "$0")/fork.env" # aside_login_label
 normal_label=$aside_login_label
-normal_plist="$HOME/Library/LaunchAgents/$normal_label.plist"
+normal_plist=
+[ -z "$normal_label" ] || normal_plist="$HOME/Library/LaunchAgents/$normal_label.plist"
 home="$HOME/t3-fork/aside"
 domain="gui/$(id -u)"
 
@@ -30,7 +31,7 @@ if [ "${1:-}" = --uninstall ]; then
   launchctl bootout "$domain/$label" 2>/dev/null || true
   rm -f "$plist"
   quit_aside
-  if [ -f "$normal_plist.disabled" ]; then
+  if [ -n "$normal_plist" ] && [ -f "$normal_plist.disabled" ]; then
     mv "$normal_plist.disabled" "$normal_plist"
     launchctl bootstrap "$domain" "$normal_plist" 2>/dev/null || true
   fi
@@ -46,7 +47,7 @@ mkdir -p "$home" "$HOME/t3-fork/logs"
 cp "$(dirname "$0")/aside-cdp-helper.mjs" "$home/aside-cdp-helper.mjs"
 
 launchctl bootout "$domain/$label" 2>/dev/null || true
-if [ -f "$normal_plist" ]; then
+if [ -n "$normal_plist" ] && [ -f "$normal_plist" ]; then
   launchctl bootout "$domain/$normal_label" 2>/dev/null || true
   mv "$normal_plist" "$normal_plist.disabled"
 fi
@@ -71,7 +72,7 @@ PY
 rm -f "$HOME/.t3-aside/cdp.sock"
 launchctl bootstrap "$domain" "$plist"
 for _ in $(seq 1 20); do
-  [ -S "$HOME/.t3-aside/cdp.sock" ] && { echo "Aside runs under the T3 helper. Unlock 1Password in it if it asks."; exit 0; }
+  [ -S "$HOME/.t3-aside/cdp.sock" ] && { echo "Aside runs under the T3 helper. Unlock your password manager in it if it asks."; exit 0; }
   sleep 1
 done
 echo "The helper did not start; see ~/t3-fork/logs/aside-helper.log." >&2

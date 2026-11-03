@@ -39,7 +39,7 @@ function account(
     email,
     plan,
     accentColor: undefined,
-    environments: [{ environmentId: EnvironmentId.make("mac-a"), label: "mac-a" }],
+    environments: [{ environmentId: EnvironmentId.make("studio-a"), label: "studio-a" }],
     sourceLabel: null,
     redeem: null,
     limits: { checkedAt: new Date(NOW).toISOString(), windows },
@@ -49,10 +49,10 @@ function account(
 describe("buildAccountCards", () => {
   const cards = buildAccountCards(
     [
-      account("claudeAgent", "owner@gmail.com", "Claude Max 20x Subscription", 70, 1, 20),
-      account("claudeAgent", "alice@gmail.com", "Claude Pro Subscription", 10, 4, 40),
-      account("codex", "bob@gmail.com", "ChatGPT Plus Subscription", 100, 2, 10),
-      account("codex", "alice@gmail.com", "ChatGPT Plus Subscription", 50, 3, 10),
+      account("claudeAgent", "bob@example.com", "Claude Max 20x Subscription", 70, 1, 20),
+      account("claudeAgent", "alice@example.com", "Claude Pro Subscription", 10, 4, 40),
+      account("codex", "carol@example.com", "ChatGPT Plus Subscription", 100, 2, 10),
+      account("codex", "alice@example.com", "ChatGPT Plus Subscription", 50, 3, 10),
     ],
     NOW,
   );
@@ -62,18 +62,18 @@ describe("buildAccountCards", () => {
   it("makes one card per account titled by login, with the plan and tier", () => {
     expect(cards.map((entry) => `${entry.account.driver} ${entry.login} · ${entry.plan}`)).toEqual([
       "claudeAgent alice · Pro",
-      "claudeAgent owner · Max 20x",
+      "claudeAgent bob · Max 20x",
       "codex alice · Plus",
-      "codex bob · Plus",
+      "codex carol · Plus",
     ]);
   });
 
   it("orders each card's windows session first", () => {
-    expect(card("owner", "claudeAgent").windows.map((window) => window.kind)).toEqual([
+    expect(card("bob", "claudeAgent").windows.map((window) => window.kind)).toEqual([
       "session",
       "weekly",
     ]);
-    expect(card("owner", "claudeAgent").windows[0]!.remainingPercent).toBe(30);
+    expect(card("bob", "claudeAgent").windows[0]!.remainingPercent).toBe(30);
   });
 
   it("flags Use now with the Auto account rule, per provider", () => {
@@ -82,15 +82,15 @@ describe("buildAccountCards", () => {
       "alice",
     ]);
     expect(card("alice", "claudeAgent").useNow).toBe(true);
-    // bob's session is exhausted, so it is limited and skipped.
-    expect(card("bob", "codex").useNow).toBe(false);
+    // carol's session is exhausted, so it is limited and skipped.
+    expect(card("carol", "codex").useNow).toBe(false);
     expect(card("alice", "codex").useNow).toBe(true);
   });
 
   it("flags Resets next on the soonest session reset, per provider", () => {
-    expect(card("owner", "claudeAgent").resetsNextAt).toBe(NOW + 3_600_000);
+    expect(card("bob", "claudeAgent").resetsNextAt).toBe(NOW + 3_600_000);
     expect(card("alice", "claudeAgent").resetsNextAt).toBeNull();
-    expect(card("bob", "codex").resetsNextAt).toBe(NOW + 2 * 3_600_000);
+    expect(card("carol", "codex").resetsNextAt).toBe(NOW + 2 * 3_600_000);
     expect(card("alice", "codex").resetsNextAt).toBeNull();
   });
 });

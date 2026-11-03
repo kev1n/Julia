@@ -82,7 +82,7 @@ export function assertClaudeBackgroundWakeBeforeQueuedPromptOutput(
     [
       ['Subagent "Agent A" finished', "subagent"],
       [
-        // Fork (Owner): a backgrounded sleep counts as a monitor (claudeBashCallWaitsForFinish).
+        // Fork: a backgrounded sleep counts as a monitor (claudeBashCallWaitsForFinish).
         'Subagent "Agent B" and monitor "Sleep 60 seconds then echo B_DONE" were stopped',
         "background_task",
       ],

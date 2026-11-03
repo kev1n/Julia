@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the chat tab strip's actions for ChatView. A new tab (+, Cmd+T)
+ * Fork: the chat tab strip's actions for ChatView. A new tab (+, Cmd+T)
  * opens a fresh chat in the same workspace that can bring in the context of the
  * chat it came from; Fork chat copies the current chat into a tab or thread.
  */

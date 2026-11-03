@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): free and total disk on the home volume, where T3 keeps its data
+ * Fork: free and total disk on the home volume, where T3 keeps its data
  * and thread worktrees. Reported with host resources so Auto placement can
  * break ties toward the machine with more room, and Usage > Machines can show
  * disk used of total. Each field is left out when the volume cannot be read.

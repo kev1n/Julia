@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): opening a thread whose history is in Azure starts its restore; this says so, and
+ * Fork: opening a thread whose history is in Azure starts its restore; this says so, and
  * says plainly when it expired or Azure was unreachable. While restoring or failed, it takes the
  * composer's activity slot in place of "Syncing messages".
  */

@@ -1,8 +1,22 @@
-import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  UsageLimitSourceId,
+  type ServerProvider,
+  type ServerProviderUsageLimits,
+  type ServerProviderUsageWindow,
+  type UsageLimitSourceSnapshot,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountStanding, chooseAutoAccount, soonestSessionReset } from "./accountChoice.ts";
+import {
+  accountStanding,
+  chooseAutoAccount,
+  chooseAutoInstance,
+  soonestSessionReset,
+  withLinkedUsage,
+} from "./accountChoice.ts";
 
 const NOW = Date.parse("2026-10-06T12:00:00Z");
 const inHours = (hours: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW + hours * 3_600_000));
@@ -155,5 +169,97 @@ describe("soonestSessionReset", () => {
     const result = soonestSessionReset(accounts, (account) => account.limits, NOW);
     expect(result?.account.name).toBe("sooner");
     expect(result?.resetsAt).toBe(NOW + 3_600_000);
+  });
+});
+
+describe("withLinkedUsage", () => {
+  const HUB = UsageLimitSourceId.make("hub");
+  const instance = (id: string, usage: ServerProviderUsageLimits | undefined): ServerProvider => ({
+    instanceId: ProviderInstanceId.make(id),
+    driver: ProviderDriverKind.make("claudeAgent"),
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: inHours(0),
+    models: [],
+    slashCommands: [],
+    skills: [],
+    ...(usage ? { usageLimits: usage } : {}),
+  });
+  const hub = (
+    accounts: ReadonlyArray<ServerProviderUsageLimits>,
+    extra: Partial<UsageLimitSourceSnapshot> = {},
+  ): UsageLimitSourceSnapshot => ({
+    id: HUB,
+    kind: "cliproxy",
+    label: "Hub",
+    checkedAt: inHours(0),
+    accounts: accounts.map((usageLimits, index) => ({
+      id: `account-${index}`,
+      driver: ProviderDriverKind.make("claudeAgent"),
+      usageLimits,
+    })),
+    ...extra,
+  });
+  // The proxy instance's own login is fresh; only the pool may decide its standing.
+  const providers = [instance("proxy", limits(0, 0)), instance("direct", limits(50, 50))];
+  const links = { proxy: { usageLimitSourceId: HUB } };
+  const autoPick = (sources: ReadonlyArray<UsageLimitSourceSnapshot>, model?: string) =>
+    chooseAutoInstance(withLinkedUsage(providers, links, sources), "claudeAgent", NOW, model)
+      ?.account.instanceId ?? null;
+
+  it("ranks a linked instance by the pool's best account and leaves others alone", () => {
+    expect(autoPick([hub([limits(90, 90), limits(20, 10)])])).toBe("proxy");
+    expect(autoPick([hub([limits(90, 90), limits(70, 10)])])).toBe("direct");
+    expect(withLinkedUsage(providers, {}, [hub([])])).toBe(providers);
+  });
+
+  it("never uses the native login when the source fails or is missing", () => {
+    for (const sources of [
+      [hub([limits(0, 0)], { error: "The hub could not list accounts." })],
+      [],
+    ]) {
+      const proxy = withLinkedUsage(providers, links, sources)[0]!;
+      expect(accountStanding(proxy.usageLimits, NOW).tightestLeft).toBeNull();
+      expect(autoPick(sources)).toBe("direct");
+    }
+  });
+
+  it("treats an exhausted or empty pool as limited, counting only the instance's driver", () => {
+    const only = [providers[0]!];
+    const fresh = hub([limits(0, 0)]);
+    const codexOnly = {
+      ...fresh,
+      accounts: fresh.accounts.map((account) => ({
+        ...account,
+        driver: ProviderDriverKind.make("codex"),
+      })),
+    };
+    for (const sources of [[hub([limits(100, 10), limits(10, 99)])], [hub([])], [codexOnly]]) {
+      expect(chooseAutoInstance(withLinkedUsage(only, links, sources), "claudeAgent", NOW)).toBe(
+        null,
+      );
+    }
+  });
+
+  it("takes the best complete account, not per-window maxima: 90/10 and 10/90 are each 10%", () => {
+    const crossed = withLinkedUsage(providers, links, [hub([limits(10, 90), limits(90, 10)])]);
+    expect(accountStanding(crossed[0]!.usageLimits, NOW).tightestLeft).toBe(10);
+    expect(autoPick([hub([limits(10, 90), limits(90, 10)])])).toBe("direct");
+  });
+
+  it("reads model-scoped windows for the selected model", () => {
+    const opusOut = limits(0, 0, [
+      { id: "opus", kind: "weekly", label: "Opus", usedPercent: 100, modelScope: "claude-opus" },
+    ]);
+    expect(autoPick([hub([opusOut])], "claude-opus-5-5")).toBe("direct");
+    expect(autoPick([hub([opusOut])], "claude-sonnet-5")).toBe("proxy");
+  });
+
+  it("re-ranks when only the source's usage changes", () => {
+    expect(autoPick([hub([limits(10, 10)])])).toBe("proxy");
+    expect(autoPick([hub([limits(96, 10)])])).toBe("direct");
   });
 });

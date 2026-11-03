@@ -11,7 +11,7 @@ export interface ProviderEnvironmentField {
   readonly description?: string;
   readonly placeholder?: string;
   readonly sensitive?: boolean;
-  /** Fork (Owner): saving or clearing it applies to this provider on every paired machine. */
+  /** Fork: saving or clearing it applies to this provider on every paired machine. */
   readonly sharedAcrossMachines?: boolean;
 }
 

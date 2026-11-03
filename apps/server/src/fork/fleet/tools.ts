@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the fleet toolkit. What other agents on Owner's machines are
+ * Fork: the fleet toolkit. What other agents on the fleet's machines are
  * doing, and a way to read or message their threads. Every answer carries
  * `asOf` and per-environment `coverage`, so "no matches" never hides an
  * offline machine.
@@ -81,7 +81,7 @@ const shared = { failure: OrchestratorMcpFailure, failureMode: "return" as const
 const FleetListTool = Tool.make("t3_fleet_list", {
   ...shared,
   description:
-    "List T3 threads on all of Owner's machines (MacBook, mac-a, build-mac) with lifecycle (running, idle, settled, archived), repository, branch, how many paths their checkout has changed, and declared work. Settled and archived threads are omitted unless includeInactive=true. coverage says which machines answered and how fresh their data is.",
+    "List T3 threads on every machine in your fleet (labels in coverage) with lifecycle (running, idle, settled, archived), repository, branch, how many paths their checkout has changed, and declared work. Settled and archived threads are omitted unless includeInactive=true. coverage says which machines answered and how fresh their data is.",
   parameters: Schema.Struct({
     includeInactive: Schema.optional(Schema.Boolean),
     repo: Schema.optional(
@@ -99,7 +99,7 @@ const FleetListTool = Tool.make("t3_fleet_list", {
 const WhoElseTool = Tool.make("t3_who_else", {
   ...shared,
   description:
-    "Which other active threads, on any of Owner's machines, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write. Nothing tells you about overlaps on its own: call this before editing shared code and before committing. On a write/write overlap, read that thread with t3_fleet_thread_read and decide whether to coordinate with t3_fleet_thread_send.",
+    "Which other active threads, on any machine in your fleet, touch the same files as this thread: paths changed in their checkout (committed, staged, unstaged, untracked) or declared with t3_work_publish. Rescans this thread's checkout first. Optional paths (repository-relative; a trailing / covers a directory) are checked as well. Each overlap says whose evidence is observed or declared, and write/write vs read/write. Nothing tells you about overlaps on its own: call this before editing shared code and before committing. On a write/write overlap, read that thread with t3_fleet_thread_read and decide whether to coordinate with t3_fleet_thread_send.",
   parameters: Schema.Struct({ paths: Schema.optional(Schema.Array(Schema.String)) }),
   success: Schema.Struct({
     ...Envelope,
@@ -129,7 +129,7 @@ const WorkPublishTool = Tool.make("t3_work_publish", {
 const FleetThreadReadTool = Tool.make("t3_fleet_thread_read", {
   ...shared,
   description:
-    "Read a thread on any of Owner's machines, fetched from the machine that owns it. Same paging as t3_thread_read: continue with afterPosition=nextPosition; recover long items with itemId and textOffset.",
+    "Read a thread on any machine in your fleet, fetched from the machine that owns it. Same paging as t3_thread_read: continue with afterPosition=nextPosition; recover long items with itemId and textOffset.",
   parameters: Schema.Struct({
     ...OrchestratorMcpThreadReadInput.fields,
     environmentId: Schema.String,
@@ -147,7 +147,7 @@ const FleetThreadReadTool = Tool.make("t3_fleet_thread_read", {
 const FleetThreadSendTool = Tool.make("t3_fleet_thread_send", {
   ...shared,
   description:
-    "Send a message to a thread on any of Owner's machines about that thread's own work. It is not for handing a new task to another machine, and the sender gets no notice when the thread finishes; for a new task there, use delegate_task with machine. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
+    "Send a message to a thread on any machine in your fleet about that thread's own work. It is not for handing a new task to another machine, and the sender gets no notice when the thread finishes; for a new task there, use delegate_task with machine. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
   parameters: Schema.Struct({
     environmentId: Schema.String,
     threadId: Schema.String,

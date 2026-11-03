@@ -10,6 +10,7 @@
 # Rollback: the same switch back to the stock version (see FORK.md).
 set -euo pipefail
 archive=${1:?archive}
+. "$(dirname "$0")/fork.env" # version_label
 home=${T3CODE_HOME:-$HOME/.t3}
 versions="$home/runtime/versions"
 state="$home/runtime/service-state.json"
@@ -66,10 +67,10 @@ wait_for() {
 }
 
 # Once per machine: switch the state database to incremental vacuum, so the
-# history of settled threads moved to Azure (FORK.md, "Settled threads in
-# Azure") gives its disk back as it leaves. VACUUM needs the server stopped and,
-# per SQLite's documentation, up to twice the file's size free; 42 s for
-# mac-a's 2.8 GB on 2026-10-14. Without the room it is left for a later deploy.
+# history of settled threads moved to a history store (FORK.md, "Settled
+# threads offloaded") gives its disk back as it leaves. VACUUM needs the server
+# stopped and, per SQLite's documentation, up to twice the file's size free; 42 s
+# for a 2.8 GB database on 2026-10-14. Without the room it is left for a later deploy.
 db="$home/userdata/statev2.sqlite"
 if [ -f "$db" ] && [ "$(/usr/bin/sqlite3 -readonly "$db" 'PRAGMA auto_vacuum')" != 2 ]; then
   if [ "$(df -k "$db" | awk 'NR == 2 { print $4 }')" -gt $(($(stat -f %z "$db") * 2 / 1024)) ]; then
@@ -109,7 +110,7 @@ if [ -d "$HOME/t3-fork" ] && [ -f "$here/watchdog.sh" ]; then
 fi
 
 # Keep the stock runtimes, the active fork runtime, and the one before it for rollback.
-for dir in "$versions"/*+owner.*; do
+for dir in "$versions"/*+"$version_label".*; do
   [ -d "$dir" ] || continue
   v=$(basename "$dir")
   [ "$v" = "$version" ] || [ "$v" = "$previous" ] || rm -rf "$dir"

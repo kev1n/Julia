@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): fleet agent awareness, one layer added to the MCP server.
+ * Fork: fleet agent awareness, one layer added to the MCP server.
  * See FORK.md "Fleet awareness".
  */
 import * as Effect from "effect/Effect";

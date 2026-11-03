@@ -83,6 +83,22 @@ Nothing. We built T3 Code because we wanted the best possible development experi
 
 We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork the source code and build the tool that you want, under your own name and branding.
 
+## Pooling accounts
+
+To spread work over several Claude or Codex subscriptions, we recommend running
+[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and pointing one provider instance per
+driver at it:
+
+- Claude: in the instance's **Environment variables**, set `ANTHROPIC_BASE_URL` to the proxy's
+  address and `ANTHROPIC_AUTH_TOKEN` (sensitive) to its client key.
+- Codex: in **Launch arguments**, add
+  `-c 'model_provider="cliproxy"' -c 'model_providers.cliproxy.name="cliproxy"' -c 'model_providers.cliproxy.base_url="<proxy>/v1"' -c 'model_providers.cliproxy.wire_api="responses"' -c 'model_providers.cliproxy.env_key="CLIPROXY_API_KEY"' -c 'model_providers.cliproxy.requires_openai_auth=false'`,
+  and set `CLIPROXY_API_KEY` (sensitive) in its environment variables.
+
+Then add the proxy under **Settings → Providers → Usage providers → Add hub** and pick it in each
+instance's **Usage from hub**, so usage and Auto account choice follow the proxy's accounts.
+[Connect a CLIProxyAPI hub](./docs/user/usage.md#connect-a-cliproxyapi-hub)
+
 ## Documentation
 
 - [Install and first run](./docs/user/install.md)

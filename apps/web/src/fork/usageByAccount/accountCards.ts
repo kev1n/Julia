@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Limits as one card per subscription account (merged across environments).
+ * Fork: Usage > Limits as one card per subscription account (merged across environments).
  * "Use now" marks the account Auto would pick (`chooseAutoAccount`); "Resets next" marks the
  * provider's account whose session window resets soonest.
  */

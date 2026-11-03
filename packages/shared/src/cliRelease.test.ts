@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
   cliArchiveTarCommand,
@@ -8,15 +8,37 @@ import {
 } from "./cliRelease.ts";
 
 describe("cliRelease", () => {
-  it.each([
-    "0.0.46-nightly.20261007.2787+owner.dd65a77",
-    "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77",
-  ])("downloads fork version %s from the tailnet artifacts, not upstream", (version) => {
-    const expected = `https://build-mac-host.example.ts.net:8444/${version}`;
-    expect(cliReleaseDownloadBaseUrl(version)).toBe(expected);
-    expect(cliReleaseDownloadBaseUrl(version, " ")).toBe(expected);
-    expect(cliReleaseDownloadBaseUrl(version, "https://mirror.example/t3/")).toBe(
-      `https://mirror.example/t3/v${version}`,
+  describe("with a fork release host built in", () => {
+    const host = globalThis as { __T3CODE_BUILD_FORK_RELEASE_BASE_URL__?: string };
+    beforeEach(() => {
+      host.__T3CODE_BUILD_FORK_RELEASE_BASE_URL__ = "https://build-mac.example.ts.net:8444/";
+    });
+    afterEach(() => {
+      delete host.__T3CODE_BUILD_FORK_RELEASE_BASE_URL__;
+    });
+
+    it.each([
+      "0.0.46-nightly.20261007.2787+fork.dd65a77",
+      "0.0.46-nightly.20261007.2787.fork.1791429000+fork.dd65a77",
+    ])("downloads fork version %s from the fork release host, not upstream", (version) => {
+      const expected = `https://build-mac.example.ts.net:8444/${version}`;
+      expect(cliReleaseDownloadBaseUrl(version)).toBe(expected);
+      expect(cliReleaseDownloadBaseUrl(version, " ")).toBe(expected);
+      expect(cliReleaseDownloadBaseUrl(version, "https://mirror.example/t3/")).toBe(
+        `https://mirror.example/t3/v${version}`,
+      );
+    });
+
+    it("downloads upstream versions from upstream", () => {
+      expect(cliReleaseDownloadBaseUrl("0.0.46-nightly.20261007.2787")).toBe(
+        "https://github.com/pingdotgg/t3code/releases/download/v0.0.46-nightly.20261007.2787",
+      );
+    });
+  });
+
+  it("downloads a fork version from upstream when no fork host is built in", () => {
+    expect(cliReleaseDownloadBaseUrl("0.0.46-nightly.20261007.2787+fork.dd65a77")).toBe(
+      "https://github.com/pingdotgg/t3code/releases/download/v0.0.46-nightly.20261007.2787+fork.dd65a77",
     );
   });
 

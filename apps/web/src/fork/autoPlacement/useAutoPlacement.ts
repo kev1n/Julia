@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the composer's Auto machine, replacing upstream's `useLoadBalancedEnvironment` with
+ * Fork: the composer's Auto machine, replacing upstream's `useLoadBalancedEnvironment` with
  * `machineChoice.ts`, fed by `server.getHostResources` and running threads from the shell stream.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";

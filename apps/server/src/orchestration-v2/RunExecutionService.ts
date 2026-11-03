@@ -2256,7 +2256,7 @@ export const layer: Layer.Layer<
                       : { restoredHandoffs: recoveredHandoffs }),
                     lostToolCalls,
                     completedAt,
-                    // Fork (Owner): a root terminal the reader saw but could not write
+                    // Fork: a root terminal the reader saw but could not write
                     // still settles the run, so a completed turn completes.
                     terminal: seenTerminal ?? {
                       ...makeFailedTerminalEvent(

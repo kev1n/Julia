@@ -488,7 +488,7 @@ export function UsageLimitsSection({
   const accounts = collectLimitAccounts(selected);
   const pools = collectLimitPools(accounts, now);
   const quotaSources = collectHttpQuotaSources(selected);
-  const flags = accountFlags(accounts, now); // Fork (Owner): Use now / Resets next
+  const flags = accountFlags(accounts, now); // Fork: Use now / Resets next
   const m = useMessages();
   const notices = collectLimitNotices(selected, m);
   const externalLinks = collectExternalUsageLinks(selected, m);

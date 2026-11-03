@@ -1651,7 +1651,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     delegatedUnderParent,
     routeRowThreadKey,
     departingThreadKey,
-    // Fork (Owner): project headers group every section, so boring mode's folders stay off.
+    // Fork: project headers group every section, so boring mode's folders stay off.
     folderGroups: null,
     keepEmptyFolders: (group) =>
       scopedProjectGroups.length > 0 || (group.pinned && !group.archived),

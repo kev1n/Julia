@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the local half of offloading. Everything moves except `thread.*`, `message.updated`,
+ * Fork: the local half of offloading. Everything moves except `thread.*`, `message.updated`,
  * `run.*`/runless root-turn node events (lists need status) and `provider-session.*` events.
  * Restore replays under new sequence numbers and rebuilds projections with current code, so a
  * schema change while away strands nothing; the thread row itself is never removed.
@@ -260,7 +260,7 @@ export const make = Effect.gen(function* () {
       LIMIT 1
     `;
     if (liveFork !== undefined) return "a thread forked from it is still open";
-    // Ids are not always unique per thread (Orchestrator reuses message ids), and a
+    // Ids are not always unique per thread (an external task bridge reuses message ids), and a
     // restore must never overwrite another thread's row.
     for (const [eventType, target] of Object.entries(MOVED_EVENTS)) {
       if (target === null) continue;

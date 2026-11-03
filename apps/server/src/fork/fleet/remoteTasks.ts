@@ -2,7 +2,7 @@
 // @effect-diagnostics globalDateInEffect:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): delegate_task on another machine. The child is a subagent thread there whose lineage
+ * Fork: delegate_task on another machine. The child is a subagent thread there whose lineage
  * names its parent (`remoteParentThreadId`), with task id `fleet:<environmentId>:<threadId>`;
  * node records cannot span databases, so the parent's run has none. Undelivered results persist in
  * `fork-remote-tasks.json`, so a restart or unreachable parent only delays delivery.

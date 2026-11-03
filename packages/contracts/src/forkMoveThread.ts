@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the target side of "Move to another machine". The client asks
+ * Fork: the target side of "Move to another machine". The client asks
  * the target environment to take a thread's branch from the source
  * environment; the target fetches it from the source over the fleet's
  * machine-to-machine channel as a git bundle. No git remote is involved.

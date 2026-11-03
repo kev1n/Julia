@@ -551,7 +551,7 @@ export function shouldPublishShellApplicationEvent(
   if (event.type === "turn-item.updated" && turnItemCanChangeUserWait(event.payload)) {
     return true;
   }
-  // Fork (Owner): a native subagent's runless root turn is its shell nativeSubagentActivity.
+  // Fork: a native subagent's runless root turn is its shell nativeSubagentActivity.
   if (
     event.type === "node.updated" &&
     event.payload.kind === "root_turn" &&

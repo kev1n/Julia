@@ -45,7 +45,7 @@ interface SystemComposerBannersInput {
 
 /**
  * The composer banners about the machine itself: offline or reconnecting.
- * Fork (Owner): server updates show in one quiet corner toast
+ * Fork: server updates show in one quiet corner toast
  * (ServerUpdateNotice), not here.
  */
 export function useSystemComposerBanners(input: SystemComposerBannersInput) {
@@ -187,7 +187,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
               environment: activeEnvironmentUnavailableState.label,
             })
           : outageText.title,
-        // Fork (Owner): a cause on this device's side replaces the server's diagnosis.
+        // Fork: a cause on this device's side replaces the server's diagnosis.
         description: awaitingApproval ? (
           (unavailableConnection.error ?? undefined)
         ) : outageText.description ? (

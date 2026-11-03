@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 /**
- * Fork (Owner): the hub's merge and the overlap rule, pure so they can be
+ * Fork: the hub's merge and the overlap rule, pure so they can be
  * tested without servers.
  */
 import type {

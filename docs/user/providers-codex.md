@@ -37,6 +37,10 @@ CODEX_HOME=~/.codex_personal codex login
 
 To switch accounts mid-thread, pick another compatible Codex instance sharing the same **CODEX_HOME path** from the model picker.
 
+### Many accounts through a proxy
+
+For more than a couple of accounts, run [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and route one Codex instance through it, then link the instance to the hub so its usage reflects the proxy's accounts. [Connect a CLIProxyAPI hub](./usage.md#connect-a-cliproxyapi-hub)
+
 ## Features and options
 
 - **Image generation**: Supported when your Codex version, model, and account allow it. If disabled in Codex config, add `-c features.image_generation=true` to the instance's **Launch arguments** (applies to new sessions).
