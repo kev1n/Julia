@@ -144,8 +144,7 @@ if (!project) {
 conn.ws.close();
 conn = await connect();
 
-const { providers } = await conn.call("server.getConfig", {});
-const settings = await conn.call("server.getSettings", {});
+const { providers, settings } = await conn.call("server.getConfig", {});
 const modelSelection = autofixModelSelection(
   // A server older than the setting (the release a failed sync leaves running)
   // does not report it; use its default then.
