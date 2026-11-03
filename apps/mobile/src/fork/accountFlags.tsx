@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Limits marks, per provider, the account Auto would use
+ * Fork: Usage > Limits marks, per provider, the account Auto would use
  * now and the account whose session resets next, as the desktop's by-account
  * view does. The rule is the web fork's `buildAccountCards` (one owner), so the
  * phone and the desktop always mark the same account.

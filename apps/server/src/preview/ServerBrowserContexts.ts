@@ -321,7 +321,7 @@ export class ServerBrowserContexts {
   }
 
   async clearProfile(profileId: string) {
-    // Aside's storage is Owner's real browser profile; T3 never clears it.
+    // Aside's storage is the user's real browser profile; T3 never clears it.
     if (profileId === INCOGNITO_BROWSER_PROFILE_ID || profileId === ASIDE_BROWSER_PROFILE_ID)
       return;
     const key = JSON.stringify([profileId, null]);

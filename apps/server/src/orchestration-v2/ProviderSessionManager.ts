@@ -2973,7 +2973,7 @@ export const layerWithOptions = (
                     ) {
                       return;
                     }
-                    // Fork (Owner): unloading stops the native thread's background
+                    // Fork: unloading stops the native thread's background
                     // terminals, so a settled thread still running background work
                     // stays loaded, as an idle one does; idle release then waits for it.
                     const hasPendingWork = entry.runtime.hasPendingBackgroundWorkForThread;

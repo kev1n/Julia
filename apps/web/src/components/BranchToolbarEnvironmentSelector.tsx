@@ -24,7 +24,7 @@ import {
 
 interface BranchToolbarEnvironmentSelectorProps {
   autoEnvironmentLabel?: string | undefined;
-  /** Fork (Owner): why Auto chose this machine and account; the tooltip. */
+  /** Fork: why Auto chose this machine and account; the tooltip. */
   autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   threadRef?: ScopedThreadRef | null;
@@ -218,7 +218,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
               {env.detail ? (
                 <span className="block text-xs text-muted-foreground">{env.detail}</span>
               ) : null}
-              {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
+              {/* Fork: live CPU, memory and disk while the menu is open. */}
               <MachineUsageLine environmentId={env.environmentId} />
             </SelectItem>
           ))}

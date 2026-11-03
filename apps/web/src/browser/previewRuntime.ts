@@ -52,7 +52,7 @@ export function usePreviewAvailable(environmentId: EnvironmentId | null): boolea
   return isPreviewSupportedInRuntime() || serverBrowser;
 }
 
-/** Aside tabs (Owner's fork) live in the Aside browser, so they always stream. */
+/** Aside tabs (the fork's) live in the Aside browser, so they always stream. */
 export function rendersServerTabNatively(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,

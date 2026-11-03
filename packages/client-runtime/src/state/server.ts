@@ -1323,7 +1323,7 @@ export function createServerEnvironmentAtoms<R, E>(
       execute: (input: EnvironmentRpcInput<typeof WS_METHODS.serverGetHostResources>) =>
         request(WS_METHODS.serverGetHostResources, input).pipe(Effect.timeout("5 seconds")),
     }),
-    // Fork (Owner): where a settled thread's history is; subscribing restores it from Azure.
+    // Fork: where a settled thread's history is; subscribing restores it from Azure.
     threadHistory: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:fork:thread-history",
       tag: WS_METHODS.forkThreadHistory,

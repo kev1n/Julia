@@ -24,7 +24,7 @@ const handlers = {
       return { ...local, providers: yield* RemoteTasks.providers(remote, input.search) };
     }),
   ),
-  // Fork (Owner): `machine` naming another fleet machine runs the child there,
+  // Fork: `machine` naming another fleet machine runs the child there,
   // and its `fleet:` task id routes status and cancel back to it.
   delegate_task: McpToolAccess.actsAsCaller(({ machine, ...input }) =>
     Effect.gen(function* () {

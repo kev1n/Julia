@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): a provider added on one machine is added to every other paired
+ * Fork: a provider added on one machine is added to every other paired
  * machine too, under the same instance ID, so accounts line up across machines.
  * Only the provider entry is copied; each machine keeps its own sign-in.
  */
@@ -48,7 +48,7 @@ const SKIP_TEXT: Record<FanOutSkipReason, string> = {
   exists: "already has it",
 };
 
-/** One line for the result toast, e.g. "Also added to mac-a and MacBook. Skipped build-mac (offline)." */
+/** One line for the result toast, e.g. "Also added to studio-a and laptop. Skipped studio-b (offline)." */
 export function describeFanOut(
   added: ReadonlyArray<string>,
   failed: ReadonlyArray<string>,

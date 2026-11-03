@@ -5,8 +5,7 @@ import { isForkDesktopExecutable } from "./profile.ts";
 describe("fork desktop identity", () => {
   it.each([
     "/Applications/Julia.app/Contents/MacOS/Julia",
-    "/Applications/T3 Code (Owner).app/Contents/MacOS/T3 Code (Owner)",
-    "/Users/owner/Downloads/Julia.app/Contents/MacOS/Julia",
+    "/Users/alice/Downloads/Julia.app/Contents/MacOS/Julia",
   ])("preserves the fork profile and keychain mode for %s", (path) => {
     expect(isForkDesktopExecutable(path)).toBe(true);
   });

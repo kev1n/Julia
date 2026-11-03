@@ -312,7 +312,7 @@ export function startThreadNotifications(
       gate: createThreadNotificationGate<ThreadId>((threadId, kind) => {
         const state = entry.previous.get(threadId);
         if (!state) return;
-        // Fork (Owner): limit failover's sweep may still move this thread to
+        // Fork: limit failover's sweep may still move this thread to
         // another account, so alert only if it is still Limited after a grace.
         if (kind === "input" && state.status === "limited") {
           const timer = setTimeout(() => {

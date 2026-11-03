@@ -42,7 +42,7 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:repository",
       tag: WS_METHODS.sourceControlLookupRepository,
     }),
-    // Fork (Owner): a fresh thread's project setup waits for its clone before registering.
+    // Fork: a fresh thread's project setup waits for its clone before registering.
     cloneRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:clone-repository",
       tag: WS_METHODS.sourceControlCloneRepository,

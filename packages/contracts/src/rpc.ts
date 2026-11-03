@@ -34,7 +34,7 @@ import {
   ChatGptHandoffState,
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
-// Fork (Owner): move a thread to another machine.
+// Fork: move a thread to another machine.
 import { ForkThreadHistoryInput, ForkThreadHistoryStatus } from "./forkThreadHistory.ts";
 import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
 import * as Rpc from "effect/rpc/Rpc";
@@ -966,7 +966,7 @@ const WsForkMoveReceiveRpc = Rpc.make(WS_METHODS.forkMoveReceive, {
   error: Schema.Union([ForkMoveError, EnvironmentAuthorizationError]),
 });
 
-// Fork (Owner): restores a settled thread's history from Azure and reports where it is.
+// Fork: restores a settled thread's history from Azure and reports where it is.
 const WsForkThreadHistoryRpc = Rpc.make(WS_METHODS.forkThreadHistory, {
   payload: ForkThreadHistoryInput,
   success: ForkThreadHistoryStatus,

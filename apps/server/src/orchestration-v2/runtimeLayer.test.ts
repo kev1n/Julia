@@ -4693,7 +4693,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
   it.effect.each([
     ["failed", "shell", false],
-    // Fork (Owner): a settled run that lost unawaited work is woken with the note too
+    // Fork: a settled run that lost unawaited work is woken with the note too
     // (fork/restartWake.ts); a failed one is still never continued.
     ["completed", "shell", true],
     ["waiting", "shell", true],
@@ -6992,7 +6992,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
-  // Fork (Owner): a message sent while the queue is held waits behind it and resumes it,
+  // Fork: a message sent while the queue is held waits behind it and resumes it,
   // earliest first, so the held messages run before the continuation and keep their order.
   it.effect("places a continuation sent to a held queue after the held messages", () =>
     Effect.gen(function* () {

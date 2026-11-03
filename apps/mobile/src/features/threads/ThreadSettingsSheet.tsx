@@ -393,7 +393,7 @@ function ThreadSettingsSessionProvider(
     const favorites = resolveModelPreferences(currentSettings, {
       favorites: legacyFavorites,
     }).favorites;
-    // Fork (Owner): a favorite covers every account that offers the same model.
+    // Fork: a favorite covers every account that offers the same model.
     const compatible = providerGroups
       .flatMap((group) => group.models)
       .filter(
@@ -1304,7 +1304,7 @@ function useThreadSettingsPickerPresentation() {
 
 function ThreadSettingsModelsScreen() {
   const session = useThreadSettingsSession();
-  // Fork (Owner): the machine this thread runs on, under the sheet title.
+  // Fork: the machine this thread runs on, under the sheet title.
   const { savedConnectionsById } = useSavedRemoteConnections();
   const machineLabel = session.environmentId
     ? savedConnectionsById[session.environmentId]?.environmentLabel

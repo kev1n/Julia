@@ -51,8 +51,8 @@ vi.mock("../ui/toast", () => ({ toastManager: { add: state.toast } }));
 function renderTokenStep() {
   hooks.beginRender();
   const section = ProviderAuthenticationSection({
-    environmentId: EnvironmentId.make("build-mac"),
-    environmentLabel: "build-mac",
+    environmentId: EnvironmentId.make("studio-b"),
+    environmentLabel: "studio-b",
     instanceId: ProviderInstanceId.make("claude_work"),
     readOnly: false,
     provider: { driver: "claudeAgent", auth: { status: "unauthenticated" } } as ServerProvider,
@@ -79,7 +79,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.respond.mockResolvedValue({ _tag: "Success" });
   state.share.mockResolvedValue({
-    description: "Saved on build-mac. Skipped mac-a (offline).",
+    description: "Saved on studio-b. Skipped studio-a (offline).",
     failed: [],
   });
 });
@@ -99,7 +99,7 @@ describe("Claude login sharing", () => {
     expect(state.toast).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "success",
-        description: "Saved on build-mac. Skipped mac-a (offline).",
+        description: "Saved on studio-b. Skipped studio-a (offline).",
       }),
     );
   });
@@ -113,14 +113,14 @@ describe("Claude login sharing", () => {
 
   it("reports a failed machine copy as an error instead of a successful sync", async () => {
     state.share.mockResolvedValue({
-      description: "Saved on build-mac. Could not save on mac-a.",
-      failed: ["mac-a"],
+      description: "Saved on studio-b. Could not save on studio-a.",
+      failed: ["studio-a"],
     });
     await saveToken(renderTokenStep());
     expect(state.toast).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "error",
-        description: "Saved on build-mac. Could not save on mac-a.",
+        description: "Saved on studio-b. Could not save on studio-a.",
       }),
     );
   });

@@ -1,4 +1,4 @@
-# Aside helper (Owner's fork)
+# Aside helper (fork)
 
 On each Mac environment that will host Aside tabs, install Aside in `/Applications`, install
 Node, and run from the fork checkout:
@@ -27,10 +27,11 @@ Aside's normal launch (which also restarts it):
 bash fork/scripts/install-aside-helper.sh --uninstall
 ```
 
-Quitting Aside deliberately stops the helper too. To start it again without reinstalling:
+Quitting Aside deliberately stops the helper too. To start it again without reinstalling
+(`job_label_prefix` from `fork/scripts/fork.env` or your `~/.config/julia/fork.env`):
 
 ```sh
-launchctl kickstart -k gui/$(id -u)/com.example.t3code-fork.aside-helper
+launchctl kickstart -k gui/$(id -u)/<job_label_prefix>.aside-helper
 ```
 
 T3 brings a streamed Aside tab to the front when a viewer connects. Appearance, zoom, and

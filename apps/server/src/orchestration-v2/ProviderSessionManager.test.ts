@@ -2983,7 +2983,7 @@ it.effect(
           updatedAt: now,
         } as const;
         // A completed turn left a Claude subagent and a background command
-        // running, the shape of "Orchestrator task ANY-570" on mac-a on 2026-10-14.
+        // running, the shape of a bridged task thread seen on 2026-10-14.
         yield* eventSink.write({
           events: [
             {

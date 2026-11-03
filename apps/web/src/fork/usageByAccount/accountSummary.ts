@@ -1,7 +1,7 @@
 /**
- * Fork (Owner): the subscription behind a provider instance and what it has
+ * Fork: the subscription behind a provider instance and what it has
  * left, as one line for the model pickers (web composer, phone model sheet),
- * e.g. `owner · Max 20x · 88% session · resets 3:40 PM · 61% week`.
+ * e.g. `bob · Max 20x · 88% session · resets 3:40 PM · 61% week`.
  */
 import type {
   ServerProvider,

@@ -452,7 +452,7 @@ export function NewTaskFlowProvider(
   const modelFavorites = AsyncResult.isSuccess(preferences)
     ? preferences.value.modelFavorites
     : undefined;
-  // Fork (Owner): the default runs on the account with the most usage left.
+  // Fork: the default runs on the account with the most usage left.
   const selectedDefaultModel = (() => {
     if (draftModelSelection) return resolvedModel;
     const automatic = withAutoAccount(

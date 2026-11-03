@@ -2,16 +2,23 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): the Azure Blob container. A service principal limited to that container is read
- * from Key Vault with this machine's `az` login at use, never stored in a file.
- * `T3CODE_THREAD_HISTORY_SECRET` picks another secret, or `off`; blobs expire by lifecycle rule only.
+ * Fork: the history store from `fork-thread-history.json` in the server's userdata dir; no file =
+ * off. `"azure-keyvault"`: an Azure Blob container whose service principal is Key Vault `keyVault`
+ * secret `secret`, read with this machine's `az` login, never stored in a file.
+ * `T3CODE_THREAD_HISTORY_SECRET` picks another secret, or `off`; blobs expire by lifecycle rule.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
-import * as Data from "effect/Data";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as Schema from "effect/Schema";
 
-export const HISTORY_KEY_VAULT = "example-vault";
-export const HISTORY_DEFAULT_SECRET = "example-secret";
+/** `fork-thread-history.json`: the store and its Key Vault secret. */
+export interface HistoryStoreConfig {
+  readonly store: "azure-keyvault";
+  readonly keyVault: string;
+  readonly secret: string;
+}
 const BLOB_API_VERSION = "2023-11-03";
 /**
  * How long `az` may take to read the secret. A hung `az` otherwise holds the one sign-in every
@@ -27,26 +34,37 @@ interface AzCommand {
 }
 
 /** The blob is gone: the lifecycle rule deleted it, or it was never written. */
-export class HistoryBlobMissing extends Data.TaggedError("HistoryBlobMissing")<{
-  readonly message: string;
-}> {}
+export class HistoryBlobMissing extends Schema.TaggedError<HistoryBlobMissing>()(
+  "HistoryBlobMissing",
+  {
+    message: Schema.String,
+  },
+) {}
 /** Azure could not be reached or refused us; retrying may work. */
-export class HistoryBlobUnavailable extends Data.TaggedError("HistoryBlobUnavailable")<{
-  readonly message: string;
-}> {}
+export class HistoryBlobUnavailable extends Schema.TaggedError<HistoryBlobUnavailable>()(
+  "HistoryBlobUnavailable",
+  {
+    message: Schema.String,
+  },
+) {}
 
 /** Azure refused this one blob (a 4xx other than sign-in); other threads may still move. */
-export class HistoryBlobRejected extends Data.TaggedError("HistoryBlobRejected")<{
-  readonly message: string;
-}> {}
+export class HistoryBlobRejected extends Schema.TaggedError<HistoryBlobRejected>()(
+  "HistoryBlobRejected",
+  {
+    message: Schema.String,
+  },
+) {}
+
+const isHistoryBlobMissing = Schema.is(HistoryBlobMissing);
+const isHistoryBlobUnavailable = Schema.is(HistoryBlobUnavailable);
+const isHistoryBlobRejected = Schema.is(HistoryBlobRejected);
 
 /** Any failure of a store call, as one of the errors above. */
 export const asBlobError = (
   cause: unknown,
 ): HistoryBlobMissing | HistoryBlobUnavailable | HistoryBlobRejected =>
-  cause instanceof HistoryBlobMissing ||
-  cause instanceof HistoryBlobUnavailable ||
-  cause instanceof HistoryBlobRejected
+  isHistoryBlobMissing(cause) || isHistoryBlobUnavailable(cause) || isHistoryBlobRejected(cause)
     ? cause
     : new HistoryBlobUnavailable({
         message: cause instanceof Error ? cause.message : String(cause),
@@ -71,16 +89,32 @@ export function sha256Hex(bytes: Uint8Array): string {
   return NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 }
 
-export function historySecretName(): string | null {
-  const name = process.env.T3CODE_THREAD_HISTORY_SECRET?.trim() || HISTORY_DEFAULT_SECRET;
-  return name === "off" ? null : name;
+/**
+ * The configured store, with `T3CODE_THREAD_HISTORY_SECRET` replacing its secret; null (off) when
+ * the file is missing or invalid, or the variable is `off`.
+ */
+export function readHistoryStoreConfig(userdataDir: string): HistoryStoreConfig | null {
+  let raw: Partial<HistoryStoreConfig>;
+  try {
+    raw = JSON.parse(
+      NodeFS.readFileSync(NodePath.join(userdataDir, "fork-thread-history.json"), "utf8"),
+    ) as Partial<HistoryStoreConfig>;
+  } catch {
+    return null;
+  }
+  if (raw.store !== "azure-keyvault" || !raw.keyVault || !raw.secret) return null;
+  const secret = process.env.T3CODE_THREAD_HISTORY_SECRET?.trim() || raw.secret;
+  return secret === "off" ? null : { store: raw.store, keyVault: raw.keyVault, secret };
 }
 
-function readKeyVaultSecret(secret: string, az: AzCommand): Promise<Credential> {
+function readKeyVaultSecret(
+  { keyVault, secret }: HistoryStoreConfig,
+  az: AzCommand,
+): Promise<Credential> {
   return new Promise((resolve, reject) => {
     NodeChildProcess.execFile(
       az.file,
-      ["keyvault", "secret", "show", "--vault-name", HISTORY_KEY_VAULT, "--name", secret],
+      ["keyvault", "secret", "show", "--vault-name", keyVault, "--name", secret],
       // The service runs under launchd, whose PATH lacks Homebrew.
       {
         env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}` },
@@ -107,7 +141,7 @@ function readKeyVaultSecret(secret: string, az: AzCommand): Promise<Credential> 
 
 /** A store backed by the container the Key Vault secret names. */
 export function azureHistoryBlobStore(
-  secret: string,
+  config: HistoryStoreConfig,
   az: AzCommand = { file: "az", timeoutMs: AZ_TIMEOUT_MS },
 ): HistoryBlobStore {
   let session: Promise<{ credential: Credential; token: string; expiresAt: number }> | null = null;
@@ -116,7 +150,7 @@ export function azureHistoryBlobStore(
     const current = await session?.catch(() => null);
     if (current && current.expiresAt > Date.now()) return current;
     session = (async () => {
-      const credential = await readKeyVaultSecret(secret, az);
+      const credential = await readKeyVaultSecret(config, az);
       const response = await fetch(
         `https://login.microsoftonline.com/${credential.tenantId}/oauth2/v2.0/token`,
         {

@@ -43,15 +43,28 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
 }
 
 const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
-const FORK_RELEASE_BASE_URL = "https://build-mac-host.example.ts.net:8444";
+/** Fork: `T3CODE_FORK_RELEASE_BASE_URL` at build time (apps/server/vite.config.ts); unset in other bundles. */
+declare const __T3CODE_BUILD_FORK_RELEASE_BASE_URL__: string | undefined;
+
+/**
+ * Fork: where this fork's builds publish their archives, under the exact version. Read at call
+ * time so tests can stub the build value. Empty: this build has no fork release host.
+ */
+function forkReleaseBaseUrl(): string {
+  return typeof __T3CODE_BUILD_FORK_RELEASE_BASE_URL__ === "undefined"
+    ? ""
+    : __T3CODE_BUILD_FORK_RELEASE_BASE_URL__.trim().replace(/\/+$/, "");
+}
 
 /** Location of a release's archives and checksums, honoring explicit mirrors. */
 export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string | undefined): string {
   const mirror = baseUrl?.trim();
-  // The private fork publishes binaries on the tailnet under the exact version,
-  // not upstream's v<version> release tags. Explicit mirrors still take priority.
-  if (!mirror && /\+owner\.[0-9a-f]+$/.test(version)) {
-    return `${FORK_RELEASE_BASE_URL}/${version}`;
+  // A fork build (build metadata `+<label>.<sha>`, which upstream never sets) is published at the
+  // fork release host under the exact version, not upstream's v<version> release tags. Explicit
+  // mirrors still take priority.
+  const forkBase = forkReleaseBaseUrl();
+  if (!mirror && forkBase !== "" && /\+[0-9A-Za-z-]+\.[0-9a-f]+$/.test(version)) {
+    return `${forkBase}/${version}`;
   }
   return `${(mirror || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
 }
@@ -67,9 +80,15 @@ export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<stri
 export function cliReleaseAssetUrl(
   version: string,
   fileName: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
+  baseUrl?: string | undefined,
 ): string {
-  return releaseAssetUrl(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL, `v${version}`, fileName);
+  const mirror = baseUrl?.trim();
+  // Fork: without a mirror, a fork build's files sit at the fork release host.
+  const forkBase = mirror ? "" : forkReleaseBaseUrl();
+  if (forkBase !== "" && /\+[0-9A-Za-z-]+\.[0-9a-f]+$/.test(version)) {
+    return `${cliReleaseDownloadBaseUrl(version)}/${fileName}`;
+  }
+  return releaseAssetUrl(mirror || CLI_RELEASE_DEFAULT_BASE_URL, `v${version}`, fileName);
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {

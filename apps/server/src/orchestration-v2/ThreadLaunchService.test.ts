@@ -550,7 +550,7 @@ it.effect("retains automation and sender attribution while a message waits in th
   }).pipe(Effect.provide(harness.layer));
 });
 
-// A caller that runs unattended work (Owner's Orchestrator bridge) starts its thread snoozed, so it
+// A caller that runs unattended work (an external task bridge) starts its thread snoozed, so it
 // never shows in the inbox while its worktree is prepared or its first message waits in the queue.
 it.effect(
   "launches a thread already snoozed and keeps it snoozed through its first messages",
@@ -595,7 +595,7 @@ it.effect(
   },
 );
 
-// Fork (Owner): delegate_task on another machine starts its child as a subagent of a parent
+// Fork: delegate_task on another machine starts its child as a subagent of a parent
 // thread that lives in the other machine's database (fork/fleet/remoteTasks.ts).
 it.effect("launches a subagent of a thread on another machine, kept out of the thread list", () => {
   const harness = makeHarness({ runSetup: () => Effect.never });
@@ -637,7 +637,7 @@ it.effect("launches a subagent of a thread on another machine, kept out of the t
 const decodeLaunchInput = Schema.decodeUnknownSync(OrchestrationV2ThreadLaunchInput);
 
 // The WebSocket handler hands a client's launch request to launchInputFromWire. It once dropped
-// snoozedUntil, so the Orchestrator bridge's routine threads launched visible.
+// snoozedUntil, so the task bridge's routine threads launched visible.
 it.effect("a client's launch request keeps every field, so a snoozed launch starts snoozed", () => {
   const harness = makeHarness({ runSetup: () => Effect.never });
   const snoozedUntil = "2099-07-25T09:00:00.000Z";
@@ -2630,7 +2630,7 @@ it.effect("replays an accepted send after the project disables the instance", ()
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
-// The Orchestrator bridge stops its run with run.interrupt. A run still waiting behind another one
+// A task bridge stops its run with run.interrupt. A run still waiting behind another one
 // was refused, so it started later and ran anyway; stopping it now cancels it.
 it.effect("stopping a run still waiting in the queue cancels it", () =>
   Effect.gen(function* () {

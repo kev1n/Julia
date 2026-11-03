@@ -4115,7 +4115,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
         // Filled local pages need only the inherited count for cursor positions.
         // Run-forked parents still need the recursive read to include their ancestry.
-        // Fork (Owner): trimmed fork contexts drop inherited rows, so a raw count would
+        // Fork: trimmed fork contexts drop inherited rows, so a raw count would
         // misplace cursor positions; they take the recursive read.
         if (
           (forkedFrom.contextMode ?? "full") === "full" &&
@@ -4210,7 +4210,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 latest.status = 'cancelled'
                 AND json_extract(latest.payload_json, '$.startedAt') IS NULL
               )
-              -- Fork (Owner): a background-task wake that settled without doing
+              -- Fork: a background-task wake that settled without doing
               -- anything (Claude's "N subagents failed" right after the limit hit
               -- them too) did not clear the limit; otherwise it hides the thread
               -- from failover and auto-resume.
@@ -4288,7 +4288,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 )
               )
             )) OR (
-              -- Fork (Owner): a limit failover names its tab before sending the tab's
+              -- Fork: a limit failover names its tab before sending the tab's
               -- first message (limitFailover.ts); until that message exists the
               -- sweep sends it, even if the source was settled or archived meanwhile.
               json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
@@ -6777,7 +6777,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       `;
 
     // Count all selected threads in one index walk; fork sources still need per-run counts.
-    // Fork (Owner): runless (v1 import) rows also need trimmed fork-context counts; they are
+    // Fork: runless (v1 import) rows also need trimmed fork-context counts; they are
     // read separately so the main walk stays on the covering index.
     const selectShellItemCounts = (threadIds: ReadonlyArray<ThreadId>) =>
       sql<ShellItemCountRow>`

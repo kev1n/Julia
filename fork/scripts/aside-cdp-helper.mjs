@@ -1,6 +1,6 @@
 // Launches Aside with its Chrome DevTools Protocol on a private pipe and lends that pipe to
 // one T3 server at a time over a Unix socket only this user can open. launchd keeps it
-// running, so T3 restarts never quit Aside (which would relock 1Password on the minis).
+// running, so T3 restarts never quit Aside (which would relock a password manager running inside it).
 //
 // Frames on both sides are NUL-terminated CDP JSON. The helper never forwards Browser.close,
 // and when a client leaves it undoes what that client left attached, so the next one sees

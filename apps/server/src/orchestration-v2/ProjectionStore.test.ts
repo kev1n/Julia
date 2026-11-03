@@ -6381,7 +6381,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           autoResume: true,
         })).find((row) => row.id === threadId),
       );
-      // Fork (Owner): a failover that named its tab stays a candidate, settled or
+      // Fork: a failover that named its tab stays a candidate, settled or
       // not, until that tab's first message exists.
       yield* sql`UPDATE orchestration_v2_projection_threads
         SET payload_json = json_set(payload_json, '$.limitRecovery.continuedIn', 'limit-failover:limit-shell', '$.settledOverride', 'settled')
@@ -6401,7 +6401,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       );
       yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id = 'limit-failover:limit-shell:continue'`;
       yield* sql`UPDATE orchestration_v2_projection_threads SET payload_json = ${originalRow!.payload_json} WHERE thread_id = ${threadId}`;
-      // Fork (Owner): a background-task wake that settles without doing work
+      // Fork: a background-task wake that settles without doing work
       // after the limit leaves the limited run the one to recover.
       const wakeRunId = RunId.make("run:limit-shell:empty-wake");
       const wakeMessageId = MessageId.make("message:limit-shell:empty-wake");

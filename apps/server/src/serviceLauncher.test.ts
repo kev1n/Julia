@@ -260,12 +260,12 @@ it.layer(NodeServices.layer)("service state persistence", (it) => {
   it.effect.each([
     ["1.0.0", "1.1.0"],
     [
-      "0.0.46-nightly.20261007.2787+owner.dd65a77",
-      "0.0.46-nightly.20261007.2787.owner.1791429000+owner.a45def3",
+      "0.0.46-nightly.20261007.2787+fork.dd65a77",
+      "0.0.46-nightly.20261007.2787.fork.1791429000+fork.a45def3",
     ],
     [
-      "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77",
-      "0.0.46-nightly.20261007.2787.owner.1791429001+owner.9f0409f",
+      "0.0.46-nightly.20261007.2787.fork.1791429000+fork.dd65a77",
+      "0.0.46-nightly.20261007.2787.fork.1791429001+fork.9f0409f",
     ],
   ] as const)(
     "commits %s → %s only after the trial reports prepared",

@@ -218,7 +218,7 @@ function terminalRunStatus(status: OrchestrationV2RunStatus): boolean {
 }
 
 /**
- * Fork (Owner): limit failover continued this thread's usage-limited run in
+ * Fork: limit failover continued this thread's usage-limited run in
  * another tab, so it reads as finished rather than Limited.
  */
 export function limitContinuedElsewhere(thread: OrchestrationV2ThreadShell): boolean {

@@ -7,7 +7,7 @@ export const METRIC_OPTIONS = [
   { value: "cost", label: "Cost", command: "usage.cost" },
   { value: "tokens", label: "Tokens", command: "usage.tokens" },
   { value: "limits", label: "Limits", command: "usage.limits" },
-  // Fork (Owner): Usage > Machines (apps/web/src/fork/machines), no shortcut.
+  // Fork: Usage > Machines (apps/web/src/fork/machines), no shortcut.
   { value: "machines", label: "Machines", command: null },
 ] as const satisfies readonly {
   value: UsageMetric;

@@ -420,7 +420,7 @@ export function UsageLimitsSection({
       : new Map([...presentations].filter(([id]) => selectedEnvironmentIds.has(id)));
   const accounts = collectLimitAccounts(selected);
   const pools = collectLimitPools(accounts, now);
-  const flags = accountFlags(accounts, now); // Fork (Owner): Use now / Resets next
+  const flags = accountFlags(accounts, now); // Fork: Use now / Resets next
   const notices = collectLimitNotices(selected);
   const externalLinks = collectExternalUsageLinks(selected);
   const colors = useProviderColors();

@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): where a moved thread went. The source thread is renamed and
+ * Fork: where a moved thread went. The source thread is renamed and
  * settled on its own server; this client also remembers the destination so
  * the source thread can show a banner that opens the new one.
  */

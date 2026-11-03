@@ -74,7 +74,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach
   | typeof WS_METHODS.terminalObserve
-  // Fork (Owner): settled-thread history status (fork/threadHistory).
+  // Fork: settled-thread history status (fork/threadHistory).
   | typeof WS_METHODS.forkThreadHistory;
 
 export type EnvironmentStreamCommandRpcTag =

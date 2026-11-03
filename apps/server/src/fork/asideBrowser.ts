@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - Bridges Playwright's WebSocket transport to the Aside helper's Unix socket.
 /**
- * Aside as a browser profile: its tabs are real tabs in Owner's Aside browser. Aside's DevTools
+ * Aside as a browser profile: its tabs are real tabs in the user's Aside browser. Aside's DevTools
  * pipe is lent over a user-only Unix socket (fork/scripts/aside-cdp-helper.mjs), and Playwright
  * needs a WebSocket URL, so a loopback endpoint with an unguessable path bridges to that socket.
  */
