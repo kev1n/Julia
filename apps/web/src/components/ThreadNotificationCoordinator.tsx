@@ -10,6 +10,7 @@ import { threadKey } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import { monitorHoldsWakeCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 import {
@@ -22,6 +23,7 @@ import {
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
 import { isWindowsPlatform } from "../lib/utils";
 import { environmentSummaries } from "../state/presentation";
+import { serverEnvironment } from "../state/server";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
 import {
@@ -128,6 +130,15 @@ export function startThreadNotifications(
       registry
         .get(environmentThreadShells.hiddenThreadKeysAtom)
         .has(threadKey({ environmentId, threadId: thread.id }))
+    )
+      return;
+    // Fork (Owner): a project of unattended automation threads can turn its
+    // alerts off; the gate has already advanced this thread's state, so
+    // turning them back on does not replay old completions.
+    const serverSettings = registry.get(serverEnvironment.settingsValueAtom(environmentId));
+    if (
+      serverSettings !== null &&
+      !resolveProjectSettings(serverSettings, state.raw.projectId).settings.threadAlertsEnabled
     )
       return;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
