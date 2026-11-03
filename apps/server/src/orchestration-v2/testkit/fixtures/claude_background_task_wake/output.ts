@@ -76,7 +76,7 @@ export function assertClaudeBackgroundTaskWakeOutput(
       event.type === "provider-thread.updated" ? (event.payload.pendingBackgroundTasks ?? []) : [],
     )
     .findLast((task) => task.taskId === BACKGROUND_TASK_ID);
-  // Fork (Owner): a backgrounded `sleep` wakes the agent when it ends, so it counts as a
+  // Fork: a backgrounded `sleep` wakes the agent when it ends, so it counts as a
   // monitor (claudeBashCallWaitsForFinish in ClaudeAdapterV2.ts). The roster lists the task
   // before Claude reports which tool call started it, so its first entry still says command.
   assert.deepEqual(rosterTask, {

@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Auto's machine for a new thread: connected, hosting the project, provider usable
+ * Fork: Auto's machine for a new thread: connected, hosting the project, provider usable
  * and on for Auto (weight 0, or a laptop with no saved preference, is off). Ranked by available
  * memory, then fewer running threads, then free disk; with none eligible the user picks.
  */

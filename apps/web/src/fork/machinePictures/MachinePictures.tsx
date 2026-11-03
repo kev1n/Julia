@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): real pictures of his machines where T3 draws a machine icon, with the Lucide
+ * Fork: real pictures of his machines where T3 draws a machine icon, with the Lucide
  * icons' props so callers' size classes apply. Bundled (Apple product images, 240 px), never
  * hotlinked.
  */

@@ -19,7 +19,7 @@ On Windows, import supports Firefox, Zen, and Helium profiles that use standard 
 Other Chromium-based browsers use app-bound encryption and cannot be imported. Partitioned cookies
 are skipped on all platforms.
 
-## Use Aside directly (Owner's fork)
+## Use Aside directly (fork)
 
 Choose **Aside** from the browser panel's profile picker to open a real Aside tab on the
 connected environment's Mac. Its existing logins and extensions are available without importing

@@ -19,18 +19,20 @@ const machine = (
 describe("chooseAutoMachine", () => {
   it("prefers the most available memory", () => {
     expect(
-      chooseAutoMachine([machine("mac-a", 7.4, 0, 500), machine("build-mac", 11.4, 3, 100)]),
+      chooseAutoMachine([machine("studio-a", 7.4, 0, 500), machine("studio-b", 11.4, 3, 100)]),
     ).toEqual({
       kind: "chosen",
-      environmentId: "build-mac",
+      environmentId: "studio-b",
       reason: "most free memory",
     });
   });
 
   it("then fewer running threads", () => {
-    expect(chooseAutoMachine([machine("mac-a", 8, 2, 500), machine("build-mac", 8, 1, 100)])).toEqual({
+    expect(
+      chooseAutoMachine([machine("studio-a", 8, 2, 500), machine("studio-b", 8, 1, 100)]),
+    ).toEqual({
       kind: "chosen",
-      environmentId: "build-mac",
+      environmentId: "studio-b",
       reason: "fewest running threads",
     });
   });
@@ -39,15 +41,15 @@ describe("chooseAutoMachine", () => {
     expect(
       chooseAutoMachine([
         machine("old", 8, 1, null),
-        machine("mac-a", 8, 1, 50),
-        machine("build-mac", 8, 1, 145),
+        machine("studio-a", 8, 1, 50),
+        machine("studio-b", 8, 1, 145),
       ]),
-    ).toEqual({ kind: "chosen", environmentId: "build-mac", reason: "most free disk" });
+    ).toEqual({ kind: "chosen", environmentId: "studio-b", reason: "most free disk" });
   });
 
   it("says when only one machine is eligible", () => {
-    expect(chooseAutoMachine([machine("mac-a", 1, 9, 1)])).toMatchObject({
-      environmentId: "mac-a",
+    expect(chooseAutoMachine([machine("studio-a", 1, 9, 1)])).toMatchObject({
+      environmentId: "studio-a",
       reason: "only eligible machine",
     });
   });
@@ -64,7 +66,7 @@ describe("autoWeight", () => {
   it("leaves a laptop out until its preference is set", () => {
     expect(autoWeight({}, "macbook", "laptop")).toBe(0);
     expect(autoWeight({ macbook: 50 }, "macbook", "laptop")).toBe(50);
-    expect(autoWeight({}, "mac-a", "mac-mini")).toBe(50);
-    expect(autoWeight({ mac-a: 0 }, "mac-a", "mac-mini")).toBe(0);
+    expect(autoWeight({}, "studio-a", "mac-mini")).toBe(50);
+    expect(autoWeight({ "studio-a": 0 }, "studio-a", "mac-mini")).toBe(0);
   });
 });

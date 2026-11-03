@@ -51,7 +51,25 @@ export function UsageProviderSettings({
         }
       >
         {entries.length === 0 ? (
-          <SettingsRow title={gt("No hubs configured.")} />
+          <SettingsRow
+            title={gt("No hubs configured.")}
+            description={
+              <span>
+                <T>
+                  To pool several Claude or Codex logins, run{" "}
+                  <a
+                    className="underline underline-offset-2"
+                    href="https://github.com/router-for-me/CLIProxyAPI"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CLIProxyAPI
+                  </a>
+                  , add it here, and link your proxy instances to it.
+                </T>
+              </span>
+            }
+          />
         ) : (
           entries.map(([id, source]) => {
             const label = source.label?.trim() || source.url;

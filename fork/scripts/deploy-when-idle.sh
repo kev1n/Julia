@@ -38,10 +38,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$tag" ] || { echo "$usage" >&2; exit 2; }
-. "$(dirname "$0")/fork.env" # fork_repo, artifacts_url
+. "$(dirname "$0")/fork.env" # fork_repo, artifacts_url, job_label_prefix
+fork_require fork_repo artifacts_url || exit 1
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
-label="com.example.t3code-fork.deploy-when-idle-${tag##*-}"
+label="$job_label_prefix.deploy-when-idle-${tag##*-}"
 plist="$HOME/Library/LaunchAgents/$label.plist"
 if [ "$action" = schedule ]; then
   # The agent scheduling this, if any: Claude and Codex give their shells their own id.
@@ -50,10 +51,10 @@ if [ "$action" = schedule ]; then
   # a new file, so a job of an earlier tag running the old copy is not disturbed.
   install -S -m 600 "$(dirname "$0")/fork.env" "$state/fork.env"
   install -S -m 700 "$0" "$state/deploy-when-idle.sh"
-  /usr/bin/python3 - "$plist" "$label" "$state" "$tag" "$now" "$requester" <<'PY'
+  /usr/bin/python3 - "$plist" "$label" "$state" "$tag" "$now" "$requester" "$job_label_prefix" <<'PY'
 import os, plistlib, sys
-path, label, state, tag, now, requester = sys.argv[1:]
-log = os.path.join(state, "logs", label.removeprefix("com.example.t3code-fork.") + ".log")
+path, label, state, tag, now, requester, prefix = sys.argv[1:]
+log = os.path.join(state, "logs", label.removeprefix(prefix + ".") + ".log")
 args = ["/bin/bash", os.path.join(state, "deploy-when-idle.sh"), tag]
 extra = ["--now"] if now == "1" else []
 extra += ["--requester", requester] if requester else []
@@ -138,7 +139,7 @@ if [ ! -d "$dir/scripts" ]; then
   mkdir "$dir/scripts"
   tar -xzf "$dir/fork-scripts.tar.gz" -C "$dir/scripts"
 fi
-if [ ! -f "$state/desktop-local-build" ] && { [ -d "/Applications/Julia.app" ] || [ -d "/Applications/T3 Code (Owner).app" ]; } && [ "$(cat "$state/desktop-version" 2>/dev/null || true)" != "$target" ]; then
+if [ ! -f "$state/desktop-local-build" ] && fork_desktop_installed && [ "$(cat "$state/desktop-version" 2>/dev/null || true)" != "$target" ]; then
   "$dir/scripts/install-desktop.sh" "$dir"/T3-Code-*-arm64.zip
   echo "$target" > "$state/desktop-version"
 fi

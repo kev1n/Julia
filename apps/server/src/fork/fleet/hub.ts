@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the fleet hub, held in memory on the hub server (mac-a).
+ * Fork: the fleet hub, held in memory on the hub server.
  * It is only an index: every server republishes its full snapshot each
  * heartbeat, so after a hub restart the index rebuilds within one heartbeat.
  * Environments that stop publishing are marked stale, never removed.

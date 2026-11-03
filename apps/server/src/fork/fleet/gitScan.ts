@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): what a checkout has changed, from git. Committed changes are measured from the
+ * Fork: what a checkout has changed, from git. Committed changes are measured from the
  * merge-base with the default remote branch or a closer local branch it is stacked on; the rest
  * comes from `git status`. The base is cached per HEAD and branch tips (about 36 ms per scan).
  */

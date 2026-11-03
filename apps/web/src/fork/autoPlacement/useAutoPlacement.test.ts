@@ -25,7 +25,7 @@ const provider = (overrides: Partial<Record<string, unknown>> = {}) =>
 
 const candidate = (input: Partial<Parameters<typeof isAutoCandidate>[0]>) =>
   isAutoCandidate({
-    environmentId: "build-mac",
+    environmentId: "studio-b",
     connected: true,
     serverConfig: { settings: DEFAULT_SERVER_SETTINGS },
     providers: [provider()],

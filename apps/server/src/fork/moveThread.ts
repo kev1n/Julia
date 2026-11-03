@@ -1,7 +1,7 @@
 // @effect-diagnostics globalFetch:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): the git half of moving a thread, machine to machine. The target asks the source
+ * Fork: the git half of moving a thread, machine to machine. The target asks the source
  * (fleet `move/pack`) to commit everything in the worktree and send a git bundle of what the target
  * lacks, then unbundles it under a free branch name. Nothing is pushed or fetched from GitHub.
  */

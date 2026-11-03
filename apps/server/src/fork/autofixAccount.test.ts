@@ -3,6 +3,7 @@ import {
   ProviderInstanceId,
   type ModelSelection,
   type ServerProvider,
+  type ServerProviderUsageWindow,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
@@ -12,7 +13,12 @@ import { autofixModelSelection } from "./autofixAccount.ts";
 const NOW = Date.parse("2026-10-08T05:00:00Z");
 const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 
-function account(instanceId: string, driver: string, weeklyUsed: number): ServerProvider {
+function account(
+  instanceId: string,
+  driver: string,
+  weeklyUsed: number,
+  extraWindows: ReadonlyArray<ServerProviderUsageWindow> = [],
+): ServerProvider {
   return {
     instanceId: ProviderInstanceId.make(instanceId),
     driver: ProviderDriverKind.make(driver),
@@ -35,6 +41,7 @@ function account(instanceId: string, driver: string, weeklyUsed: number): Server
           usedPercent: weeklyUsed,
           resetsAt: iso(NOW + 3 * 86_400_000),
         },
+        ...extraWindows,
       ],
     },
   };
@@ -71,6 +78,23 @@ describe("autofixModelSelection", () => {
       instanceId: "codex_alice",
       model: "gpt-6.1-sol",
     });
+  });
+
+  it("ignores a used-up quota scoped to another model than the one it runs", () => {
+    const sonnetOut = [
+      {
+        id: "sonnet",
+        kind: "weekly" as const,
+        label: "Sonnet",
+        usedPercent: 100,
+        modelScope: "claude-sonnet",
+      },
+    ];
+    const providers = [
+      account("claudeAgent", "claudeAgent", 20, sonnetOut),
+      account("claude_alice", "claudeAgent", 30),
+    ];
+    expect(autofixModelSelection(SETTING, providers, NOW)).toEqual(OPUS);
   });
 
   it("keeps the first model when no account has usage left", () => {

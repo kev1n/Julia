@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics globalDateInEffect:off
 /**
- * Fork (Owner): the fleet's HTTP routes under /fork/fleet, all requiring the fleet secret, reached
+ * Fork: the fleet's HTTP routes under /fork/fleet, all requiring the fleet secret, reached
  * over the tailnet. A peer read or send acts for the calling thread as a client capped at that
  * thread's runtime mode, so a target never runs with broader modes than its caller; idempotency
  * keys are namespaced per source thread.

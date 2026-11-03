@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): the Max tier (5x, 20x) of a Claude subscription. The SDK says only `max`; the
+ * Fork: the Max tier (5x, 20x) of a Claude subscription. The SDK says only `max`; the
  * rate-limit tier (e.g. `default_claude_max_20x`) is in `.claude.json` under CLAUDE_CONFIG_DIR or
  * home, a file without credentials. An unknown or missing tier leaves the plan as reported.
  */

@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): ordered model lists in Settings > General; the server runs the first with usage
+ * Fork: ordered model lists in Settings > General; the server runs the first with usage
  * left: the sync's auto-fix chat (`apps/server/src/fork/autofixAccount.ts`) and limited threads
  * (`apps/server/src/fork/limitFailover.ts`).
  */

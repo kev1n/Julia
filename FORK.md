@@ -1,9 +1,14 @@
-# Owner's T3 Code fork
+# Julia: a T3 Code fork
 
-A private fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code), nightly channel, at
-`owner/t3code` branch `owner`. It adds five features and runs on Owner's three Macs (MacBook
-`laptop-host`, `mac-a-host` = mac-a, `build-mac-host` = build-mac). The branch is
-always "the newest upstream nightly tag plus a short series of fork commits", rebased daily.
+Julia is a fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code), nightly channel, for
+people who run T3 Code on several Macs (and an Android phone) and want them to work as one fleet.
+The fork branch is always "the newest upstream nightly tag plus a short series of fork commits",
+rebased daily by a job on one of the Macs (the build Mac), which also builds and publishes the
+release every other Mac installs.
+
+Everything personal (your repository, host names, labels, signing keys, cloud accounts) lives in
+local config files on your machines, never in the repository: see [Configuration](#configuration).
+Without them the features that need them are off, never broken.
 
 ## Features
 
@@ -14,9 +19,9 @@ set) by most available memory, then fewest running threads, then most free disk.
 the provider account whose tightest window (session, weekly or monthly) has the most left, then
 the most session left, skipping limited accounts (a window under 5% left; an account at 99% of
 its week is used up however fresh its session). The composer's existing machine chip shows the
-choice as machine, account and that tightest window's percent left (`build-mac · alice · 88%`,
-the design Owner picked from three on 2026-10-06), and its tooltip says why (`Auto chose build-mac:
-most free memory · Claude alice (Pro): 88% left`). With no eligible machine the chip says so and sending asks you to pick one.
+choice as machine, account and that tightest window's percent left (`studio-b · alice · 88%`),
+and its tooltip says why (`Auto chose studio-b: most free memory · Claude alice (Pro): 88% left`).
+With no eligible machine the chip says so and sending asks you to pick one.
 The account rule (`packages/shared/src/accountChoice.ts`) also runs in three places without the
 machine rule: a new chat on a machine picked by hand moves off an account with no limit left,
 once per draft (`useLimitedAccountSwitch`; picking that account again then sticks), a new task on
@@ -37,7 +42,7 @@ enough to read.
 
 **Usage by account** (`apps/web/src/fork/usageByAccount/`, `apps/server/src/fork/claudePlanTier.ts`).
 Usage > Limits shows one card per subscription account (the same login seen through several
-machines is one card), titled by the login with the plan and tier (`Claude owner · Max 20x`),
+machines is one card), titled by the login with the plan and tier (`Claude alice · Max 20x`),
 each with its own windows, remaining % and reset time. **Use now** marks the account Auto would
 pick for that provider (the same `chooseAutoAccount`). **Resets next** marks the account whose
 session window resets soonest, with the countdown: simply the soonest future session reset per
@@ -48,10 +53,14 @@ credentials). An unknown tier shows the plan without one.
 
 The model pickers say the same per account (`accountLimitSummary`): each model row in the
 composer's picker ends with the account, plan and what is left
-(`owner · Max 20x · 88% session · 61% week`, plus `% month` where reported), as do the provider rail's tooltips and the
-composer model chip's tooltip. An account with no limit left says when it comes back instead
-(`Max 20x · no limit left · back 3:40 PM`) and its icon in the rail is dimmed. On the phone the model sheet puts that line on each provider's
-header and names the machine under its title (`Runs on build-mac`).
+(`alice · Max 20x · 88% session · 61% week`, plus `% month` where reported), as do the provider
+rail's tooltips and the composer model chip's tooltip. An account with no limit left says when it
+comes back instead (`Max 20x · no limit left · back 3:40 PM`) and its icon in the rail is dimmed.
+On the phone the model sheet puts that line on each provider's header and names the machine under
+its title (`Runs on studio-b`).
+
+Several accounts per provider are easiest to run through a CLIProxyAPI pool; see README.md for
+how a proxy-routed provider instance reports the pool's usage to Auto.
 
 **Keep session windows running** (`apps/server/src/fork/usageWindowKeepAlive.ts`). A 5-hour
 window starts with an account's first request, so an account idle past its reset loses those
@@ -61,9 +70,7 @@ open, sends that account one tiny prompt (the one-shot branch-name generation on
 default text model: Haiku, `gpt-6-luna`) and re-reads its limits. One prompt per login email, at
 most every 10 minutes; accounts with no session window (Codex Pro Lite) or out of quota are
 skipped. New logins are covered as soon as T3 sees them. Machine-local and off by default: turn it
-on in one environment, since each one with it on pings. It replaces the standalone build-mac
-`window-keepalive` script.
-
+on in one environment, since each one with it on pings.
 **Continue limited threads on another account** (`apps/server/src/fork/limitFailover.ts`). When a
 turn stops on a usage limit, the server forks the thread into a new tab of the same chat (title
 unchanged) and sends it "continue where you left off" on the first model in Settings > General >
@@ -78,7 +85,7 @@ The source thread's limit recovery is set off for a forked run, which marks
 it handled and keeps auto-resume from also resuming it, and names the new tab (`continuedIn`), so
 every client shows the source as finished instead of Limited and drops its recovery banner. The
 source names the new tab before that tab gets its first message, so nothing reading the source
-(the Orchestrator bridge settling a finished run) sees it finished while its work runs unnamed; a
+(an external bridge that settles a finished run) sees it finished while its work runs unnamed; a
 source naming a tab with no first message yet stays in the sweep, settled or not, until that
 message is sent (until the limit resets), and auto-resume never resumes a source that names a
 tab. Only a
@@ -119,7 +126,7 @@ current provider/model; sidebar grouping does not affect eligibility. Active tur
 finish or be stopped first. The transfer and handoff are shared in
 `packages/client-runtime/src/threadMove.ts`. The
 branch travels machine to machine over the fleet channel (below), never through GitHub or any
-other git remote, in every direction, MacBook included:
+other git remote, in every direction, laptops included:
 
 ```
 client ── fork.moveReceive (WS RPC) ──▶ target server
@@ -143,8 +150,8 @@ main is never committed to. A move needs the fleet hub's index to find the sourc
 the uncommitted work arrives on the target committed, as the latest commit.
 
 **Machine names** (`apps/server/src/fork/environmentLabel.ts`). A one-line file
-`~/.t3/userdata/environment-label` names the environment for every client (`MacBook`, `mac-a`,
-`build-mac`), instead of the computer name ("Mac Mini"). Clients store the name when they
+`~/.t3/userdata/environment-label` names the environment for every client (`laptop`, `studio-a`,
+`studio-b`), instead of the computer name. Clients store the name when they
 pair, so a client paired before the file existed keeps the old name until it is paired again.
 
 **Providers on every machine** (`apps/web/src/components/settings/addProviderEverywhere.tsx`,
@@ -168,14 +175,14 @@ again; read-only pairings, agent MCP tokens and CLI-issued sessions keep exactly
 **Fleet awareness** (`apps/server/src/fork/fleet/`). Agents can see what agents on the other
 machines are doing. Each server rebuilds a snapshot of its own threads and checkouts from its
 projections (never from the live-tail event stream, so a restart or reconnect always yields a
-full snapshot, under a new incarnation id) and publishes it to an in-memory index on mac-a, the
-hub. Authority stays with the owning server; if mac-a is down, the tools answer from the local
+full snapshot, under a new incarnation id) and publishes it to an in-memory index on one machine,
+the hub. Authority stays with the owning server; if the hub is down, the tools answer from the local
 server plus the last index seen and say so in `coverage`, and nothing else is affected.
 
 ```
-MacBook ─┐ full snapshot every heartbeat,      ┌──────── mac-a hub (in memory) ────────┐
-mac-a ───┼─ and at once on lifecycle change ──▶│ latest snapshot per environment       │
-build-mac ───┘   POST /fork/fleet/hub/publish      │ stale after 3 missed heartbeats       │
+laptop ───┐ full snapshot every heartbeat,      ┌──────── hub machine (in memory) ──────┐
+studio-a ─┼─ and at once on lifecycle change ──▶│ latest snapshot per environment       │
+studio-b ─┘   POST /fork/fleet/hub/publish      │ stale after 3 missed heartbeats       │
                                                └───────────────────────────────────────┘
 tool on any server ── GET hub/index ─▶ overlaps computed locally, own snapshot substituted
 t3_fleet_thread_read/send ─────────── POST <owner>/fork/fleet/peer/{read,send}
@@ -192,7 +199,7 @@ environment and thread id plus the repository's canonical key; paths are reposit
 - Timing: a heartbeat every 10 s republishes the full snapshot after rescanning the checkouts of
   active threads; lifecycle events (run created/updated, thread created, archived, settled,
   deleted, renamed) trigger an immediate rebuild and publish, and a turn ending rescans that
-  thread's checkout first. Measured on mac-a's Acme worktree: `git status -uall` 22 ms, base diff
+  thread's checkout first. Measured on a large repository's worktree: `git status -uall` 22 ms, base diff
   7 ms, ref listing 7 ms, so about 36 ms per checkout once the base is cached (about 100 ms more
   when HEAD or a branch tip moved). Six active checkouts cost about 0.2 s of one core per 10 s.
   Records turn stale after three missed heartbeats (30 s) and are never deleted for being absent;
@@ -220,7 +227,7 @@ environment and thread id plus the repository's canonical key; paths are reposit
   a remote child starts a run like any thread's (no task is recorded on a parent that is not in
   this database).
   Model and modes inherit as for a local child, and the instance must exist there (instance ids
-  match across the three Macs). Its task id is `fleet:<environmentId>:<threadId>`, which
+  match across the machines). Its task id is `fleet:<environmentId>:<threadId>`, which
   `task_status` and `task_cancel` route to the owning machine. When its first run ends, the
   child's machine posts the result to the parent's (`peer/task-result`), which wakes the parent
   thread like a local child's result, within the parent's own modes. Undelivered results wait in
@@ -229,72 +236,72 @@ environment and thread id plus the repository's canonical key; paths are reposit
   `mode: "wait"` acknowledges it instead. `orchestrator_capabilities` takes the same `machine` and
   lists that machine's providers and models (`peer/providers`) with the caller's own inheritance.
 - Permissions: fleet servers authenticate each other with a shared secret in
-  `~/.t3/userdata/fork-fleet.json` (mode 600, generated once on 2026-10-06, never in git). The
+  `~/.t3/userdata/fork-fleet.json` (mode 600, never in git; see Configuration). The
   source server vouches for the calling thread; the destination acts for it as a client whose
   ceiling is that thread's runtime mode, so T3's own rule ("the target may not run with broader
   modes than the caller") is enforced at the destination, and idempotency keys are namespaced per
-  source thread. Any holder of the secret can speak for any machine; all three are Owner's.
-- Acme meaning (`acmePaths.ts`): SKU manifests and schemas report their SKU, the deepline and
-  rapidapi packages their provider; every other path stays unknown rather than guessed.
+  source thread. Any holder of the secret can speak for any machine, so share it only among machines you own.
+- Path meanings (`pathMeanings.ts`): optional `pathMeanings` rules in `fork-fleet.json` label a
+  changed path in a matching repository (for example a manifest path as the product it defines);
+  every path no rule matches stays unknown rather than guessed.
 - No overlap alerts: nothing is ever sent into a thread. An earlier version had the hub steer
   overlap notes into both threads' turns whenever they changed the same file; it fired on overlaps
   nobody needed to act on (two branches adding an entry to the same `package.json`), so it was
   removed. A later model-judged "may be investigating the same bug" banner was removed too: it
   flagged chats the user already knew were the same work (a thread's own predecessor in another
   tab). `t3_who_else` is the only overlap tool, and it only answers when asked. Old servers may
-  leave `fork-fleet-notices.json` and, on mac-a, `fork-fleet-alerts-state.json` behind; nothing
+  leave `fork-fleet-notices.json` and, on the hub, `fork-fleet-alerts-state.json` behind; nothing
   reads them now.
 
-**Settled threads in Azure** (`apps/server/src/fork/threadHistory/`,
-`apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). A thread that
-is settled (`settledOverride = "settled"`) or archived, and not deleted, moves its history off the
-machine once it has been settled or archived for an hour (Owner's choice, so a thread just settled
-opens instantly; the sweep rechecks at least every 10 minutes): every event except its
-`thread.*` events, its `message.updated` events, its `run.*` events and its `provider-session.*`
-events, plus the projection rows those events wrote (nodes, turn items, tool output,
-checkpoints...). Runs stay because a thread's status in every list comes from its latest run;
-without them a finished thread showed the working spinner. Threads offloaded before 2026-10-14
-get their run events back from their blob on the next sweep. On
-mac-a on 2026-10-13 that is 473 MB of the settled threads' 499 MB of event JSON; the kept message
-text is about 18 MB, so lists, titles and content search (`ThreadSearch`, which reads
-`orchestration_v2_projection_messages`, used by the sidebar search, the phone and `t3_thread_search`)
-still find the thread by any phrase in it. A content search over Azure would have to download every
-blob per query. Attachments stay on disk (17 MB in all on mac-a).
+**Settled threads offloaded** (`apps/server/src/fork/threadHistory/`,
+`apps/web/src/fork/threadHistory/`, `apps/mobile/src/fork/ThreadHistoryNotice.tsx`). Optional, off
+without `~/.t3/userdata/fork-thread-history.json` (see Configuration). A thread that is settled
+(`settledOverride = "settled"`) or archived, and not deleted, moves its history off the machine
+once it has been settled or archived for an hour (so a thread just settled opens instantly; the
+sweep rechecks at least every 10 minutes): every event except its `thread.*` events, its
+`message.updated` events, its `run.*` events and its `provider-session.*` events, plus the
+projection rows those events wrote (nodes, turn items, tool output, checkpoints...). Runs stay
+because a thread's status in every list comes from its latest run; without them a finished thread
+showed the working spinner. On one busy machine that moved 473 MB of the settled threads' 499 MB
+of event JSON; the kept message text was about 18 MB, so lists, titles and content search
+(`ThreadSearch`, which reads `orchestration_v2_projection_messages`, used by the sidebar search,
+the phone and `t3_thread_search`) still find the thread by any phrase in it. A content search over
+the store would have to download every blob per query. Attachments stay on disk.
 
+- The one store today is `"azure-keyvault"`: an Azure Blob container, reached with a service
+  principal whose credential is JSON in an Azure Key Vault secret, read with the machine's own
+  `az` login when first needed and kept only in memory. `T3CODE_THREAD_HISTORY_SECRET` picks
+  another secret, `off` turns the feature off. A Mac without an `az` login offloads nothing.
 - Offload uploads a gzip bundle to `<environment id>/<SHA-256 of thread id>/<time>.json.gz` (thread
   ids can pass Azure's 1,024-character name limit), downloads it and
   checks its SHA-256, then deletes locally in one transaction that checks the thread again. It
   never moves a thread with a running or queued turn, a waiting request or secret request, pending
   effects or background work, a message waiting to start, a scheduled usage-limit resume, an open
   fork of it (forks read their source's rows), an event type it does not know, or a row id another
-  thread owns (Orchestrator reuses message ids). `fork_thread_history` keeps the pointer.
+  thread owns (external bridges may reuse message ids). `fork_thread_history` keeps the pointer.
 - Restore runs before every thread read and every command except metadata-only ones (visit, pin,
   rename, pull request sync, snooze, settle, archive, delete), from `ensureLegacyTranscript` in
   `ThreadManagementService`: opening, unsettling, unarchiving, sending, MCP `t3_thread_read` and the
   fleet's peer read all go through it. Events come back under new sequence numbers (so a client that
   cached the stub receives them) and their rows are rebuilt with the current projection code. A
   thread opened to read stays local until it is settled or archived again; each offload is a new
-  blob, so re-settling restarts its 60 days.
+  blob, so re-settling restarts its retention.
   Restoring re-inserts events with new sequences, so a subagent prompt that upstream's event store
   keeps once (later events point at it with `promptSequence`) is re-pointed as it is put back.
 - `fork.threadHistory` (stream RPC, read scope) reports `restoring`, `expired` or `unavailable`,
   shown in the composer's activity slot on web and desktop and above the composer on the phone.
   Expired (the blob is gone) leaves the stub readable; unavailable fails the read, so the client
   keeps retrying, and the notice has Retry.
-- Retention: the lifecycle rule `t3-thread-history-60-days` on storage account `examplestorage`
-  (resource group `example-rg`) deletes blobs 60 days after creation (prefix `t3-thread-history/`).
-  The account's one lifecycle policy document also holds the Orchestrator backup rules
-  (`orchestrator-backups/db/{hourly,weekly,monthly}/`, 7/28/31 days): change it by reading the policy,
-  merging and writing it back, never by replacing it.
-- Credentials: app registration `t3-thread-history` has only Storage Blob Data Contributor on
-  container `t3-thread-history`; its client secret (expires 2027-10-14) is the JSON in Key Vault
-  `example-vault` secret `example-secret`, read with the machine's own `az`
-  login when first needed and kept only in memory. `t3-thread-history-test` / its `-test-credential`
-  secret is the same for the test container. `T3CODE_THREAD_HISTORY_SECRET` picks another secret,
-  `off` turns the feature off. A Mac without an `az` login offloads nothing.
+- Retention is the storage account's lifecycle rule only (the clients say 60 days): create a rule
+  that deletes blobs under the container's prefix that many days after creation. If the account's
+  lifecycle policy holds other rules, change it by reading the policy, merging and writing it
+  back, never by replacing it.
+- Credentials: give the service principal only Storage Blob Data Contributor on the container.
+  The Key Vault secret's value is JSON:
+  `{"tenantId", "clientId", "clientSecret", "account", "container"}` (`blobStore.ts`).
 - Disk: rows deleted inside SQLite free pages, not disk. `install-runtime.sh` switches the
   database to incremental vacuum once per machine, at a deploy (one `VACUUM` with the server
-  stopped, 42 s for mac-a's 2.8 GB), and the server runs `PRAGMA incremental_vacuum` after each
+  stopped, 42 s for a 2.8 GB database), and the server runs `PRAGMA incremental_vacuum` after each
   offload.
 
 **Restarts keep background work** (`apps/server/src/fork/restartWake.ts`, `apps/server/src/fork/drain.ts`,
@@ -302,8 +309,8 @@ blob per query. Attachments stay on disk (17 MB in all on mac-a).
 Claude subagents, background shells and Monitors, which report back by waking the thread. A T3
 restart kills them, and upstream only tells the agent on the user's next message (#15604 stopped
 waking settled threads because stale "running" rows under stopped sessions woke long-finished
-ones). On 2026-10-14 two deploys and a restart on mac-a killed "Discuss Email with Chief of
-Staff"'s subagents and nothing resumed them for an hour.
+ones). Before this, two deploys and a restart once killed a thread's subagents and nothing
+resumed them for an hour.
 
 - Planned restarts drain the server first. Live work is what a restart would cut off: runs
   that are working or about to start, the provider's background roster (shells, Monitors),
@@ -355,7 +362,7 @@ Staff"'s subagents and nothing resumed them for an hour.
   were kept on purpose. It follows Settings > "Continue threads after server update" (on by default).
 
 **Start a thread snoozed** (`snoozedUntil` on `orchestration.launchThread` and `thread.create`,
-`keepSnoozed` on `message.dispatch`). A caller running unattended work (the Orchestrator bridge's
+`keepSnoozed` on `message.dispatch`). A caller running unattended work (an external bridge's
 routine runs) creates its thread already snoozed, so it never shows in the inbox while its
 worktree is prepared and its first message waits. Upstream refuses to snooze a thread with a
 queued run and wakes a thread on every new message; a launch's initial message, or a later
@@ -365,25 +372,25 @@ time; a fork asked by a person still starts visible. The wake rules are upstream
 run completing or failing after creation brings the thread back.
 
 **Phone app** (`apps/mobile/src/fork/`, `fork/scripts/build-mobile.sh`,
-`fork/scripts/artifacts-server.py`). An Android build, **T3 Code (Owner)**
-(`com.example.julia`, the Nightly icon), installs beside the Play Store app and pairs with
-the three servers like the official one. Where the phone has the matching screen it shows the
-fork: machine names (server side, so any app shows them after pairing), machine pictures wherever
-it draws an environment's machine glyph, Usage > Machines and the usage line in the new task
-Environment picker (above), and on Usage > Limits the **Use now** and **Resets next**
-marks per provider (the web fork's `buildAccountCards`, so phone and desktop always mark the same
-account) beside the plan tier the servers already report (`Claude Max 20x`). Fleet awareness is
-agent-side, so the phone sees it only in the agents' transcripts. Not on the phone, because it has
-no matching screen: the Auto chip (the phone's new-thread flow has no machine balancing at all),
-the large environment-list pictures (the phone's environment rows draw the glyph at 14 pt, and the picture keeps that
+`fork/scripts/artifacts-server.py`). An Android build, **Julia** (package `mobile_package`, the
+Nightly icon), installs beside the Play Store app and pairs with your servers like the official
+one. Where the phone has the matching screen it shows the fork: machine names (server side, so any
+app shows them after pairing), machine pictures wherever it draws an environment's machine glyph,
+Usage > Machines and the usage line in the new task Environment picker (above), and on Usage >
+Limits the **Use now** and **Resets next** marks per provider (the web fork's
+`buildAccountCards`, so phone and desktop always mark the same account) beside the plan tier the
+servers already report (`Claude Max 20x`). Fleet awareness is agent-side, so the phone sees it
+only in the agents' transcripts. Not on the phone, because it has no matching screen: the Auto
+chip (the phone's new-thread flow has no machine balancing at all), the large environment-list
+pictures (the phone's environment rows draw the glyph at 14 pt, and the picture keeps that
 height). No push notifications (the fork build has no Firebase project) and no T3 Connect (no
-Clerk keys); pairing is direct over the tailnet.
+Clerk keys); pairing is direct, for example over a tailnet.
 
 The phone stays current without reinstalling. The app is Expo with `expo-updates`, and its runtime
 version is the native fingerprint (`runtimeVersion.policy: fingerprint` in `app.config.ts`), so a
 JavaScript-only change can be delivered over the air to every binary with the same native code,
-and a native change cannot. The fork serves the Expo Updates protocol itself from build-mac instead of
-EAS (no Expo account, nothing leaves the tailnet):
+and a native change cannot. The fork serves the Expo Updates protocol itself from the build Mac
+instead of EAS (no Expo account, nothing leaves your network):
 
 ```
 sync.sh ─▶ build-mobile.sh build: runtime = fingerprint of apps/mobile (expo-updates CLI)
@@ -398,41 +405,109 @@ phone, every launch ── GET /mobile/manifest  (expo-platform, expo-runtime-ve
         backgrounding (or asks, if the app stays in front)
 ```
 
-On a day whose upstream nightly changes native code the fingerprint changes: the sync builds a new
-APK (Gradle took 7 minutes cold on build-mac and 3m20s with its cache, on 2026-10-06; a
-JavaScript-only update is an export of about a minute), the installed app
-keeps its last update, and the sync opens (or comments on) the issue **"Install the new phone app
-build"** on `owner/t3code` with the link. Owner taps it once on the phone; the APK is signed with
-the same key, so it installs over the old one and keeps the pairings.
+The app's package, scheme and update URL are passed to `app.config.ts` by `build-mobile.sh`
+(`T3CODE_MOBILE_FORK=1`, `T3CODE_MOBILE_PACKAGE`, `T3CODE_MOBILE_SCHEME`,
+`T3CODE_MOBILE_UPDATES_URL`, applied by `withForkConfig`); they are part of the native
+fingerprint, so changing one needs a new APK. On a day whose upstream nightly changes native code
+the fingerprint changes: the sync builds a new APK (Gradle took 7 minutes cold and 3m20s with its
+cache on one build Mac; a JavaScript-only update is an export of about a minute), the installed app keeps its
+last update, and the sync opens (or comments on) the issue **"Install the new phone app build"**
+on your fork's repository with the link. Install it once on the phone; the APK is signed with the
+same key, so it installs over the old one and keeps the pairings.
 
-- Install link (tailnet only): `https://build-mac-host.example.ts.net:8444/mobile/T3-Code-Owner.apk`
-  (Android asks once to allow installs from the browser). Pair: on a Mac, `t3 pair` (minis) or
-  `t3 pair --tailscale` (MacBook), then in the app Settings > Environments > + : host
-  `https://<host>.example.ts.net`, the code is the `token=` part of the printed link (or scan
-  the QR with the camera button).
-- Signing key: `~/t3-fork/keys/julia-fork-release.jks` (PKCS12, alias `julia-fork`) and its
-  password file `julia-fork-release.pass`, both mode 600 in a 700 directory on build-mac, made
-  2026-10-06, never in git. Losing it means every later APK needs an uninstall first (Android
-  refuses a different key), which loses the app's pairings. Back it up if build-mac is ever rebuilt.
-- Toolchain on build-mac (no Homebrew there): Temurin JDK 21 in `~/t3-fork/toolchain/jdk21`, Android
-  SDK in `~/Library/Android/sdk` (cmdline-tools, platform-tools, platforms 36 and 37.0,
-  build-tools 36/37, NDK 27.1.12297006, CMake 3.22.1; the versions React Native's
-  `libs.versions.toml` pins).
+- Install link: `<artifacts_url>/mobile/<mobile_apk_name>.apk` (Android asks once to allow
+  installs from the browser). Pair: on a Mac, `t3 pair` (or `t3 pair --tailscale`), then in the
+  app Settings > Environments > + : the server's host, the code is the `token=` part of the
+  printed link (or scan the QR with the camera button).
+- Signing key: make it once on the build Mac with `keytool -genkeypair -storetype PKCS12
+  -keystore <mobile_keystore>` (one key; `apksigner` signs with it) and write its password to
+  `mobile_keystore_pass`, both mode 600 in a 700 directory, never in git. Losing it means every
+  later APK needs an uninstall first (Android refuses a different key), which loses the app's
+  pairings, so back it up.
+- Toolchain on the build Mac: a JDK 21 (`JAVA_HOME`, default `~/t3-fork/toolchain/jdk21`) and the
+  Android SDK in `~/Library/Android/sdk` (`ANDROID_HOME`; cmdline-tools, platform-tools, the
+  platforms, build-tools, NDK and CMake versions React Native's `libs.versions.toml` pins).
 - Manual: `fork/scripts/build-mobile.sh build <version> <out> ~/t3-fork/out/mobile` then
   `fork/scripts/build-mobile.sh publish <out> ~/t3-fork/out/mobile`.
 
-**Packaging** (`apps/desktop/src/fork/`, `fork/scripts/`). The desktop app is
-**T3 Code (Owner)** (`com.example.julia`) with its own profile
-(`~/Library/Application Support/julia-fork`) and state (`~/.t3-owner-app`), no keychain use,
-and no update feed.
+**Packaging** (`apps/desktop/src/fork/`, `fork/scripts/`). The desktop app is **Julia**
+(`desktop_bundle_id`) with its own Chromium profile
+(`~/Library/Application Support/<desktop_package_name>`) and state (`~/<desktop_home_dirname>`),
+no keychain use, and no update feed. The app is opened from Finder and never reads `fork.env`,
+so `build.sh` writes those folder names into `apps/desktop/src/fork/identity.ts` for the build
+(and restores the file afterwards), and passes the bundle id and package name to the packager.
+
+## Configuration
+
+All personal values live in files on your machines. The repository carries neutral defaults only.
+
+### `~/.config/julia/fork.env` (the scripts)
+
+`fork/scripts/fork.env` holds the defaults and sources `~/.config/julia/fork.env` when it exists
+(a fixed path, so launchd jobs read it too), then derives `artifacts_url`. Same variable names,
+shell syntax (`name=value`, quote values with spaces; `$HOME` may be used). Put the same file on
+every Mac: every value is shared by the whole fleet, none is per machine.
+
+| Variable               | Default                                 | Meaning                                                                                                                                                                                                     |
+| ---------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork_repo`            | (empty)                                 | Your fork's GitHub repository, `owner/name`: its releases and its "Fork sync failed" and "Install the new phone app build" issues. Empty: `sync.sh` (except `--dry-run`) and the deploy jobs refuse to run. |
+| `fork_branch`          | `main`                                  | The branch the daily sync rebases onto upstream and pushes.                                                                                                                                                 |
+| `version_label`        | `fork`                                  | The word in fork versions (`<nightly>.<word>.<epoch>+<word>.<sha>`) and release tags (`<word>-<nightly>-<sha>`); `install-runtime.sh` prunes old runtimes by it.                                            |
+| `job_label_prefix`     | `dev.julia.fork`                        | Prefix of the LaunchAgent labels: `.sync`, `.deploy`, `.watchdog`, `.artifacts`, `.aside-helper`, `.deploy-when-idle-<sha>`.                                                                                |
+| `aside_login_label`    | (empty)                                 | The LaunchAgent that opens Aside at login, which `install-aside-helper.sh` disables while Aside runs under the helper (and restores on `--uninstall`). Empty: none.                                         |
+| `desktop_bundle_id`    | `dev.julia.app`                         | The desktop app's bundle id. `install-desktop.sh` refuses to replace an app with another id, and fixes the Dock tile with it.                                                                               |
+| `desktop_package_name` | `julia`                                 | The desktop app's package name: its keychain item name and its Chromium profile folder under `~/Library/Application Support`. Embedded at build.                                                            |
+| `desktop_home_dirname` | `.julia-app`                            | The folder in `$HOME` for the desktop app's own state (its pairings). Embedded at build; `install-desktop.sh` seeds its settings there.                                                                     |
+| `desktop_legacy_app`   | (empty)                                 | An older name of the desktop app in `/Applications` (without `.app`) that `install-desktop.sh` replaces with `Julia.app` and the deploy jobs still recognize. Empty: none.                                  |
+| `mobile_package`       | `dev.julia.app`                         | The Android app's package id. Part of the native fingerprint.                                                                                                                                               |
+| `mobile_scheme`        | `julia`                                 | The Android app's URL scheme. Part of the native fingerprint.                                                                                                                                               |
+| `mobile_apk_name`      | `Julia`                                 | File name (without `.apk`) of the published APKs and of the install link `<artifacts_url>/mobile/<name>.apk`.                                                                                               |
+| `mobile_keystore`      | `$HOME/t3-fork/keys/julia-release.jks`  | The APK release signing key (PKCS12).                                                                                                                                                                       |
+| `mobile_keystore_pass` | `$HOME/t3-fork/keys/julia-release.pass` | The file holding that key's password.                                                                                                                                                                       |
+| `build_mac_url`        | (empty)                                 | The build Mac's T3 Code server as the other machines reach it (for example its Tailscale Serve URL); auto-fix chat links point there.                                                                       |
+| `artifacts_url`        | `<build_mac_url>:8444`                  | Where the build Mac serves its build outputs and the phone's updates (`install-jobs.sh artifacts`). Every Mac downloads releases from it. `T3CODE_ARTIFACTS_URL` overrides it for `build-mobile.sh`.        |
+
+`build.sh` also exports `T3CODE_FORK_RELEASE_BASE_URL` from `artifacts_url` for the build, and
+`apps/server/vite.config.ts` embeds it in the server (`packages/shared/src/cliRelease.ts`): a
+server built with it downloads fork runtimes (versions with `+<version_label>.<sha>`) for **Update
+all** from `<artifacts_url>/<version>`. Built without it (for example a plain `vp run build`), fork
+versions are looked up on upstream's GitHub releases, where they do not exist.
+
+The desktop and phone identities are compiled into the apps, so changing one later means a new
+app: a new bundle id or package name is a different app with no pairings, and a new
+`desktop_home_dirname` starts with empty state.
+
+### `~/.config/julia/denylist` (the literal check)
+
+Optional. One fixed string per line (your host names, tailnet name, account logins, emails, label
+prefixes). `fork/scripts/check-literals.sh`, run first by `checks.sh`, fails when any line the
+fork adds or changes against its upstream base contains one (case-insensitive), besides its
+built-in patterns for tailnet hosts, Mac host names and Tailscale IPs. Keep it on the build Mac at
+least, since the sync runs the check there.
+
+### Per-machine server files (`~/.t3/userdata/`)
+
+- `environment-label`: one line, the machine's short name for every client (Machine names).
+- `fork-fleet.json` (mode 600): fleet awareness, moves and remote subagents.
+  `{"hubUrl", "selfUrl", "secret", "hub": true only on the hub, "pathMeanings": [...]}`.
+  `hubUrl` and `secret` are the same on every machine; `selfUrl` is the machine's own URL as the
+  others reach it. Generate the secret once (`openssl rand -hex 32`). `pathMeanings` (optional,
+  same on every machine): `[{"repo": "<regex on the repository key, case-insensitive>", "path":
+  "<regex whose first group is the label>", "kind": "sku" | "provider"}]`; the first matching
+  rule names the path, and a malformed rule is skipped. Without the file the fleet is off and the
+  drain falls back to `live-work.sh`.
+- `fork-thread-history.json` (mode 600): offloading settled threads.
+  `{"store": "azure-keyvault", "keyVault": "<vault name>", "secret": "<secret name>"}`, the same on
+  every machine. Put it on every machine before the first deploy that uses it if any thread was
+  ever offloaded there: restoring needs it too. Without it nothing is offloaded or restored.
 
 ## Upstream files touched
 
 Everything else lives in `fork/`, `FORK.md`, and the `fork/` directories under `apps/`. Each
-upstream edit is a hook (an import plus a call), marked `Fork (Owner)` where it is not obvious.
+upstream edit is a hook (an import plus a call), marked `Fork:` where it is not obvious.
 
 ```
-git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/**' ':(glob,exclude)apps/*/src/fork/**'
+git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclude)fork/**' ':(glob,exclude)apps/*/src/fork/**'
 ```
 
 - `packages/contracts/src/resourceTelemetry.ts`: optional `freeDiskBytes` and `totalDiskBytes` on `HostResourcesSnapshot`.
@@ -488,7 +563,10 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
 - `apps/desktop/src/main.ts`: imports `fork/keychain.ts` first (see Keychain).
 - `apps/desktop/src/app/DesktopStatePaths.ts`: the fork app's state directory.
 - `apps/desktop/src/app/DesktopUserData.ts`: the fork app's Electron profile directory.
-- `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment.
+- `apps/server/vite.config.ts`: embeds `T3CODE_FORK_RELEASE_BASE_URL` (the fork's release host for
+  `packages/shared/src/cliRelease.ts`) at build time.
+- `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment
+  (`build.sh` passes them from `fork.env`).
 - `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, routes, publisher) to the MCP server.
 - `packages/contracts/src/orchestratorMcp.ts`: optional `machine` on `delegate_task`, `machine` and
   `link` on its result.
@@ -505,8 +583,8 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   subagents from other environments that name a parent their own environment lacks; test in
   `threadShell.test.ts`.
 - `packages/provider-core/src/server/orchestrationInstructions.ts`: the advice for work on another
-  Mac (a remote subagent through `delegate_task` with `machine`, and how to choose the Mac).
-- `apps/mobile/app.config.ts`: `withOwnerFork(config)` (identity and update URL, only with `T3CODE_MOBILE_OWNER=1`).
+  machine (a remote subagent through `delegate_task` with `machine`, and how to choose it).
+- `apps/mobile/app.config.ts`: `withForkConfig(config)` (identity and update URL, only with `T3CODE_MOBILE_FORK=1`).
 - `apps/mobile/src/components/EnvironmentMachineSymbol.tsx`: looks up a machine picture before T3's glyph.
 - `apps/mobile/src/features/usage/UsageLimitsPooled.tsx`: the Use now / Resets next marks under each account.
 - `apps/mobile/src/features/usage/UsageRouteScreen.tsx`: the Machines tab (no pull to refresh; it is live).
@@ -581,7 +659,7 @@ git diff --stat <upstream-tag>...owner -- . ':(exclude)FORK.md' ':(exclude)fork/
   SDK passes no window or check kind to `canUseTool`, so the reason text identifies the check.
   Tests in `ClaudeAdapterV2.test.ts`.
 
-Commit series on `owner` (oldest first), one series per feature so each can be dropped or
+Commit series on the fork branch (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
 (2; Usage reuses Auto's `chooseAutoAccount`), move to another machine (1; reuses Auto's rules),
 machine names (1), fleet awareness (1), packaging (1), tooling (2), this file (1), then move over
@@ -591,117 +669,127 @@ pictures and account marks (1), sync and update serving (1), and its layout fix 
 then Machines (1; adds total disk to the free disk commit's field and owner), then usage in the
 machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
 in scheduled runs (1; moves the account rule to `packages/shared`), then limited accounts on
-desktop and the Codex default (1), then providers on every machine (1), then settled threads in
-Azure (1).
+desktop and the Codex default (1), then providers on every machine (1), then settled threads
+offloaded (1).
 
 ## Sync, build, deploy
 
+One Mac is the build Mac: it holds a clone of your fork at `~/src/t3code-fork` (with `origin` =
+your fork, `upstream` = pingdotgg/t3code), rebases and builds daily, and serves the build
+outputs. Every Mac, the build Mac included, pulls and installs the newest release.
+
 ```
-build-mac 05:00  com.example.t3code-fork.sync    fork/scripts/sync.sh
-             fetch upstream tags -> rebase owner onto the newest v*-nightly.* tag
-             -> fork/scripts/checks.sh (check-literals.sh: no host or ID outside fork.env,
-                typecheck of contracts/web/server/desktop/scripts,
+build Mac 05:00  <prefix>.sync    fork/scripts/sync.sh
+             fetch upstream tags -> rebase fork_branch onto the newest v*-nightly.* tag
+             -> fork/scripts/checks.sh (check-literals.sh: no personal host or ID in the fork's
+                changes; typecheck of contracts/web/server/desktop/scripts/mobile,
                 lint of every file the fork touches, fork tests + tests beside touched files)
-             -> fork/scripts/build.sh (server runtime archive + T3 Code (Owner).app)
+             -> fork/scripts/build.sh (server runtime archive + Julia.app)
              -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
-             any of these fails -> fork/scripts/autofix.sh: an agent chat on build-mac fixes it,
-                then the same checks and builds run again (see "When the sync fails")
-             -> push owner, GitHub release owner-<version>-<sha> on owner/t3code
+             any of these fails -> fork/scripts/autofix.sh: an agent chat on the build Mac fixes
+                it, then the same checks and builds run again (see "When the sync fails")
+             -> push fork_branch, GitHub release <version_label>-<version>-<sha> on fork_repo
                 (VERSION, SHA256SUMS, install scripts)
              -> build-mobile.sh publish (into ~/t3-fork/out/mobile); a new APK opens the issue
                 "Install the new phone app build"
-build-mac always com.example.t3code-fork.artifacts  ~/t3-fork/artifacts-server.py: ~/t3-fork/out served
-             to the tailnet at https://build-mac-host.example.ts.net:8444 (Tailscale Serve
-             -> 127.0.0.1:8790), plus /mobile/manifest for the phone
-phone  every launch  T3 Code (Owner) asks /mobile/manifest for its runtime; downloads a newer
-             update in the background and applies it at the next backgrounding
-every Mac 05:45 com.example.t3code-fork.deploy ~/t3-fork/pull-deploy.sh
-             newest release not yet running -> download its artifacts from build-mac, check
-             SHA256SUMS -> deploy-when-idle.sh --schedule (and install-desktop.sh on the
-             MacBook); waits for the next day while live-work.sh reports anything
-any Mac, on demand  com.example.t3code-fork.deploy-when-idle-<sha>  ~/t3-fork/deploy-when-idle.sh
+build Mac always <prefix>.artifacts  ~/t3-fork/artifacts-server.py: ~/t3-fork/out served at
+             artifacts_url (Tailscale Serve :8444 -> 127.0.0.1:8790), plus /mobile/manifest
+phone  every launch  Julia asks /mobile/manifest for its runtime; downloads a newer update in
+             the background and applies it at the next backgrounding
+every Mac 05:45 <prefix>.deploy ~/t3-fork/pull-deploy.sh
+             newest release not yet running -> download its artifacts from artifacts_url, check
+             SHA256SUMS -> deploy-when-idle.sh --schedule (and install-desktop.sh where the app
+             is installed); waits for the next day while live-work.sh reports anything
+any Mac, on demand  <prefix>.deploy-when-idle-<sha>  ~/t3-fork/deploy-when-idle.sh
              fork/scripts/deploy-when-idle.sh --schedule <release tag> waits until nothing is
              live (checked every 30 s, logged), drains the server for the restart and installs
              that release, then removes itself; a newer release supersedes it
-every Mac every 60 s com.example.t3code-fork.watchdog ~/t3-fork/watchdog.sh
+every Mac every 60 s <prefix>.watchdog ~/t3-fork/watchdog.sh
              restarts the T3 service after 3 failed localhost health checks or above 12 GB
              RSS, first saving a 5 s `sample` to ~/t3-fork/logs/watchdog-sample-*.txt
 ```
 
-To ship a release to a Mac without waiting for 05:45, schedule it with
-`fork/scripts/deploy-when-idle.sh --schedule owner-<version>-<sha>`. Add `--now` to install
-without waiting, cutting off whatever runs. `--cancel owner-<version>-<sha>` removes a waiting
-job and ends its drain. Do not copy an older `~/t3-fork/deploy-when-idle-<sha>.sh`: those check
-runs only and restart over background work.
-`install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` and installs or refreshes the
-watchdog from the release it installs.
+`<prefix>` is `job_label_prefix`. To ship a release to a Mac without waiting for 05:45, schedule
+it with `fork/scripts/deploy-when-idle.sh --schedule <release tag>`. Add `--now` to install
+without waiting, cutting off whatever runs. `--cancel <release tag>` removes a waiting job and
+ends its drain. `install-runtime.sh` also refreshes `~/t3-fork/pull-deploy.sh` and `fork.env`, and
+installs or refreshes the watchdog from the release it installs.
 
-The fork's scripts read the hosts and IDs they share (the GitHub repository, build-mac's URLs, the
-Aside login LaunchAgent) from `fork/scripts/fork.env`, which ships in each release and is
-installed beside every script copied to `~/t3-fork`. `fork/scripts/check-literals.sh` (run by
-`checks.sh`) fails when a host or ID is written into any other file under `fork/` or a
-`src/fork/` directory.
+The scripts read every name, host and ID from `fork/scripts/fork.env` (and through it your
+`~/.config/julia/fork.env`), which ships in each release and is installed beside every script
+copied to `~/t3-fork`.
 
-**Why build-mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's macOS
-runners bill private-repo minutes at ten times the Linux rate, a daily ~10-minute build would
-use most of the free allowance, and an Action cannot reach the Macs without putting a Tailscale
-auth key in GitHub. build-mac is always on, already has the toolchain (`vp`, Rust, Node), builds in
-about four minutes, and every Mac reaches GitHub with its own `gh` login. The MacBook has Remote
-Login off, so a pull from each Mac replaces a push from build-mac. The large artifacts travel over
-the tailnet from build-mac, not through GitHub: uploading them from build-mac failed about one time in
-three on 2026-10-06 (broken pipe and TLS errors on 80-150 MB uploads).
+**Setting up.** On every Mac: install T3 Code's service (`t3 service install`), `gh auth login`
+with access to your fork, write `~/.config/julia/fork.env`, then from a fork checkout
+`fork/scripts/install-jobs.sh deploy`. On the build Mac, in `~/src/t3code-fork`:
+`fork/scripts/install-jobs.sh sync artifacts deploy`. Toolchain on the build Mac: `vp`
+(`curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash`), Rust stable via rustup, Node 24,
+Xcode command line tools, `gh`, Tailscale (for `tailscale serve`), and the Android toolchain
+above. Where `~/t3-fork` is on a removable volume, an `ExternalLauncher.app` in `~/Applications`
+holding the macOS access grant runs the jobs (`install-jobs.sh`, `deploy-when-idle.sh`); jobs it
+has no service for are refused.
+
+**Why a build Mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's
+macOS runners bill private-repo minutes at ten times the Linux rate, and an Action cannot reach
+the Macs without putting a tailnet auth key in GitHub. A Mac that is always on builds in a few
+minutes, and every Mac reaches GitHub with its own `gh` login, so a pull from each Mac replaces a
+push from the build Mac (no Mac needs Remote Login). The large artifacts travel over your network
+from the build Mac, not through GitHub: uploading 80-150 MB artifacts to GitHub failed about one
+time in three in testing (broken pipe and TLS errors).
 
 **When the sync fails** (a rebase conflict, or a failed check, desktop build or phone build),
-`fork/scripts/autofix.sh` hands it to an agent chat in T3 Code on build-mac (full access; the first
-model in Settings > General > "Fork sync auto-fix models" whose provider has an account with
+`fork/scripts/autofix.sh` hands it to an agent chat in T3 Code on the build Mac (full access; the
+first model in Settings > General > "Fork sync auto-fix models" whose provider has an account with
 usage left, on the account Auto would pick; default Claude Opus, then GPT-6.1; see
-`apps/server/src/fork/autofixAccount.ts`), titled "Fork sync auto-fix: <upstream ref>", so it appears in Owner's app
-under the project `t3code-fork` on build-mac. The chat works in the git worktree
-`~/t3-fork/autofix/<stamp>/worktree` (branch `autofix/<stamp>`, started at origin/owner): it
-rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
+`apps/server/src/fork/autofixAccount.ts`), titled "Fork sync auto-fix: <upstream ref>", so it
+appears in the app under the fork's project on the build Mac. The chat works in the git worktree
+`~/t3-fork/autofix/<stamp>/worktree` (branch `autofix/<stamp>`, started at `origin/<fork_branch>`):
+it rebases, resolves conflicts inside the fork commit being replayed, reruns `checks.sh`,
 `build.sh` and `build-mobile.sh build`, and writes `~/t3-fork/autofix/<stamp>/report.md`
 (`RESOLVED` or `UNRESOLVED`, what conflicted and how it was resolved). The sync waits for the
-chat to finish, at most one hour (Owner's choice): after that it stops the chat's turn, as the
-Stop button does, and treats it as unresolved. It then accepts its branch only if the report says `RESOLVED`, no rebase is left
-in progress, the branch sits on the upstream ref, the fork's commit subjects are unchanged in
-order and number (no "fix conflicts" commit), nothing under `fork/` changed, the fork's test
-cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable count
-did not grow. It then runs the very same rebase check, checks and builds itself on that branch;
-only if they pass does the normal push and release happen, and the release notes carry the
-chat link and the agent's report (what conflicted, how it was resolved) for audit. The chat's
-worktree is removed then. Each auto-fix chat is settled once a newer one starts or a sync
-publishes, so the active list shows at most the latest failed sync's chat; the rest stay under
-Settled. Chats Owner pinned or reopened are left alone.
+chat to finish, at most one hour: after that it stops the chat's turn, as the Stop button does,
+and treats it as unresolved. It then accepts its branch only if the report says `RESOLVED`, no
+rebase is left in progress, the branch sits on the upstream ref, the fork's commit subjects are
+unchanged in order and number (no "fix conflicts" commit), nothing under `fork/` changed, the
+fork's test cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable
+count did not grow. It then runs the very same rebase check, checks and builds itself on that
+branch; only if they pass does the normal push and release happen, and the release notes carry
+the chat link and the agent's report for audit. The chat's worktree is removed then. Each
+auto-fix chat is settled once a newer one starts or a sync publishes, so the active list shows at
+most the latest failed sync's chat; the rest stay under Settled. Chats someone pinned or reopened
+are left alone.
 
 **Where a failure shows up:** if the agent cannot get everything green, times out ("timed
-out after 1 hour"), or its branch fails the guards or the rerun, nothing is released, so nothing deploys, and the job opens (or
-comments on) the issue **"Fork sync failed"** on `owner/t3code` with the step, conflicting
-files, the chat link, the agent's report and verdict, and the log tail. The agent's worktree is
-kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub notifies Owner as the
-repo owner; the MacBook's daily deploy job also raises a macOS notification while that issue is
-open. The next successful sync closes it. Logs: `~/t3-fork/logs/` on each Mac.
+out after 1 hour"), or its branch fails the guards or the rerun, nothing is released, so nothing
+deploys, and the job opens (or comments on) the issue **"Fork sync failed"** on `fork_repo` with
+the step, conflicting files, the chat link, the agent's report and verdict, and the log tail. The
+agent's worktree is kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub
+notifies the repository's owner; the daily deploy job on a Mac with the desktop app also raises
+a macOS notification while that issue is open. The next successful sync closes it. Logs:
+`~/t3-fork/logs/` on each Mac.
 
 Only the first run in 23 hours (normally the 05:00 job) looks at upstream and may start an
 auto-fix chat; it records that in `~/t3-fork/upstream-checked`. Any later run builds and
 publishes the fork on its current base, and on a failure it only opens the issue. Upstream
-cuts several nightlies a day, and before this every manual ship started its own hour-long chat.
-Dry runs ignore the gate.
+cuts several nightlies a day, and without this every manual ship would start its own hour-long
+chat. Dry runs ignore the gate.
 
-Manual runs:
+Manual runs, on the build Mac:
 
 ```
-ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh"'                  # publish now (rebase only if upstream unchecked for 23 h)
-ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run"'        # rebase+check+build (+auto-fix) only
-ssh build-mac 'zsh -lc "~/src/t3code-fork/fork/scripts/sync.sh --dry-run upstream/main"'
-~/t3-fork/pull-deploy.sh                                                       # on any Mac: install now
+~/src/t3code-fork/fork/scripts/sync.sh                          # publish now (rebase only if upstream unchecked for 23 h)
+~/src/t3code-fork/fork/scripts/sync.sh --dry-run                # rebase+check+build (+auto-fix) only
+~/src/t3code-fork/fork/scripts/sync.sh --dry-run upstream/main
+~/t3-fork/pull-deploy.sh                                        # on any Mac: install now
 ```
 
 Resolving a conflict by hand (after the auto-fix gave up): `cd ~/src/t3code-fork && git rebase
-<tag>` on build-mac, fix the hook in the listed upstream file, `git rebase --continue`, then run
-`fork/scripts/sync.sh`. `sync.sh --dry-run <ref> <seconds>` shortens the one-hour limit for a test; only a dry run
-accepts it, and the 05:00 job passes no arguments. A dry run with a failure also starts a real auto-fix chat (it publishes
-nothing and prints the issue body or release notes it would have used). `sync.sh` works on the
-clone it lives in, so a test can run from a scratch clone whose `origin`/`upstream` are local.
+<tag>` on the build Mac, fix the hook in the listed upstream file, `git rebase --continue`, then
+run `fork/scripts/sync.sh`. `sync.sh --dry-run <ref> <seconds>` shortens the one-hour limit for a
+test; only a dry run accepts it, and the 05:00 job passes no arguments. A dry run with a failure
+also starts a real auto-fix chat (it publishes nothing and prints the issue body or release notes
+it would have used). `sync.sh` works on the clone it lives in, so a test can run from a scratch
+clone whose `origin`/`upstream` are local.
 
 ### How a deploy works on one Mac
 
@@ -712,32 +800,30 @@ runtime beside the stock one, sets `activeVersion` in `~/.t3/runtime/service-sta
 restarts the agent, and waits for `/.well-known/t3/environment` to report the new version
 (rolling back to the previous version if it does not within the launcher's own 120 s). Same
 data dir, label, port 3773 and Tailscale Serve. Because the launcher binary does not change,
-the MacBook's Full Disk Access grant for it keeps applying. It keeps the stock runtime and the
-previous fork runtime on disk.
+its Full Disk Access grant keeps applying. It keeps the stock runtime and the previous fork
+runtime on disk.
 
-Fork versions are `<upstream nightly>.owner.<build epoch seconds>+owner.<sha>`. The numeric
-prerelease revision orders fork builds of one nightly; the hash is only artifact identity.
-The existing stock launcher understands this ordering without changing its binary or privacy
-grants. A newer upstream nightly still sorts after every fork build of the previous nightly.
-The fork remains outside upstream's nightly-channel pattern, so it reports the stable channel.
+Fork versions are `<upstream nightly>.<version_label>.<build epoch seconds>+<version_label>.<sha>`.
+The numeric prerelease revision orders fork builds of one nightly; the hash is only artifact
+identity. The existing stock launcher understands this ordering without changing its binary or
+privacy grants. A newer upstream nightly still sorts after every fork build of the previous
+nightly. The fork remains outside upstream's nightly-channel pattern, so it reports the stable
+channel.
 
-Fork runtime downloads use build-mac's tailnet artifact server and exact-version directories,
-including checksum verification; `T3CODE_RELEASE_BASE_URL` still overrides the source for an
-explicit mirror. The built-in **Update all** can then synchronize older servers with the
-client's fork version. Builds using the old `<upstream nightly>+owner.<sha>` scheme need one
-bootstrap deploy through `pull-deploy.sh` on each Mac, then a relaunch of the updated desktop
-app: their old code cannot fetch fork artifacts or order fork revisions correctly.
+Fork runtime downloads use the build Mac's artifact server (`T3CODE_FORK_RELEASE_BASE_URL`,
+embedded at build; see Configuration) and exact-version directories, including checksum
+verification; `T3CODE_RELEASE_BASE_URL` still overrides the source for an explicit mirror. The built-in **Update all** can then synchronize older servers with the
+client's fork version.
 
 ### Rollback (one line per machine)
 
 ```
-~/t3-fork/rollback.sh 0.0.46-nightly.20261005.2702
+~/t3-fork/rollback.sh <stock runtime version, e.g. 0.0.46-nightly.20261005.2702>
 ```
 
-Run it on the MacBook, or `ssh mac-a '~/t3-fork/rollback.sh 0.0.46-nightly.20261005.2702'` and
-the same for build-mac. It switches the service back to the stock runtime and stops the daily
-deploy job. Desktop: quit T3 Code (Owner) and open T3 Code (Nightly), which still has its own
-pairings. To resume the fork: `fork/scripts/install-jobs.sh deploy` then `~/t3-fork/pull-deploy.sh`.
+Run it on each Mac. It switches the service back to the stock runtime and stops the daily
+deploy job. Desktop: quit Julia and open T3 Code (Nightly), which keeps its own pairings. To
+resume the fork: `fork/scripts/install-jobs.sh deploy` then `~/t3-fork/pull-deploy.sh`.
 
 ### Building by hand
 
@@ -745,11 +831,8 @@ pairings. To resume the fork: `fork/scripts/install-jobs.sh deploy` then `~/t3-f
 fork/scripts/build.sh <version> <out-dir>
 fork/scripts/install-runtime.sh <out-dir>/t3-<version>-darwin-arm64.tar.gz
 fork/scripts/install-desktop.sh <out-dir>/T3-Code-*-arm64.zip
-fork/scripts/install-jobs.sh deploy        # every Mac;  on build-mac: sync artifacts deploy
+fork/scripts/install-jobs.sh deploy        # every Mac;  on the build Mac: sync artifacts deploy
 ```
-
-Toolchain on the build Mac (build-mac): `vp` (`curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash`),
-Rust stable via rustup, Node 24 (asdf), Xcode command line tools, `gh` logged in as owner.
 
 ## Keychain
 
@@ -761,13 +844,11 @@ Nothing the fork deploys asks for the keychain.
   again (seen in securityd's log as "ACL partition mismatch: client cdhash"). The fork app
   starts Chromium with `--use-mock-keychain` (`apps/desktop/src/fork/keychain.ts`), so safe
   storage uses a fixed key and never reads the keychain. The trade-off: the fork app's saved
-  pairings in `~/.t3-owner-app` are protected by file permissions only, the same as the server's
-  own secrets in `~/.t3/userdata/secrets`.
+  pairings in `~/<desktop_home_dirname>` are protected by file permissions only, the same as the
+  server's own secrets in `~/.t3/userdata/secrets`.
 - **Servers.** The T3 server reads one keychain item, the Cursor CLI login for Cursor usage, and
-  only when "Cursor account usage" is turned on; it is off on all three Macs. Claude and Codex
-  read their own credentials in their own processes, whose binaries the fork does not change.
-- The prompt Owner saw on 2026-10-06 was the first fork build asking for the official app's
-  `t3code Safe Storage`; the fork no longer uses that item or any other.
+  only when "Cursor account usage" is turned on. Claude and Codex read their own credentials in
+  their own processes, whose binaries the fork does not change.
 
 ## Proposing upstream
 
@@ -792,9 +873,10 @@ Each series is independent of the packaging and tooling commits.
   handoff instead of the client-built first message.
 - **Fleet awareness**: the record model, overlap rule and toolkit are generic; upstream would
   want the hub replaced by T3's own environment connections (each client already talks to every
-  machine) rather than a fork-only shared secret, and the Acme path meanings left out.
+  machine) rather than a fork-only shared secret, and the path meanings left to configuration.
 - **Packaging**: `T3CODE_DESKTOP_APP_ID`/`_PRODUCT_NAME`/`_PACKAGE_NAME` overrides are useful to
-  any fork; the profile split would need a build-time flag instead of the bundle-name check.
+  any fork; the profile split would need a build-time flag instead of the bundle-name check and
+  the generated `identity.ts`.
 
 ## Implementation notes
 
@@ -815,33 +897,32 @@ Each series is independent of the packaging and tooling commits.
   phone hooks are two small copies because a file under `apps/web` imported by the phone must not
   import `@effect/atom-react` (a second copy would miss the phone's registry context).
 - Disk: worktree `node_modules` are APFS clones that share blocks, so `du` and Finder count each
-  copy in full (about 250 GB for 70 GB actually used on mac-a on 2026-10-14).
+  copy in full (about 250 GB for 70 GB actually used on one machine).
   `fork/scripts/disk-usage.py <dirs> --context <other dirs> --skip-git` reports what a folder really
   uses and what deleting it would free. Never run `pnpm store prune` here: with clones every store
   file has one link, so prune deletes the whole store and the next install downloads it again.
 
 ## Deviations
 
-- Limit failover names its tab on the source before sending the tab's first message (2026-10-17,
-  Owner). A crash between the two would leave a named tab that never starts, so the usage-limit
+- Limit failover names its tab on the source before sending the tab's first message. A crash between the two would leave a named tab that never starts, so the usage-limit
   sweep keeps such a source as a candidate until the tab's `<tab id>:continue` message exists,
   bounded like every failover by the limit's reset. That branch ignores the source's settled or
-  archived state, because the bridge may settle a source once it names its tab.
+  archived state, because an external bridge may settle a source once it names its tab.
 - Auto reuses upstream's load-balancing setting and per-machine preference instead of a new
   setting: "Manual only" excludes a machine; any other preference makes it eligible, and the
   Prefer/Normal/Less often levels have no further effect under the fork rule.
-- "MacBook excluded unless enabled" is implemented as "laptops default to Manual only", since the
-  environment's machine kind (`laptop`) is what T3 knows about the MacBook.
+- "Laptops excluded unless enabled" is implemented as "laptops default to Manual only", since the
+  environment's machine kind (`laptop`) is what T3 knows about a laptop.
 - Available memory is T3's own `server.getHostResources` figure (free + inactive + speculative
   pages on macOS), not Activity Monitor's "memory used" figure the Happier fork used.
 - The desktop app's window title and menu read "T3 Code (Alpha)": T3 derives that label from the
-  version, and the fork version's `+owner` suffix is outside upstream's nightly pattern. The app
-  bundle, Dock and Finder name are "T3 Code (Owner)".
-- The fork app was paired fresh with all three servers (Owner chose this over granting it the
-  official app's keychain item), so it has its own pairing records on each server.
+  version, and the fork version's `+<version_label>` suffix is outside upstream's nightly pattern.
+  The app bundle, Dock and Finder name are "Julia".
+- The fork app is paired fresh with each server (rather than granted the official app's keychain
+  item), so it has its own pairing records on each server.
 - Desktop updates install into /Applications without quitting a running app; the new build runs
   at the next launch.
-- The phone app is Android only (Owner's phone); the iOS config is untouched. Its build is part
+- The phone app is Android only; the iOS config is untouched. Its build is part
   of the sync, so a phone build failure holds back that day's server and desktop release too, the
   same rule as every other failed step. If that proves too strict, the phone step can report on
   the same issue without stopping the release.
@@ -855,7 +936,7 @@ Each series is independent of the packaging and tooling commits.
   history and the target server has none of it. Reasoning, tool-call state and attachments do not
   move (as with T3's own handoffs); the work itself moves through git.
 - Usage > Machines has no keyboard shortcut (Cost, Tokens and Limits have C, T, L): one would need
-  a new keybinding command in contracts and shared defaults for a tab Owner opens by clicking.
+  a new keybinding command in contracts and shared defaults for a tab opened by clicking.
 - A machine's "last seen" is what this client saw since it started; a machine already offline when
   the app opens shows `not seen since the app opened`. No server keeps a history to ask.
 - The moved-thread banner is remembered by the client that did the move; other clients see the
@@ -864,8 +945,8 @@ Each series is independent of the packaging and tooling commits.
   rebuild from projections; T3 has no lifecycle-only subscription, so the fork filters the event
   types itself. A Claude read-only (Supervised) thread does not pre-approve the fleet tools; T3's
   read-only allowlist is upstream code the fork leaves alone.
-- Usage in the machine pickers (Owner, 2026-10-06: "show the usage details when deciding what
-  machine to put the code on") was read as: wherever a machine is picked for a thread, each
+- Usage in the machine pickers ("show the usage details when deciding what machine to put the
+  code on") was read as: wherever a machine is picked for a thread, each
   machine shows its live CPU, memory and disk from the Machines tab's own data and formatting.
   The Auto option keeps its "why" text and gets no line of its own. The thread title menu is
   native (Electron), so its Move items show the reading taken as it opens instead of a live one;
