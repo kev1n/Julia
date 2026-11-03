@@ -8,6 +8,7 @@ import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import type { AnyRouter } from "@tanstack/react-router";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 import {
@@ -20,6 +21,7 @@ import {
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
 import { isWindowsPlatform } from "../lib/utils";
 import { environmentSummaries } from "../state/presentation";
+import { serverEnvironment } from "../state/server";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
 import {
@@ -84,6 +86,15 @@ export function startThreadNotifications(
     kind: ThreadNotificationKind,
   ) => {
     const { thread, status } = state;
+    // Fork (Owner): a project of unattended automation threads can turn its
+    // alerts off; the gate has already advanced this thread's state, so
+    // turning them back on does not replay old completions.
+    const serverSettings = registry.get(serverEnvironment.settingsValueAtom(environmentId));
+    if (
+      serverSettings !== null &&
+      !resolveProjectSettings(serverSettings, state.raw.projectId).settings.threadAlertsEnabled
+    )
+      return;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
     const active = (router.state.matches.at(-1)?.params ?? {}) as {
       environmentId?: string;

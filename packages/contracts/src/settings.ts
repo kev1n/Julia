@@ -1004,6 +1004,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "pullRequestMergeMethod",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "threadAlertsEnabled",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1038,6 +1039,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   pullRequestMergeMethod: Schema.optionalKey(Schema.NullOr(PullRequestMergeMethod)),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  threadAlertsEnabled: Schema.optionalKey(Schema.Boolean),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
@@ -1188,6 +1190,13 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
+  /**
+   * Fork: whether a thread finishing, failing, or needing input plays the
+   * notification sound, shows a system notification, or shows a toast.
+   * Server-scoped so a project of unattended automation threads can turn its
+   * alerts off for every client; the device's notification mode still applies.
+   */
+  threadAlertsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snoozePresets: SnoozePresetSettings.pipe(
@@ -1575,6 +1584,7 @@ export const ServerSettingsPatch = Schema.Struct({
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
+  threadAlertsEnabled: Schema.optionalKey(Schema.Boolean),
   keepUsageWindowsOpen: Schema.optionalKey(Schema.Boolean),
   syncAutofixModelSelections: Schema.optionalKey(Schema.Array(ModelSelection)),
   continueLimitedThreadsElsewhere: Schema.optionalKey(Schema.Boolean),
