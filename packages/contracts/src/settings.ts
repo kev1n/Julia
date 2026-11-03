@@ -395,7 +395,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
   effortDisplay: EffortDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("label" as const))),
-  // Fork (Owner): Auto placement is the default for new threads.
+  // Fork: Auto placement is the default for new threads.
   loadBalancingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   loadBalancingWeights: LoadBalancingWeights.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   appearanceContrast: AppearanceContrast.pipe(

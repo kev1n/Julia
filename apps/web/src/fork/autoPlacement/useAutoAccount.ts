@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): with Auto on, the composer uses the account `chooseAutoAccount`
+ * Fork: with Auto on, the composer uses the account `chooseAutoAccount`
  * picks among the chosen machine's instances of the selected provider, and
  * the composer line says what Auto chose and why.
  */
@@ -61,6 +61,7 @@ export function useAutoAccount(input: {
           ),
           (provider) => provider.usageLimits,
           now,
+          model,
         )
       : null;
   const appliedRef = useRef<string | null>(null);
@@ -106,7 +107,8 @@ export function useLimitedAccountSwitch(input: {
     const current = providers.find(
       (provider) => provider.instanceId === currentSelection.instanceId,
     );
-    if (!current || !accountStanding(current.usageLimits, now).limited) return null;
+    if (!current || !accountStanding(current.usageLimits, now, currentSelection.model).limited)
+      return null;
     const choice = resolveNewChatModelSelection(currentSelection, settings, providers, now);
     return choice !== currentSelection ? choice : null;
   })();
@@ -121,7 +123,7 @@ export function useLimitedAccountSwitch(input: {
   }, [draftId, target, select]);
 }
 
-/** `Claude owner (Max 20x)`: the instance name, with the plan unless the name has one. */
+/** `Claude bob (Max 20x)`: the instance name, with the plan unless the name has one. */
 function accountName(provider: ServerProvider, driverLabel: string): string {
   const name = provider.displayName?.trim() || driverLabel;
   const plan = shortPlanLabel(provider.auth.label);
@@ -137,7 +139,7 @@ function accountLogin(provider: ServerProvider): string | null {
 }
 
 /**
- * The Auto chip names the machine, account and tightest window ("build-mac · alice · 40% week").
+ * The Auto chip names the machine, account and tightest window ("studio-b · alice · 40% week").
  * The tooltip has a line for why Auto chose the machine, one for the account and plan, and one per
  * window with its reset ("72% session · resets 3:40 PM").
  */

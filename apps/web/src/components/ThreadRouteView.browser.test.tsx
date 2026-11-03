@@ -103,8 +103,8 @@ vi.mock(import("./ui/sidebar"), async (original) => ({
 }));
 
 const environmentId = EnvironmentId.make("local");
-const acme = scopeProjectRef(environmentId, ProjectId.make("acme"));
-const draftId = DraftId.make("acme-draft");
+const catalog = scopeProjectRef(environmentId, ProjectId.make("catalog"));
+const draftId = DraftId.make("catalog-draft");
 
 function Harness({ initialTarget }: { initialTarget: ThreadRouteTarget | null }) {
   const [target, setTarget] = useState(initialTarget);
@@ -128,7 +128,7 @@ async function setup() {
     .mockResolvedValue({ draftId, threadId: ThreadId.make("thread:t3-fork-draft") });
   state.search = {};
   state.threads = [];
-  state.projects = ["t3-fork", "acme"].map((id) => ({
+  state.projects = ["t3-fork", "catalog"].map((id) => ({
     environmentId,
     id: ProjectId.make(id),
     title: id,
@@ -144,7 +144,7 @@ async function setup() {
     draftThreadsByThreadKey: {},
     logicalProjectDraftThreadKeyByLogicalProjectKey: {},
   });
-  useComposerDraftStore.getState().setProjectDraftThreadId(acme, draftId);
+  useComposerDraftStore.getState().setProjectDraftThreadId(catalog, draftId);
 }
 
 async function closeDraft() {
@@ -158,7 +158,7 @@ async function closeDraft() {
   return screen;
 }
 
-it("does not create a t3-fork draft when the Acme draft is closed", async () => {
+it("does not create a t3-fork draft when the catalog draft is closed", async () => {
   await setup();
   await using _screen = await closeDraft();
   expect(state.startDraft).not.toHaveBeenCalled();
@@ -169,15 +169,15 @@ it("returns to the latest existing thread in the draft's project", async () => {
   await setup();
   const latest = makeThreadFixture({
     environmentId,
-    projectId: acme.projectId,
-    id: ThreadId.make("acme-latest"),
+    projectId: catalog.projectId,
+    id: ThreadId.make("catalog-latest"),
     updatedAt: "2026-10-07T00:00:00Z",
   });
   state.threads = [
     makeThreadFixture({
       environmentId,
-      projectId: acme.projectId,
-      id: ThreadId.make("acme-old"),
+      projectId: catalog.projectId,
+      id: ThreadId.make("catalog-old"),
     }),
     latest,
     makeThreadFixture({
@@ -187,19 +187,19 @@ it("returns to the latest existing thread in the draft's project", async () => {
     }),
     makeThreadFixture({
       environmentId,
-      projectId: acme.projectId,
+      projectId: catalog.projectId,
       id: ThreadId.make("archived"),
       archivedAt: "2026-10-08T00:00:00Z",
       updatedAt: "2026-10-08T00:00:00Z",
     }),
     makeThreadFixture({
       environmentId: EnvironmentId.make("remote"),
-      projectId: acme.projectId,
+      projectId: catalog.projectId,
       updatedAt: "2026-10-08T00:00:00Z",
     }),
     makeThreadFixture({
       environmentId,
-      projectId: acme.projectId,
+      projectId: catalog.projectId,
       id: ThreadId.make("deleted"),
       deletedAt: "2026-10-08T00:00:00Z",
       updatedAt: "2026-10-08T00:00:00Z",
@@ -219,12 +219,12 @@ it("does not reopen archived or deleted threads when closing a draft", async () 
   state.threads = [
     makeThreadFixture({
       environmentId,
-      projectId: acme.projectId,
+      projectId: catalog.projectId,
       archivedAt: "2026-10-08T00:00:00Z",
     }),
     makeThreadFixture({
       environmentId,
-      projectId: acme.projectId,
+      projectId: catalog.projectId,
       deletedAt: "2026-10-08T00:00:00Z",
     }),
   ];

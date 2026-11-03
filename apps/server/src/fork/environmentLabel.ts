@@ -1,6 +1,6 @@
 /**
- * Fork (Owner): the environment's name from a one-line `environment-label` file in the server's
- * userdata directory, so Owner's Macs say MacBook, mac-a and build-mac without renaming the
+ * Fork: the environment's name from a one-line `environment-label` file in the server's
+ * userdata directory, so machines carry short fleet names without renaming the
  * computers. Without the file T3's own label (the computer name) stays.
  */
 import * as Effect from "effect/Effect";

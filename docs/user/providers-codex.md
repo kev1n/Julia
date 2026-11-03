@@ -72,6 +72,12 @@ Use a completely separate **CODEX_HOME path**, with no shadow home, when you wan
 separate Codex sessions and configuration. That instance cannot continue threads
 from the other home.
 
+### Many accounts through a proxy
+
+For more than a couple of accounts, run [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+and route one Codex instance through it, then link the instance to the hub so its usage reflects
+the proxy's accounts. [Connect a CLIProxyAPI hub](./usage.md#connect-a-cliproxyapi-hub)
+
 ## Switch accounts in an existing thread
 
 Choose the other account from the thread's model picker. T3 Code offers compatible

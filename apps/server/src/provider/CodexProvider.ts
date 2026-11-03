@@ -217,7 +217,7 @@ function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"])
 
 export function codexDefaultReasoningEffortOverride(model: string): string | undefined {
   const family = codexModelFamily(model);
-  // Fork (Owner): the fork's Codex default effort wins, so the catalog and turns without a
+  // Fork: the fork's Codex default effort wins, so the catalog and turns without a
   // saved effort agree on it.
   return forkCodexDefaultEffort(family) ?? (family === "gpt-6-astra" ? "medium" : undefined);
 }

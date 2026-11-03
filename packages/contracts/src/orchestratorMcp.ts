@@ -131,7 +131,7 @@ export const OrchestratorMcpRuntimeMode = Schema.Union([Schema.Literal("inherit"
 export type OrchestratorMcpRuntimeMode = typeof OrchestratorMcpRuntimeMode.Type;
 
 /**
- * Fork (Owner): a delegated task runs unattended, so it never takes a mode that
+ * Fork: a delegated task runs unattended, so it never takes a mode that
  * stops to ask for approval. Its prompts would sit in a child thread nobody is
  * watching (apps/server/src/mcp/OrchestratorMcpService.ts resolveDelegatedRuntimeMode).
  */
@@ -203,11 +203,11 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
   runtimeMode: Schema.optional(OrchestratorMcpDelegatedRuntimeMode),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
-  /** Fork (Owner): run the child on another fleet machine (apps/server/src/fork/fleet/remoteTasks.ts). */
+  /** Fork: run the child on another fleet machine (apps/server/src/fork/fleet/remoteTasks.ts). */
   machine: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Machine to run the child on: a label such as MacBook, mac-a or build-mac, or an environmentId from t3_fleet_list coverage. The child is still a subagent of this thread there. Omit to run on this machine.",
+        "Machine to run the child on: a label or environmentId from t3_fleet_list coverage. The child is still a subagent of this thread there. Omit to run on this machine.",
     }),
   ),
 });
@@ -261,7 +261,7 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
     description: "True only on the timed-out wait call. The child keeps running.",
   }),
   next: Schema.optional(OrchestratorMcpRunningTaskNext),
-  /** Fork (Owner): set when the child runs on another fleet machine. */
+  /** Fork: set when the child runs on another fleet machine. */
   machine: Schema.optional(Schema.String),
 });
 export type OrchestratorMcpDelegateTaskResult = typeof OrchestratorMcpDelegateTaskResult.Type;

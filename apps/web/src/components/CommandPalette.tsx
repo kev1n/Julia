@@ -1555,7 +1555,7 @@ function OpenCommandPaletteDialog(props: {
   }
 
   if (moveThread.choices.length > 0) {
-    // Fork (Owner): see fork/moveThread.
+    // Fork: see fork/moveThread.
     actionItems.push({
       kind: "submenu",
       value: "action:fork-move-thread",

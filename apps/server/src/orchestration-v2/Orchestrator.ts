@@ -6358,7 +6358,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     if (command.restartContinuationOfRunId !== undefined) {
       const source = projection.runs.find((run) => run.id === command.restartContinuationOfRunId);
-      // Fork (Owner): a restart wake for background work a settled turn lost.
+      // Fork: a restart wake for background work a settled turn lost.
       const wake = source !== undefined && isRestartWakeSource(source, projection.providerTurns);
       if (
         !source ||
@@ -6898,7 +6898,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       dispatchMode.type === "start_immediately" ||
       dispatchMode.type === "queue_after_active";
     // Client and MCP messages resume held queues; server continuations and scheduled tasks do not.
-    // Fork (Owner): while a usage limit holds the queue, only the limit's continuation releases it.
+    // Fork: while a usage limit holds the queue, only the limit's continuation releases it.
     const worktreeSetupUnresolved = worktreeSetupPending(projection);
     const resumesHeldQueue =
       startsOrQueuesRun &&
@@ -6917,7 +6917,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const heldRunsToRelease = resumesHeldQueue
       ? projection.runs.filter((run) => run.status === "queued" && run.queueHeld === true)
       : [];
-    // Fork (Owner): on an idle thread the message joins the back of the
+    // Fork: on an idle thread the message joins the back of the
     // released queue, which drains earliest first, instead of starting ahead.
     const heldQueuedRun =
       activeRun === undefined && worktreeMissingRun === undefined
@@ -9170,7 +9170,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const child = yield* projectionStore.getThread(command.threadId);
     const parentThreadId = child.lineage.parentThreadId;
     // Only an app-owned child (forked from its parent's task node) has a task to follow up.
-    // Fork (Owner): a subagent of a thread on another machine has no node and no parent here.
+    // Fork: a subagent of a thread on another machine has no node and no parent here.
     // A send with no sender thread comes from a client acting for the owner, like a user send.
     if (
       child.lineage.relationshipToParent !== "subagent" ||
@@ -12484,7 +12484,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       },
     );
     const run = projection.runs.find((candidate) => candidate.id === command.runId);
-    // Fork (Owner): a run still waiting in the queue has not launched, so stopping it
+    // Fork: a run still waiting in the queue has not launched, so stopping it
     // cancels it; refusing would leave it to start once the run ahead of it ends.
     if (run?.status === "queued") {
       yield* dispatchQueuedRunCancel(

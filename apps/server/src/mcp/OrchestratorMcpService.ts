@@ -696,7 +696,7 @@ function canExposeTaskRunResult(run: OrchestrationV2Run | undefined): run is Orc
 }
 
 /**
- * Fork (Owner): delegated tasks run unattended, so a mode that stops for
+ * Fork: delegated tasks run unattended, so a mode that stops for
  * approval would leave prompts in a child thread nobody watches. Refuse rather
  * than escalate past the parent's mode.
  */
@@ -1457,7 +1457,7 @@ const make = Effect.gen(function* () {
         `Provider ${instanceId} has no model available for inheritance.`,
       );
     }
-    // Fork (Owner): model and options are checked against the account the
+    // Fork: model and options are checked against the account the
     // child resolves to below, which may differ from an unavailable inherited one.
     const advertised = advertisedModel(provider, model);
     const descriptors = advertised?.capabilities?.optionDescriptors;
@@ -1486,7 +1486,7 @@ const make = Effect.gen(function* () {
       options = [...selections.values()];
     }
     const modelSelection = { instanceId, model, ...(options === undefined ? {} : { options }) };
-    // Fork (Owner): an explicit account is a pin. Only inherited/Auto targets may move
+    // Fork: an explicit account is a pin. Only inherited/Auto targets may move
     // to a compatible account with limits left.
     const now = yield* Clock.currentTimeMillis;
     const movesAccount =

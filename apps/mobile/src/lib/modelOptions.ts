@@ -35,7 +35,7 @@ export type ModelOption = {
   readonly subtitle: string;
   readonly providerKey: string;
   readonly providerLabel: string;
-  /** Fork (Owner): the instance's subscription and what it has left. */
+  /** Fork: the instance's subscription and what it has left. */
   readonly providerDetail?: string | undefined;
   readonly providerDriver: string;
   readonly usageLimits?: ServerProviderUsageLimits | undefined;

@@ -707,7 +707,7 @@ it.effect.each(["thread.stop", "run.interrupt"] as const)(
     }).pipe(Effect.provide(layerTest)),
 );
 
-// Fork (Owner): an agent's message (t3_thread_send) resumes a Stop's held queue too, and a
+// Fork: an agent's message (t3_thread_send) resumes a Stop's held queue too, and a
 // message sent to an idle thread with a held queue joins its back, so the queue drains
 // earliest first instead of the new message starting ahead.
 it.effect(
@@ -1182,7 +1182,7 @@ it.effect.each(["thread.stop", "run.interrupt"] as const)(
         creationSource: "server",
         restartContinuationOfRunId: source.id,
       });
-      // Fork (Owner): a message sent to a held queue waits behind it, so the held run
+      // Fork: a message sent to a held queue waits behind it, so the held run
       // resumed before the restart source ever ran and keeps the earlier place.
       assert.deepEqual(yield* threadState(threadId), {
         runs: ["completed", "interrupted", "cancelled"],

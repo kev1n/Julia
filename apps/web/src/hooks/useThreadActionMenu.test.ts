@@ -141,7 +141,7 @@ vi.mock("./useThreadActions", () => ({
     ),
 }));
 
-// Fork (Owner): the move-to-machine entries are not under test here.
+// Fork: the move-to-machine entries are not under test here.
 vi.mock("../fork/moveThread/useMoveThread", () => ({
   isMoveMenuId: () => false,
   useMoveThread: () => ({ choices: [], menuItems: async () => [], move: async () => {} }),

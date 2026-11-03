@@ -4,7 +4,7 @@ import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3too
 import { isRestartNoteSource } from "../orchestration-v2/RestartBackgroundNote.ts";
 
 /**
- * Fork (Owner): a restart wakes a thread whose turn ended while its background work was still
+ * Fork: a restart wakes a thread whose turn ended while its background work was still
  * running. Upstream stopped waking settled runs because stale records woke finished threads, so the
  * wake is decided only while the provider session is provably live: at `prepareForShutdown`, or at
  * startup after a crash. Delivery then needs no liveness check.

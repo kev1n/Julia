@@ -64,19 +64,19 @@ describe("versionSkew", () => {
 
   // regression: #7579 versions were compared as strings, not semver
   it("does not offer an update based on fork hash ordering", () => {
-    branding.APP_VERSION = "0.0.46-nightly.20261007.2787+owner.dd65a77";
-    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+owner.9f0409f")).toBeNull();
-    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+owner.a45def3")).toBeNull();
+    branding.APP_VERSION = "0.0.46-nightly.20261007.2787+fork.dd65a77";
+    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+fork.9f0409f")).toBeNull();
+    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+fork.a45def3")).toBeNull();
   });
 
   it("orders fork updates by their prerelease revision, not their hash", () => {
-    branding.APP_VERSION = "0.0.46-nightly.20261007.2787.owner.1791429000+owner.a45def3";
-    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+owner.dd65a77")).not.toBeNull();
+    branding.APP_VERSION = "0.0.46-nightly.20261007.2787.fork.1791429000+fork.a45def3";
+    expect(resolveVersionMismatch("0.0.46-nightly.20261007.2787+fork.dd65a77")).not.toBeNull();
     expect(
-      resolveVersionMismatch("0.0.46-nightly.20261007.2787.owner.1791428999+owner.dd65a77"),
+      resolveVersionMismatch("0.0.46-nightly.20261007.2787.fork.1791428999+fork.dd65a77"),
     ).not.toBeNull();
     expect(
-      resolveVersionMismatch("0.0.46-nightly.20261007.2787.owner.1791429001+owner.9f0409f"),
+      resolveVersionMismatch("0.0.46-nightly.20261007.2787.fork.1791429001+fork.9f0409f"),
     ).toBeNull();
   });
 

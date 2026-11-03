@@ -1042,7 +1042,7 @@ export function resolveAdjacentThreadId<T>(input: {
 }
 
 // "ready" is the unlabeled resting state: the agent stopped and is waiting on the user.
-// Fork (Owner): background work that holds completion stays working, even between
+// Fork: background work that holds completion stays working, even between
 // provider turns. Commands left running, such as a dev server, do not hold completion.
 // "waiting" is only a turn blocked on another T3 thread.
 export type SidebarThreadStatus =

@@ -242,7 +242,7 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
   assert.equal(settled.runs[0]?.status, "completed");
   assert.equal(settled.subagents[0]?.status, "running");
 
-  // Fork (Owner): a clean restart wakes the thread itself when continuation is on, and that
+  // Fork: a clean restart wakes the thread itself when continuation is on, and that
   // turn must settle before the user's next message.
   const wakes = shutdown === "clean" && input.continueThreadsAfterServerUpdate;
   const restartScenario = scenario("restarted", wakes ? [materialized.steps[firstIdle]!] : []);
@@ -320,7 +320,7 @@ describe("restart-cancelled background work", () => {
       ),
   );
 
-  // Fork (Owner): the agent hears about the lost subagent without waiting for the user.
+  // Fork: the agent hears about the lost subagent without waiting for the user.
   it.effect("wakes the settled thread with the note once, by itself, after a clean restart", () =>
     Effect.scoped(
       Effect.gen(function* () {

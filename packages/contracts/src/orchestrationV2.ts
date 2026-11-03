@@ -418,7 +418,7 @@ export const OrchestrationV2LimitRecovery = Schema.Struct({
   resetAt: IsoDateTime,
   autoResume: Schema.Boolean,
   snooze: Schema.optional(Schema.Boolean),
-  // Fork (Owner): the tab limit failover continued this run in.
+  // Fork: the tab limit failover continued this run in.
   continuedIn: Schema.optional(ThreadId),
 });
 export type OrchestrationV2LimitRecovery = typeof OrchestrationV2LimitRecovery.Type;
@@ -3009,7 +3009,7 @@ export const OrchestrationV2Command = Schema.Union([
     chatGroupId: Schema.optional(ThreadId),
     /** Create the thread already snoozed until this time (fork). */
     snoozedUntil: Schema.optional(IsoDateTime),
-    /** Fork (Owner): a subagent of this thread on another machine (fork/fleet/remoteTasks.ts). */
+    /** Fork: a subagent of this thread on another machine (fork/fleet/remoteTasks.ts). */
     remoteParentThreadId: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({

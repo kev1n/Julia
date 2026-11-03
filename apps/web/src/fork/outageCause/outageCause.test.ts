@@ -15,32 +15,32 @@ const environment = (
   connection: { phase },
 });
 
-const macbook = EnvironmentId.make("MacBook");
+const laptop = EnvironmentId.make("laptop");
 
 describe("outageCause", () => {
   it("blames the server when another machine is connected", () => {
     expect(
       outageCause({
         networkStatus: "online",
-        unavailableEnvironmentId: macbook,
+        unavailableEnvironmentId: laptop,
         environments: [
-          environment("MacBook", "reconnecting"),
-          environment("mac-a", "connected"),
-          environment("build-mac", "reconnecting"),
+          environment("laptop", "reconnecting"),
+          environment("studio", "connected"),
+          environment("office", "reconnecting"),
         ],
       }),
-    ).toEqual({ _tag: "server", connectedLabel: "mac-a" });
+    ).toEqual({ _tag: "server", connectedLabel: "studio" });
   });
 
   it("blames this device's network when every machine is unreachable", () => {
     expect(
       outageCause({
         networkStatus: "online",
-        unavailableEnvironmentId: macbook,
+        unavailableEnvironmentId: laptop,
         environments: [
-          environment("MacBook", "reconnecting"),
-          environment("mac-a", "reconnecting"),
-          environment("build-mac", "error"),
+          environment("laptop", "reconnecting"),
+          environment("studio", "reconnecting"),
+          environment("office", "error"),
         ],
       }),
     ).toEqual({ _tag: "device-network" });
@@ -50,11 +50,11 @@ describe("outageCause", () => {
     expect(
       outageCause({
         networkStatus: "online",
-        unavailableEnvironmentId: macbook,
+        unavailableEnvironmentId: laptop,
         environments: [
-          environment("MacBook", "reconnecting"),
+          environment("laptop", "reconnecting"),
           environment("Local", "connected", "http://127.0.0.1:3773"),
-          environment("mac-a", "reconnecting"),
+          environment("studio", "reconnecting"),
         ],
       }),
     ).toEqual({ _tag: "device-network" });
@@ -64,8 +64,8 @@ describe("outageCause", () => {
     expect(
       outageCause({
         networkStatus: "online",
-        unavailableEnvironmentId: macbook,
-        environments: [environment("MacBook", "reconnecting"), environment("mac-a", "available")],
+        unavailableEnvironmentId: laptop,
+        environments: [environment("laptop", "reconnecting"), environment("studio", "available")],
       }),
     ).toEqual({ _tag: "unknown" });
   });
@@ -74,8 +74,8 @@ describe("outageCause", () => {
     expect(
       outageCause({
         networkStatus: "offline",
-        unavailableEnvironmentId: macbook,
-        environments: [environment("MacBook", "offline"), environment("mac-a", "connected")],
+        unavailableEnvironmentId: laptop,
+        environments: [environment("laptop", "offline"), environment("studio", "connected")],
       }),
     ).toEqual({ _tag: "device-offline" });
   });
@@ -85,17 +85,17 @@ describe("outageBannerText", () => {
   it("names the cause in the title", () => {
     expect(
       outageBannerText({
-        label: "MacBook",
+        label: "laptop",
         reconnecting: true,
-        cause: { _tag: "server", connectedLabel: "mac-a" },
+        cause: { _tag: "server", connectedLabel: "studio" },
       }).title,
-    ).toBe("MacBook isn't responding");
+    ).toBe("laptop isn't responding");
     expect(
-      outageBannerText({ label: "mac-a", reconnecting: true, cause: { _tag: "device-network" } })
+      outageBannerText({ label: "studio", reconnecting: true, cause: { _tag: "device-network" } })
         .title,
-    ).toBe("mac-a is reconnecting: your network");
+    ).toBe("studio is reconnecting: your network");
     expect(
-      outageBannerText({ label: "mac-a", reconnecting: false, cause: { _tag: "unknown" } }),
-    ).toEqual({ title: "mac-a is offline", description: null });
+      outageBannerText({ label: "studio", reconnecting: false, cause: { _tag: "unknown" } }),
+    ).toEqual({ title: "studio is offline", description: null });
   });
 });

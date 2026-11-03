@@ -202,7 +202,7 @@ export const continueRestartedRun = Effect.fn("RestartContinuation.continueResta
     if (projection.messages.some((message) => message.id === messageId)) return;
     const source = projection.runs.find((run) => run.id === input.sourceRunId);
     if (!source) return;
-    // Fork (Owner): a settled turn whose live background work the restart cancelled is
+    // Fork: a settled turn whose live background work the restart cancelled is
     // woken with the note (`fork/restartWake.ts` decided liveness when it queued this),
     // including work upstream does not wait on, such as background shells.
     const wake = isRestartWakeSource(source, projection.providerTurns);

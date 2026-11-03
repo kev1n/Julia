@@ -751,7 +751,7 @@ export function createEnvironmentThreadShellAtoms(input: {
       const own =
         get(subagentsByParentAtom(ref.environmentId)).get(ref.threadId) ?? EMPTY_SUBAGENT_SHELLS;
       if (!get(environmentThreadIndexAtom(ref.environmentId)).has(ref.threadId)) return own;
-      // Fork (Owner): a subagent run on another machine (apps/server/src/fork/fleet/remoteTasks.ts)
+      // Fork: a subagent run on another machine (apps/server/src/fork/fleet/remoteTasks.ts)
       // names a parent its own environment does not have; it nests under that parent here.
       const remote = Array.from(enabledEnvironmentIds(get(input.catalogValueAtom))).flatMap(
         (environmentId) =>
@@ -769,7 +769,7 @@ export function createEnvironmentThreadShellAtoms(input: {
     });
   });
 
-  // Fork (Owner): a chat's tabs are one thread to the user, so its row lists
+  // Fork: a chat's tabs are one thread to the user, so its row lists
   // every tab's subagents rather than changing with the selected tab.
   const chatSubagentThreadShellsAtom = Atom.family((key: string) => {
     const keys: ReadonlyArray<string> = JSON.parse(key);

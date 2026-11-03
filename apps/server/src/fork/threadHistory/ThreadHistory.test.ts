@@ -38,6 +38,7 @@ import {
   type HistoryBlobStore,
   asBlobError,
   azureHistoryBlobStore,
+  readHistoryStoreConfig,
   sha256Hex,
 } from "./blobStore.ts";
 import { decodeBundle, encodeBundle, MOVED_EVENT_TYPES, OFFLOAD_GRACE_MS } from "./historyStore.ts";
@@ -672,23 +673,62 @@ it.layer(layerTest)("ThreadHistory", (it) => {
   );
 });
 
-// mac-a 2026-11-02: an `az` that never answered held the one sign-in every restore waits on for 4h.
+// 2026-11-02: an `az` that never answered held the one sign-in every restore waits on for 4h.
 it.live("a hung az fails the sign-in as unavailable instead of holding every restore", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const az = path.join(yield* fs.makeTempDirectoryScoped({ prefix: "hung-az-" }), "az");
     yield* fs.writeFileString(az, "#!/bin/sh\nexec sleep 600\n", { mode: 0o755 });
-    const store = azureHistoryBlobStore("example-history-secret", {
-      file: az,
-      timeoutMs: 50,
-    });
+    const store = azureHistoryBlobStore(
+      {
+        store: "azure-keyvault",
+        keyVault: "test-vault",
+        secret: "history-test-secret",
+      },
+      {
+        file: az,
+        timeoutMs: 50,
+      },
+    );
     const error = yield* Effect.flip(Effect.tryPromise({ try: store.ready, catch: asBlobError }));
     assert.deepStrictEqual(
       error,
       new HistoryBlobUnavailable({
-        message: "Key Vault secret example-history-secret unreadable",
+        message: "Key Vault secret history-test-secret unreadable",
       }),
     );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+/** Sets or clears T3CODE_THREAD_HISTORY_SECRET and returns its previous value. */
+const setHistorySecret = (value: string | undefined) => {
+  const previous = process.env.T3CODE_THREAD_HISTORY_SECRET;
+  if (value === undefined) delete process.env.T3CODE_THREAD_HISTORY_SECRET;
+  else process.env.T3CODE_THREAD_HISTORY_SECRET = value;
+  return previous;
+};
+
+it.live("reads the store from fork-thread-history.json, and is off without it", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "history-config-" });
+    const previous = setHistorySecret(undefined);
+    yield* Effect.addFinalizer(() => Effect.sync(() => setHistorySecret(previous)));
+    assert.strictEqual(readHistoryStoreConfig(dir), null);
+    yield* fs.writeFileString(
+      path.join(dir, "fork-thread-history.json"),
+      JSON.stringify({ store: "azure-keyvault", keyVault: "vault", secret: "cred" }),
+    );
+    assert.deepStrictEqual(readHistoryStoreConfig(dir), {
+      store: "azure-keyvault",
+      keyVault: "vault",
+      secret: "cred",
+    });
+    setHistorySecret("other");
+    assert.strictEqual(readHistoryStoreConfig(dir)?.secret, "other");
+    setHistorySecret("off");
+    assert.strictEqual(readHistoryStoreConfig(dir), null);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

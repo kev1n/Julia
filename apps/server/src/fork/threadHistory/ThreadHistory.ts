@@ -1,8 +1,8 @@
 /**
- * Fork (Owner): settled threads keep their history in Azure. A thread settled for an hour is
- * uploaded, verified, then removed locally, in a new blob each time (60 days per the container's
- * lifecycle rule). `ensureLocal` restores before any read or command that needs history; an expired
- * blob leaves a stub, and an unreachable Azure fails the read so the client retries.
+ * Fork: a thread settled for an hour is uploaded to the configured store (`blobStore.ts`; off
+ * without it), verified, then removed locally, in a new blob each time. `ensureLocal` restores
+ * before any read or command that needs history; an expired blob leaves a stub, and an
+ * unreachable store fails the read so the client retries.
  */
 import type { ForkThreadHistoryStatus, ThreadId } from "@t3tools/contracts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
@@ -14,6 +14,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
+import * as ServerConfig from "../../config.ts";
 import { ServerEnvironment } from "../../environment/ServerEnvironment.ts";
 import * as Scheduler from "../../scheduling/Scheduler.ts";
 import {
@@ -21,7 +22,7 @@ import {
   azureHistoryBlobStore,
   type HistoryBlobStore,
   HistoryBlobUnavailable,
-  historySecretName,
+  readHistoryStoreConfig,
   sha256Hex,
 } from "./blobStore.ts";
 import * as HistoryStore from "./historyStore.ts";
@@ -303,18 +304,23 @@ export const make = Effect.fn("ThreadHistory.make")(function* (blobs: HistoryBlo
   return ThreadHistory.of({ ensureLocal, watch, sweep });
 });
 
+/** `fork-thread-history.json` from the server's userdata dir (`stateDir`); null means off. */
+const storeConfig = Effect.gen(function* () {
+  return readHistoryStoreConfig((yield* ServerConfig.ServerConfig).stateDir);
+});
+
 export const layer = Layer.effect(
   ThreadHistory,
-  Effect.suspend(() => {
-    const secret = historySecretName();
-    return make(secret === null ? null : azureHistoryBlobStore(secret));
+  Effect.gen(function* () {
+    const config = yield* storeConfig;
+    return yield* make(config === null ? null : azureHistoryBlobStore(config));
   }),
 );
 
 /** The offload sweep, on upstream's due-work scheduler; production only. */
 export const layerSweep = Layer.effectDiscard(
   Effect.gen(function* () {
-    if (historySecretName() === null) return;
+    if ((yield* storeConfig) === null) return;
     const history = yield* ThreadHistory;
     const environmentId = yield* (yield* ServerEnvironment).getEnvironmentId;
     yield* (yield* Scheduler.Scheduler).register(

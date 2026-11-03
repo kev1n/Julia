@@ -1,13 +1,13 @@
 // @effect-diagnostics globalDate:off
 /**
- * Fork (Owner): the fleet as one server's tools see it: the hub's index with
+ * Fork: the fleet as one server's tools see it: the hub's index with
  * this server's own, fresher snapshot substituted. Without the hub, the
  * answer degrades to this server plus the last index it saw, marked as such.
  */
 import { STALE_AFTER_MS, fleetRequest, type FleetConfig } from "./config.ts";
 import { coverageOf } from "./fleetIndex.ts";
 import type { FleetCoverage, FleetEnvironmentEntry, FleetIndex, FleetSnapshot } from "./model.ts";
-import { acmePathMeaning } from "./acmePaths.ts";
+import { pathMeaning, type PathMeaningRule } from "./pathMeanings.ts";
 import type { FleetOverlap } from "./fleetIndex.ts";
 import type { FleetOverlapOut, FleetThreadSummary } from "./tools.ts";
 import type { FleetThread } from "./model.ts";
@@ -97,12 +97,16 @@ export function summarize(view: FleetView, thread: FleetThread): FleetThreadSumm
   };
 }
 
-export function overlapOut(view: FleetView, overlap: FleetOverlap): FleetOverlapOut {
+export function overlapOut(
+  view: FleetView,
+  overlap: FleetOverlap,
+  pathMeanings: ReadonlyArray<PathMeaningRule>,
+): FleetOverlapOut {
   return {
     thread: summarize(view, overlap.thread),
     sharedCheckout: overlap.sharedCheckout,
     paths: overlap.paths.map((path) => {
-      const meaning = acmePathMeaning(overlap.thread.repoKey, path.path);
+      const meaning = pathMeaning(pathMeanings, overlap.thread.repoKey, path.path);
       return {
         path: path.path,
         conflict: path.conflict,

@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Machines. One card per paired environment with its
+ * Fork: Usage > Machines. One card per paired environment with its
  * picture, name and three bars (CPU, memory used of total, disk used of total).
  */
 import type { EnvironmentId } from "@t3tools/contracts";

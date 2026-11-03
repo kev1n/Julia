@@ -339,7 +339,7 @@ interface ServerTab {
   readonly isolatedContext: boolean;
 
   readonly desktop: { readonly close: () => Promise<void> } | null;
-  /** Fork: a tab in Owner's Aside browser, which owns its size, look, and storage. */
+  /** Fork: a tab in the user's Aside browser, which owns its size, look, and storage. */
   readonly aside: boolean;
   /** An Aside page's CSS size, as its window lays it out; Playwright does not know it. */
   asideSize: { width: number; height: number } | null;
@@ -2526,7 +2526,7 @@ const make = Effect.gen(function* () {
             }
             await applyRendering(tab, event.snapshot);
             const request = event.request;
-            // Clearing reaches the whole browser, which for Aside is every login Owner has.
+            // Clearing reaches the whole browser, which for Aside is every login the user has.
             if (request?.clear === "cookies" && !tab.aside)
               await tab.cdp.send("Network.clearBrowserCookies");
             if (request?.clear === "cache" && !tab.aside)

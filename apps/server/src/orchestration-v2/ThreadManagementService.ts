@@ -594,7 +594,7 @@ const make = Effect.gen(function* () {
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
-  // Fork (Owner): settled threads' history may be in Azure (fork/threadHistory).
+  // Fork: settled threads' history may be in Azure (fork/threadHistory).
   const threadHistory = yield* Effect.serviceOption(ThreadHistory.ThreadHistory);
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
@@ -782,7 +782,7 @@ const make = Effect.gen(function* () {
     }
   };
 
-  // Fork (Owner): a drain before a planned restart refuses new work (fork/drain.ts).
+  // Fork: a drain before a planned restart refuses new work (fork/drain.ts).
   // A message already in its thread (a replay, a steer re-sent as a follow-up) is not new.
   const acceptedBefore = (command: OrchestrationV2ServerCommand) =>
     command.type === "message.dispatch"
@@ -1097,7 +1097,7 @@ const make = Effect.gen(function* () {
     return settledResult(yield* evaluate((yield* getProjectThreadRecords(input, ["runs"])).runs));
   });
 
-  // Fork (Owner): the client shows a thread's tabs as one row (client-runtime
+  // Fork: the client shows a thread's tabs as one row (client-runtime
   // workspaceChatKey) that leaves the inbox only once every tab is settled, so a
   // settle here moves the whole strip like the client's does. Busy tabs refuse it.
   const settleWithTabs = Effect.fn("orchestrationV2.threadManagement.settleWithTabs")(
@@ -1147,7 +1147,7 @@ const make = Effect.gen(function* () {
   const settleAfterRun: ThreadManagementServiceShape["settleAfterRun"] = Effect.fn(
     "orchestrationV2.threadManagement.settleAfterRun",
   )(function* (input) {
-    // Fork (Owner): the request is kept on the thread (settleAfterRunId), so a restart
+    // Fork: the request is kept on the thread (settleAfterRunId), so a restart
     // waits again (fork/pendingSettle.ts). It ends with this wait, unless the wait is
     // cut by shutdown.
     const requestedAt = yield* DateTime.now;

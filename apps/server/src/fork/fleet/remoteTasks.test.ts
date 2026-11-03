@@ -23,22 +23,22 @@ import { makePeerHandlers, remoteChildrenToSettle } from "./remoteTasks.ts";
 
 const REPO = "github.com/example/t3code";
 const source = {
-  environmentId: "env-macbook",
-  label: "MacBook",
+  environmentId: "env-laptop",
+  label: "laptop",
   threadId: "parent-thread",
   title: "Parent",
   runtimeMode: "full-access",
 } as const;
 const parentModelSelection = { instanceId: "claudeAgent", model: "claude-opus-5-5" };
 
-/** The child machine (build-mac): one unrelated project, one checkout of REPO. */
+/** The child machine (office): one unrelated project, one checkout of REPO. */
 function machine(runs: ReadonlyArray<{ id: string; ordinal: number; status: string }>) {
   const launches: ThreadLaunch.ThreadLaunchInput[] = [];
   const sends: { scope: McpInvocationScope; input: OrchestratorMcpThreadSendInput }[] = [];
   const at = DateTime.makeUnsafe(0);
   const layer = Layer.mergeAll(
     Layer.mock(ServerEnvironment.ServerEnvironment)({
-      getDescriptor: Effect.succeed({ environmentId: "env-build-mac", label: "build-mac" } as never),
+      getDescriptor: Effect.succeed({ environmentId: "env-office", label: "office" } as never),
     }),
     Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({
       capabilities: () =>
@@ -103,7 +103,7 @@ const delegation = (key: string, target?: unknown) => ({
   source,
   key,
   repoKey: REPO,
-  baseRef: "owner",
+  baseRef: "main",
   title: "Review the parser",
   task: "Review the parser.",
   ...(target === undefined ? {} : { target }),
@@ -123,9 +123,9 @@ describe("delegated tasks on another machine", () => {
       yield* delegate(delegation("round-2"));
 
       expect(result).toMatchObject({
-        taskId: "fleet:env-build-mac:child-thread",
+        taskId: "fleet:env-office:child-thread",
         status: "running",
-        machine: "build-mac",
+        machine: "office",
         summary: null,
       });
       const [first, retry, second] = child.launches;
@@ -133,8 +133,8 @@ describe("delegated tasks on another machine", () => {
         projectId: "t3code",
         modelSelection: parentModelSelection,
         runtimeMode: "auto-accept-edits",
-        workspaceStrategy: { type: "worktree", baseRef: "owner", startFromOrigin: true },
-        // A subagent of the parent thread on the MacBook, not a top-level thread.
+        workspaceStrategy: { type: "worktree", baseRef: "main", startFromOrigin: true },
+        // A subagent of the parent thread on the laptop, not a top-level thread.
         remoteParentThreadId: "parent-thread",
       });
       // A retried request replays the same launch; a new round is a new one.
@@ -198,23 +198,23 @@ describe("delegated tasks on another machine", () => {
     return Effect.gen(function* () {
       const deliver = (yield* makePeerHandlers).get("peer/task-result")!;
       yield* deliver({
-        machine: "build-mac",
+        machine: "office",
         parentThreadId: "parent-thread",
-        taskId: "fleet:env-build-mac:child-thread",
+        taskId: "fleet:env-office:child-thread",
         title: "Review the parser",
-        link: "[Review the parser](t3://thread/env-build-mac/child-thread)",
+        link: "[Review the parser](t3://thread/env-office/child-thread)",
         status: "completed",
         summary: "Found two bugs.",
-        key: "fleet-task-result:env-build-mac:child-thread:run-1",
+        key: "fleet-task-result:env-office:child-thread:run-1",
       });
       const [send] = parent.sends;
       expect(send!.scope.client?.access).toBe("approval-required");
       expect(send!.input).toMatchObject({
         threadId: "parent-thread",
         mode: "auto",
-        clientRequestId: "fleet-task-result:env-build-mac:child-thread:run-1",
+        clientRequestId: "fleet-task-result:env-office:child-thread:run-1",
       });
-      expect(send!.input.message).toContain("Remote task on build-mac completed");
+      expect(send!.input.message).toContain("Remote task on office completed");
       expect(send!.input.message).toContain("Found two bugs.");
     }).pipe(Effect.provide(parent.layer));
   });
@@ -232,8 +232,8 @@ describe("remote subagents follow their parent", () => {
       activeRunId: null,
       ...changes,
     }) as unknown as OrchestrationV2ThreadShell;
-  const macbook = { environmentId: "env-macbook", label: "MacBook" } as FleetSnapshot;
-  const mac-a = { environmentId: "env-mac-a", label: "mac-a" } as FleetSnapshot;
+  const laptop = { environmentId: "env-laptop", label: "laptop" } as FleetSnapshot;
+  const studio = { environmentId: "env-studio", label: "studio" } as FleetSnapshot;
 
   it.effect("settle an idle child once its parent's own machine says it is settled", () =>
     Effect.gen(function* () {
@@ -246,15 +246,15 @@ describe("remote subagents follow their parent", () => {
           child("still-running", "settled-parent", { activeRunId: "run-1" }),
           child("already-settled", "settled-parent", { settledOverride: "settled" }),
           // Its parent's machine does not answer: nothing is assumed from older state.
-          child("of-unreachable", "parent-on-mac-a"),
+          child("of-unreachable", "parent-on-studio"),
           // A local subagent follows its local parent, never another machine's thread.
           child("local-parent", "x", { lineage: { relationshipToParent: null } }),
           child("of-local", "local-parent"),
         ],
-        [macbook, mac-a],
+        [laptop, studio],
         (machine, parentIds) => {
           asked.push(`${machine.label}:${parentIds.join(",")}`);
-          return machine === mac-a
+          return machine === studio
             ? Effect.succeed(null)
             : Effect.succeed({
                 "settled-parent": "settled",
@@ -265,7 +265,7 @@ describe("remote subagents follow their parent", () => {
       );
       expect(settled).toEqual(["of-settled", "of-archived"]);
       expect(asked).toContain(
-        "MacBook:settled-parent,archived-subagent-parent,idle-parent,parent-on-mac-a",
+        "laptop:settled-parent,archived-subagent-parent,idle-parent,parent-on-studio",
       );
     }),
   );

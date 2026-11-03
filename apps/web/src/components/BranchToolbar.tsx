@@ -95,7 +95,7 @@ interface BranchToolbarProps {
   startFromOrigin: boolean;
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   autoEnvironmentLabel?: string | undefined;
-  /** Fork (Owner): why Auto chose this machine and account; the chip's tooltip. */
+  /** Fork: why Auto chose this machine and account; the chip's tooltip. */
   autoEnvironmentDetail?: string | undefined;
   onAutoEnvironment?: (() => void) | undefined;
   envLocked: boolean;
@@ -405,7 +405,7 @@ const RunContextSelector = memo(function RunContextSelector({
                       {env.detail ? (
                         <span className="text-xs text-muted-foreground">{env.detail}</span>
                       ) : null}
-                      {/* Fork (Owner): live CPU, memory and disk while the menu is open. */}
+                      {/* Fork: live CPU, memory and disk while the menu is open. */}
                       <MachineUsageLine environmentId={env.environmentId} />
                     </span>
                   </MenuRadioItem>

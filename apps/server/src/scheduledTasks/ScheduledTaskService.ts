@@ -486,7 +486,7 @@ export const layer = Layer.effect(
       webhookPolicyBlock !== undefined && task.schedule.type === "webhook"
         ? { ...task, blockedByPolicy: webhookPolicyBlock }
         : task;
-    // Fork (Owner): optional so the task tests need no registry; the server always has one.
+    // Fork: optional so the task tests need no registry; the server always has one.
     const providerRegistry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
     const orchestrationAdapters = yield* Effect.serviceOption(
       ProviderAdapterRegistry.ProviderAdapterRegistryV2,
@@ -1064,7 +1064,7 @@ export const layer = Layer.effect(
                       ),
               }),
             );
-        // Fork (Owner): a new thread moves off a saved account with no limit
+        // Fork: a new thread moves off a saved account with no limit
         // left. A bound thread keeps its account, since its session lives there.
         const launchModelSelection = Option.isSome(providerRegistry)
           ? accountWithLimitLeft(

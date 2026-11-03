@@ -76,9 +76,23 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-fork-" });
-      const forkVersion = "0.0.46-nightly.20261007.2787.owner.1791429000+owner.dd65a77";
+      const forkVersion = "0.0.46-nightly.20261007.2787.fork.1791429000+fork.dd65a77";
       const forkArchive = `t3-${forkVersion}-darwin-arm64.tar.gz`;
-      const baseUrl = `https://build-mac-host.example.ts.net:8444/${forkVersion}`;
+      const baseUrl = `https://build-mac.example.ts.net:8444/${forkVersion}`;
+      // The build value apps/server/vite.config.ts embeds from T3CODE_FORK_RELEASE_BASE_URL.
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          Object.assign(globalThis, {
+            __T3CODE_BUILD_FORK_RELEASE_BASE_URL__: "https://build-mac.example.ts.net:8444",
+          }),
+        ),
+        () =>
+          Effect.sync(
+            () =>
+              delete (globalThis as { __T3CODE_BUILD_FORK_RELEASE_BASE_URL__?: string })
+                .__T3CODE_BUILD_FORK_RELEASE_BASE_URL__,
+          ),
+      );
       const requests: string[] = [];
       const checksum = yield* archiveHex(archiveBytes);
       const httpClient = HttpClient.make((request) => {

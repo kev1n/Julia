@@ -60,6 +60,21 @@ export const ServerProviderUsageLimits = Schema.Struct({
       message: Schema.optional(TrimmedNonEmptyString),
     }),
   ),
+  /**
+   * Fork: set on an instance linked to a usage limit source. The source's accounts for the
+   * instance's driver stand in for its own windows; `accountStanding` reads them.
+   */
+  pool: Schema.optional(
+    Schema.Struct({
+      sourceId: UsageLimitSourceId,
+      accounts: ForwardCompatibleArray(
+        Schema.Struct({
+          id: TrimmedNonEmptyString,
+          windows: ForwardCompatibleArray(ServerProviderUsageWindow),
+        }),
+      ),
+    }),
+  ),
 });
 export type ServerProviderUsageLimits = typeof ServerProviderUsageLimits.Type;
 

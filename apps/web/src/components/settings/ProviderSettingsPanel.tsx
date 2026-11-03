@@ -98,6 +98,7 @@ import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { useSecretSources } from "./SecretSourceInput";
 import { TextGeneratorsSettings } from "./TextGeneratorsSettings";
 import { UsageProviderSettings } from "./UsageProviderSettings";
+import { UsageSourceLinkRow } from "./UsageSourceLinkRow";
 import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { CodexSetupSection, CodexManagedRuntimeFields } from "./CodexSetupSection";
@@ -966,6 +967,7 @@ export function EnvironmentProviderSettings({
         }
         modelPreferences={settings.providerModelPreferences?.[row.instanceId]}
         favorites={favorites}
+        usageLimitSources={settings.usageLimitSources}
         actions={actions}
       />
     );
@@ -1238,6 +1240,7 @@ function ProviderInstanceRow({
   projectOverrideEffectiveEnabled,
   modelPreferences,
   favorites,
+  usageLimitSources,
   actions,
 }: {
   readonly environmentId: EnvironmentId;
@@ -1260,6 +1263,7 @@ function ProviderInstanceRow({
     | { readonly hiddenModels: ReadonlyArray<string>; readonly modelOrder: ReadonlyArray<string> }
     | undefined;
   readonly favorites: UnifiedSettings["favorites"];
+  readonly usageLimitSources: UnifiedSettings["usageLimitSources"];
   readonly actions: ProviderInstanceRowActions;
 }) {
   const allProjects = useProjects();
@@ -1385,6 +1389,19 @@ function ProviderInstanceRow({
         ) : null
       }
       onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
+      usageLink={
+        mode === "editor" &&
+        (driver === "claudeAgent" || driver === "codex") &&
+        (Object.keys(usageLimitSources).length > 0 || instance.usageLimitSourceId) ? (
+          <UsageSourceLinkRow
+            instanceId={instanceId}
+            instance={instance}
+            sources={usageLimitSources}
+            readOnly={readOnly}
+            onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
+          />
+        ) : undefined
+      }
       onDelete={
         mode === "editor" && !isDefault
           ? () => actions.deleteInstance(instanceId, instance)
