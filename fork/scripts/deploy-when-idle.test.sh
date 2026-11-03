@@ -10,9 +10,12 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-tag=owner-1.0.0-abc1234
+tag=fork-1.0.0-abc1234
 dir="$tmp/t3-fork/releases/$tag"
-mkdir -p "$dir/scripts" "$tmp/.t3/runtime" "$tmp/.t3/userdata"
+mkdir -p "$dir/scripts" "$tmp/.t3/runtime" "$tmp/.t3/userdata" "$tmp/.config/julia"
+# The repository, hosts and labels come from the local config that fork.env reads.
+printf '%s\n' fork_repo=example/julia build_mac_url=https://build.example job_label_prefix=org.example.fork \
+  > "$tmp/.config/julia/fork.env"
 echo 1.0.0+new > "$dir/VERSION"
 echo '{"activeVersion": "1.0.0+old"}' > "$tmp/.t3/runtime/service-state.json"
 echo '{"secret": "fleet-secret"}' > "$tmp/.t3/userdata/fork-fleet.json"
@@ -59,7 +62,7 @@ STUB_PEEK="$waiting" STUB_DRAIN_CODE=200 run "$tag" --requester claude-session-1
 [ ! -e "$tmp/installed" ] || fail "installed while work is live"
 grep -q '"action": "start"' "$STUB_LOG" && fail "started the drain while work is live"
 grep -q 'Waiting for 1 live item' <<<"$out" || fail "no log of what it waits for"
-grep -q '"action": "peek", "release": "owner-1.0.0-abc1234", "requester": "claude-session-1"' "$STUB_LOG" ||
+grep -q '"action": "peek", "release": "fork-1.0.0-abc1234", "requester": "claude-session-1"' "$STUB_LOG" ||
   fail "the request did not carry the release and the requesting session"
 grep -q 'Authorization: Bearer fleet-secret' "$STUB_LOG" || fail "the request was not authorized"
 
@@ -95,7 +98,7 @@ STUB_PEEK='Not Found' STUB_DRAIN_CODE=404 run "$tag"
 
 # --schedule from an agent's shell names that agent's session in the job.
 CLAUDE_CODE_SESSION_ID=claude-session-1 run --schedule "$tag"
-plist="$tmp/Library/LaunchAgents/com.example.t3code-fork.deploy-when-idle-abc1234.plist"
+plist="$tmp/Library/LaunchAgents/org.example.fork.deploy-when-idle-abc1234.plist"
 /usr/bin/python3 -c 'import plistlib,sys; a=plistlib.load(open(sys.argv[1],"rb"))["ProgramArguments"]; sys.exit(a[-2:] != ["--requester", "claude-session-1"])' "$plist" ||
   fail "the scheduled job does not pass the requesting session"
 # The scheduled copy reads its hosts and IDs from a fork.env installed beside it.
@@ -105,7 +108,7 @@ mkdir -p "$tmp/Applications/ExternalLauncher.app/Contents/MacOS"
 launcher="$tmp/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
 install -m 755 /dev/null "$launcher"
 CLAUDE_CODE_SESSION_ID= CODEX_THREAD_ID= run --schedule "$tag" --now
-/usr/bin/python3 -c 'import plistlib,sys; d=plistlib.load(open(sys.argv[1],"rb")); log=sys.argv[3]+"/Library/Logs/external-launcher/com.example.t3code-fork.deploy-when-idle-abc1234.log"; sys.exit(d["ProgramArguments"] != [sys.argv[2], "t3-deploy-when-idle", "owner-1.0.0-abc1234", "--now"] or d["StandardOutPath"] != log or d["WorkingDirectory"] != sys.argv[3]+"/Library/Logs/external-launcher")' "$plist" "$launcher" "$tmp" ||
+/usr/bin/python3 -c 'import plistlib,sys; d=plistlib.load(open(sys.argv[1],"rb")); log=sys.argv[3]+"/Library/Logs/external-launcher/org.example.fork.deploy-when-idle-abc1234.log"; sys.exit(d["ProgramArguments"] != [sys.argv[2], "t3-deploy-when-idle", "fork-1.0.0-abc1234", "--now"] or d["StandardOutPath"] != log or d["WorkingDirectory"] != sys.argv[3]+"/Library/Logs/external-launcher")' "$plist" "$launcher" "$tmp" ||
   fail "with ExternalLauncher installed the scheduled job does not run through it"
 
 [ "$status" = 0 ] && echo ok

@@ -2949,7 +2949,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     return snapshot(liveSession);
   });
 
-  // Fork (Owner): a launch never waits for the workspace lease while it holds the thread
+  // Fork: a launch never waits for the workspace lease while it holds the thread
   // lock: a run start holds the lease while its worktree restore's setup terminal waits for
   // the thread lock. A launch takes a free lease under the thread lock, in the lock's order;
   // a busy one makes it take the lease first and the thread lock after.

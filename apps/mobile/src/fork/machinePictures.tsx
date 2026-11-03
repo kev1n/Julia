@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): the product pictures of Owner's two machine kinds where the
+ * Fork: the product pictures of the two machine kinds where the
  * app draws an environment's machine glyph, the same bundled images the
  * desktop uses (apps/web/src/fork/machinePictures). Other kinds keep T3's glyph.
  */

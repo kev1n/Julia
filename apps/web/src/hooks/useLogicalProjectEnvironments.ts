@@ -13,7 +13,7 @@ import { useProjects } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 
 /**
- * The environments a project (or a scratch draft) can move between. Fork (Owner): a draft lists
+ * The environments a project (or a scratch draft) can move between. Fork: a draft lists
  * every paired machine, including ones that still need the project set up. It reads only the
  * environment, project and grouping inputs, so the list keeps its identity while the thread
  * streams and the chat chrome it feeds can skip those renders.

@@ -60,7 +60,7 @@ const VIEW_OPTIONS = [
   { value: "cost", label: "Cost" },
   { value: "tokens", label: "Tokens" },
   { value: "limits", label: "Limits" },
-  { value: "machines", label: "Machines" }, // Fork (Owner): Usage > Machines
+  { value: "machines", label: "Machines" }, // Fork: Usage > Machines
 ] as const satisfies readonly { value: UsageView; label: string }[];
 
 const WINDOW_OPTIONS = [

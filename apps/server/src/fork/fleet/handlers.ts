@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics globalDateInEffect:off
-/** Fork (Owner): the fleet tools' handlers. */
+/** Fork: the fleet tools' handlers. */
 import {
   OrchestratorMcpFailure,
   type OrchestratorMcpThreadReadResult,
@@ -74,7 +74,9 @@ const overlapsForCaller = Effect.fn("handlers.overlapsForCaller")(function* (
   return {
     current,
     me: summarize(current, me),
-    overlaps: overlaps.map((overlap) => overlapOut(current, overlap)),
+    overlaps: overlaps.map((overlap) =>
+      overlapOut(current, overlap, fleetConfig()?.pathMeanings ?? []),
+    ),
   };
 });
 

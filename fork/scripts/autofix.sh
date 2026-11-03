@@ -1,6 +1,6 @@
 #!/bin/bash
 # When the daily sync cannot rebase, check or build the fork, hand the problem to
-# an agent chat on this Mac's T3 Code server (it shows in Owner's app) and judge
+# an agent chat on this Mac's T3 Code server (it shows in the app) and judge
 # what it leaves behind. Called by sync.sh; it never pushes or publishes.
 #   fork/scripts/autofix.sh <upstream-ref> <fork-head> <problem> <sync-log> <dir> <limit-seconds>
 # The agent works in the git worktree <dir>/worktree on branch autofix/<stamp>,
@@ -18,7 +18,7 @@ dir=${5:?work dir}
 limit=${6:?time limit in seconds}
 repo=$(git rev-parse --show-toplevel)
 here="$repo/fork/scripts"
-. "$here/fork.env" || exit 1 # fork_repo
+. "$here/fork.env" || exit 1 # fork_repo, fork_branch, version_label
 worktree="$dir/worktree"
 branch="autofix/$(basename "$dir")"
 report="$dir/report.md"
@@ -33,13 +33,13 @@ case "$latest" in
   v*-nightly.*) upstream_version=${latest#v} ;;
   *) upstream_version=$(git show "$latest:apps/server/package.json" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') ;;
 esac
-version="$upstream_version+owner.autofix"
+version="$upstream_version+$version_label.autofix"
 # The chat's shell inherits the T3 Code service's variables, which the sync's
 # own (launchd) environment lacks; upstream tests read them (and T3CODE_HOME
 # points at the live install), so the agent runs the commands without them.
 clean_env="env -u T3CODE_HOME -u T3_SERVICE_LAUNCHER_CONTEXT -u T3_BOOT_SERVICE_UNIT"
 cat > "$dir/prompt.md" <<PROMPT
-The daily sync of Owner's T3 Code fork ($fork_repo, branch \`owner\`) failed on build-mac and nobody is watching: work unattended, never ask a question, and finish in this one turn.
+The daily sync of the Julia fork of T3 Code ($fork_repo, branch \`$fork_branch\`) failed on this build Mac and nobody is watching: work unattended, never ask a question, and finish in this one turn.
 
 ## What failed
 
@@ -49,7 +49,7 @@ Sync log: $sync_log
 
 ## Your job
 
-You are in a git worktree on branch \`$branch\`, at the fork head \`$before\` (origin/owner). The fork is upstream \`$base\` plus these commits, one series per feature:
+You are in a git worktree on branch \`$branch\`, at the fork head \`$before\` (origin/$fork_branch). The fork is upstream \`$base\` plus these commits, one series per feature:
 
 \`\`\`
 $commits
@@ -67,14 +67,14 @@ $commits
 
 - The commit list after \`$latest\` must have exactly the subjects above, in the same order. No "fix conflicts" commit.
 - Do not touch anything under \`fork/\` (the checks and build scripts), and do not delete, skip, \`.only\` or weaken tests, or add \`@ts-ignore\`, \`@ts-expect-error\`, \`@ts-nocheck\`, or lint-disable comments (except the reason comment upstream requires on a React effect: \`// oxlint-disable-next-line t3code/no-unreasoned-state-sync -- <why>\`). If the only way to green is one of these, stop and say so.
-- Do not push, publish, open issues, or touch \`~/src/t3code-fork\`, the \`owner\` branch, \`~/t3-fork/out\`, or \`~/.t3/userdata\`. The sync reruns the same checks and build itself and publishes only if they pass.
+- Do not push, publish, open issues, or touch \`~/src/t3code-fork\`, the \`$fork_branch\` branch, \`~/t3-fork/out\`, or \`~/.t3/userdata\`. The sync reruns the same checks and build itself and publishes only if they pass.
 
 ## When you finish
 
-Write \`$report\` (outside the repo). First line exactly \`RESOLVED\` or \`UNRESOLVED\`. Then, in plain words for Owner: what conflicted or failed (file and fork commit), how you resolved it, and the result of each of the three commands. If unresolved: why, and what a human should do next.
+Write \`$report\` (outside the repo). First line exactly \`RESOLVED\` or \`UNRESOLVED\`. Then, in plain words for the fork's owner: what conflicted or failed (file and fork commit), how you resolved it, and the result of each of the three commands. If unresolved: why, and what a human should do next.
 PROMPT
 
-# Keep only this run's chat in Owner's list; older ones stay under Settled.
+# Keep only this run's chat in the thread list; older ones stay under Settled.
 node "$here/autofix-thread.mjs" settle || echo "autofix: could not settle older auto-fix chats"
 echo "autofix: launching an agent chat on $(hostname -s) in $worktree"
 node "$here/autofix-thread.mjs" "$repo" "$worktree" "Fork sync auto-fix: $latest" "$dir/prompt.md" "$limit" > "$dir/thread.json" ||

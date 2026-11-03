@@ -24,6 +24,13 @@ custom setting changes `CLAUDE_CONFIG_DIR`, leaving `HOME` and the system keycha
 location intact. Use the same variable for the login command. Setting `HOME`
 instead can put credentials where this provider will not find them.
 
+### Many accounts through a proxy
+
+For more than a couple of accounts, run [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+and route one Claude instance through it with `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`,
+then link the instance to the hub so its usage reflects the proxy's accounts.
+[Connect a CLIProxyAPI hub](./usage.md#connect-a-cliproxyapi-hub)
+
 ### Using an account on other machines
 
 **Copy account slot to other machines** copies the account's settings and ID to

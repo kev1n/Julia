@@ -1,14 +1,14 @@
 #!/bin/bash
-# Daily on every Mac (LaunchAgent com.example.t3code-fork.deploy): install the
+# Daily on every Mac (LaunchAgent <job_label_prefix>.deploy): install the
 # newest release of the fork's repository if this Mac does not run it yet. Server runtime
 # on every Mac; the desktop app too where Julia or the legacy fork app is installed.
 # Waits for a later run while any thread is working or has background work
 # live (live-work.sh); when there is none it hands the install to a
 # deploy-when-idle.sh job, which drains the server first, so a deploy never
-# cuts either off. On the MacBook it
-# also raises a notification while a "Fork sync failed" issue is open.
+# cuts either off. Where the desktop app is installed it also raises a
+# notification while a "Fork sync failed" issue is open.
 set -uo pipefail
-# fork_repo, and artifacts_url: the build outputs build-mac serves over the tailnet.
+# fork_repo, and artifacts_url: the build outputs the build Mac serves.
 . "$(dirname "$0")/fork.env" || exit 1
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
@@ -16,8 +16,9 @@ exec >> "$state/logs/deploy.log" 2>&1
 export GODEBUG=netdns=go # gh misreads DNS failures as a bad token without it
 export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 echo "== deploy check $(date)"
+fork_require fork_repo artifacts_url || exit 1
 
-if [ -d "/Applications/Julia.app" ] || [ -d "/Applications/T3 Code (Owner).app" ]; then
+if fork_desktop_installed; then
   failed=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync failed\" in:title" --json url -q '.[0].url' 2>/dev/null)
   [ -n "$failed" ] && /usr/bin/osascript -e "display notification \"Nothing was deployed. Details: $failed\" with title \"T3 Code fork sync failed\""
 fi
@@ -55,7 +56,7 @@ if [ "$active" != "$version" ]; then
   fi
 fi
 
-if { [ -d "/Applications/Julia.app" ] || [ -d "/Applications/T3 Code (Owner).app" ]; } && [ "$(cat "$state/desktop-version" 2>/dev/null)" != "$version" ]; then
+if fork_desktop_installed && [ "$(cat "$state/desktop-version" 2>/dev/null)" != "$version" ]; then
   "$scripts/install-desktop.sh" "$(ls "$dir"/T3-Code-*-arm64.zip)" && echo "$version" > "$state/desktop-version"
 fi
 # Keep the downloads of this release and the one before it.

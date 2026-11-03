@@ -34,7 +34,7 @@ vi.mock("./addProviderEverywhere", () => ({
   useAddProviderEverywhere: () => ({
     enabled: true,
     setEnabled: vi.fn(),
-    otherLabels: ["mac-a"],
+    otherLabels: ["studio-a"],
     addToOtherMachines: state.fanOut,
   }),
 }));
@@ -59,8 +59,8 @@ function render() {
   hooks.beginRender();
   return AddProviderInstanceDialog({
     open: true,
-    environmentId: EnvironmentId.make("build-mac"),
-    environmentLabel: "build-mac",
+    environmentId: EnvironmentId.make("studio-b"),
+    environmentLabel: "studio-b",
     onOpenChange: state.close,
   });
 }

@@ -52,7 +52,7 @@ export function limitRecoveryCommand(
   }
   if (
     !recovery.autoResume ||
-    // Fork (Owner): a limit failover moved this run's work to `continuedIn`; a
+    // Fork: a limit failover moved this run's work to `continuedIn`; a
     // re-arm after its first message failed keeps that link and must not resume
     // the source too.
     recovery.continuedIn !== undefined ||
@@ -88,7 +88,7 @@ const makeSweep = Effect.gen(function* () {
   return Effect.fn("UsageLimitRecoveryWorker.sweep")(function* () {
     const preferences = yield* settings.getSettings;
     const now = yield* DateTime.now;
-    // Fork (Owner): with failover on, every newly limited thread is a candidate.
+    // Fork: with failover on, every newly limited thread is a candidate.
     const failover = preferences.continueLimitedThreadsElsewhere;
     const candidates = yield* projections.getLimitRecoveryCandidates({
       now,

@@ -115,7 +115,7 @@ describe("v2 thread shell lists", () => {
     }
   });
 
-  // Fork (Owner): delegate_task on another machine (apps/server/src/fork/fleet/remoteTasks.ts).
+  // Fork: delegate_task on another machine (apps/server/src/fork/fleet/remoteTasks.ts).
   it("nests a subagent on another machine under its parent and out of navigation", () => {
     const harness = makeHarness([environmentId, remoteEnvironmentId]);
     const remoteChild = {
@@ -152,7 +152,7 @@ describe("v2 thread shell lists", () => {
     }
   });
 
-  // Fork (Owner): a chat's tabs are one thread, so its sidebar row lists every tab's agents.
+  // Fork: a chat's tabs are one thread, so its sidebar row lists every tab's agents.
   it("lists the subagents of every tab in a chat, whichever tab is selected", () => {
     const harness = makeHarness();
     const tabIds = [ThreadId.make("original"), ThreadId.make("limit-failover:continuation")];

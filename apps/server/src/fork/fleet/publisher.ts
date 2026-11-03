@@ -2,7 +2,7 @@
 // @effect-diagnostics globalTimersInEffect:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): publishes this server's threads and checkouts to the hub. Snapshots are rebuilt
+ * Fork: publishes this server's threads and checkouts to the hub. Snapshots are rebuilt
  * from projections, never the live-tail event stream, so a restart publishes a full snapshot under
  * a new incarnation; events only trigger a republish. A failed publish waits for the heartbeat.
  */

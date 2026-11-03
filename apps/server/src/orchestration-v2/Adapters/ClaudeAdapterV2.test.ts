@@ -5048,7 +5048,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       if (terminal.status !== "failed") return;
       assert.equal(terminal.failure.message, input.expected);
       assert.equal(terminal.failure.code, `api_error_${apiErrorStatus}`);
-      // Fork (Owner): without the CLI's rate-limit evidence, even a 429 is a provider error.
+      // Fork: without the CLI's rate-limit evidence, even a 429 is a provider error.
       assert.equal(terminal.failure.class, "provider_error");
     }).pipe(
       Effect.provide(

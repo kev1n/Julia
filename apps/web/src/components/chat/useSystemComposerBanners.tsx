@@ -42,7 +42,7 @@ interface SystemComposerBannersInput {
 
 /**
  * The composer banners about the machine itself: offline or reconnecting.
- * Fork (Owner): server updates show in one quiet corner toast
+ * Fork: server updates show in one quiet corner toast
  * (ServerUpdateNotice), not here.
  */
 export function useSystemComposerBanners(input: SystemComposerBannersInput) {
@@ -168,7 +168,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         group: "environment",
         icon: <WifiOffIcon />,
         title: outageText.title,
-        // Fork (Owner): a cause on this device's side replaces the server's diagnosis.
+        // Fork: a cause on this device's side replaces the server's diagnosis.
         description: outageText.description ? (
           outageText.description
         ) : activeEnvironment ? (

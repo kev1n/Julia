@@ -1,13 +1,16 @@
 // @effect-diagnostics globalFetch:off
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork (Owner): fleet settings in `~/.t3/userdata/fork-fleet.json` (mode 600), with `hubUrl`,
- * `selfUrl`, the shared `secret`, and `"hub": true` only on the hub (mac-a).
- * Without the file the fleet is off: the tools say so and nothing is published.
+ * Fork: fleet settings in `~/.t3/userdata/fork-fleet.json` (mode 600), with `hubUrl`,
+ * `selfUrl`, the shared `secret`, `"hub": true` only on the hub machine, and optional
+ * `pathMeanings` (`pathMeanings.ts`). Without the file the fleet is off: the tools say so and
+ * nothing is published.
  */
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+
+import { parsePathMeanings, type PathMeaningRule } from "./pathMeanings.ts";
 
 export interface FleetConfig {
   readonly hubUrl: string;
@@ -15,6 +18,7 @@ export interface FleetConfig {
   readonly secret: string;
   readonly hub: boolean;
   readonly userdataDir: string;
+  readonly pathMeanings: ReadonlyArray<PathMeaningRule>;
 }
 
 /**
@@ -30,7 +34,7 @@ export function readFleetConfig(userdataDir: string): FleetConfig | null {
   try {
     const raw = JSON.parse(
       NodeFS.readFileSync(NodePath.join(userdataDir, "fork-fleet.json"), "utf8"),
-    ) as Partial<FleetConfig>;
+    ) as Partial<Omit<FleetConfig, "pathMeanings">> & { readonly pathMeanings?: unknown };
     if (!raw.hubUrl || !raw.selfUrl || !raw.secret) return null;
     return {
       hubUrl: raw.hubUrl.replace(/\/$/, ""),
@@ -38,6 +42,7 @@ export function readFleetConfig(userdataDir: string): FleetConfig | null {
       secret: raw.secret,
       hub: raw.hub === true,
       userdataDir,
+      pathMeanings: parsePathMeanings(raw.pathMeanings),
     };
   } catch {
     return null;

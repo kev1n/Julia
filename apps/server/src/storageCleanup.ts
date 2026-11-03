@@ -804,7 +804,7 @@ const make = Effect.gen(function* () {
       yield* Effect.gen(function* () {
         if (!(yield* fs.exists(worktreePath))) return;
         if (deleted && !settings.worktreeOnDelete) return keep("no rules apply");
-        // Fork (Owner): threads sharing a worktree without a subagent lineage,
+        // Fork: threads sharing a worktree without a subagent lineage,
         // such as helper threads, are judged together instead of always kept.
         const owner = worktreeOwner(members);
         if (project === undefined) return keep("project is unavailable");

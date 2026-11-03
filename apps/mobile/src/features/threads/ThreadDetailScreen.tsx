@@ -455,7 +455,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     threadId: props.selectedThread.id,
   });
   const composerError = useAtomValue(threadComposerErrorsAtom)[selectedThreadKey]?.message ?? null;
-  // Fork (Owner): follow limit failover into the new tab when it happens while this
+  // Fork: follow limit failover into the new tab when it happens while this
   // thread is open. Reopening a thread that already moved on stays put.
   const selectDetail = useSelectWorkspaceDetail();
   const continuedInThreadId = props.selectedThread.limitRecovery?.continuedIn;

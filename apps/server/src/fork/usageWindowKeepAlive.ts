@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): when a Claude or Codex account's 5-hour window has ended, send one tiny prompt on
+ * Fork: when a Claude or Codex account's 5-hour window has ended, send one tiny prompt on
  * its smallest model so the next window starts at once (one per login email). Accounts without a
  * session window or out of quota are skipped. Off by default; turn it on in one environment only.
  */

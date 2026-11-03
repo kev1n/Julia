@@ -2933,7 +2933,7 @@ it.effect("does not interrupt an ended provider when its terminal write fails", 
         }),
     });
     assert.equal(yield* Ref.get(interrupts), 0);
-    // Fork (Owner): the retry settles the run with the terminal it saw.
+    // Fork: the retry settles the run with the terminal it saw.
     assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
   }),
 );

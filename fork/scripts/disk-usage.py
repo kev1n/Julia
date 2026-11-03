@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Fork (Owner): measure what directories really cost on an APFS disk.
+"""Fork: measure what directories really cost on an APFS disk.
 
 APFS clones (cp -c, clonefile; pnpm imports node_modules this way) share data
 blocks until one copy is written, so du counts every clone in full. This walks

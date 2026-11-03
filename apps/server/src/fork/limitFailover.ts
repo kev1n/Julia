@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): a turn stopped on a usage limit continues in a new tab on the first
+ * Fork: a turn stopped on a usage limit continues in a new tab on the first
  * `limitFailoverModelSelections` account with usage left; the source's recovery is turned off and
  * it names the tab in `continuedIn` before that tab's first message. Run from the
  * UsageLimitRecoveryWorker sweep; command ids derive from the failed run, so retries repeat them.

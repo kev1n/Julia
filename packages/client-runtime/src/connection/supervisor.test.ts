@@ -328,7 +328,7 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  // Fork (Owner): a machine that keeps dropping reconnects within 30 seconds.
+  // Fork: a machine that keeps dropping reconnects within 30 seconds.
   it.effect("retries forever with exponential backoff capped at 30 seconds", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

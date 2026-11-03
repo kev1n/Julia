@@ -93,7 +93,7 @@ function setup() {
 
 it("keeps one corner notice as machines change", async () => {
   setup();
-  state.environments = [machine("build-mac"), machine("mac-a")];
+  state.environments = [machine("office"), machine("studio")];
   await using _screen = await render(<ServerUpdateNotice />);
   expect(state.active.size).toBe(1);
   const id = state.add.mock.results[0]!.value;
@@ -101,14 +101,14 @@ it("keeps one corner notice as machines change", async () => {
     title: "Update available",
   });
 
-  await setEnvironments([machine("mac-a"), machine("MacBook")]);
+  await setEnvironments([machine("studio"), machine("laptop")]);
   expect(state.add).toHaveBeenCalledTimes(1);
   expect(state.active.size).toBe(1);
 });
 
 it("remembers dismissal across remounts but shows a genuinely different version", async () => {
   setup();
-  state.environments = [machine("build-mac"), machine("mac-a")];
+  state.environments = [machine("office"), machine("studio")];
   {
     await using _first = await render(<ServerUpdateNotice />);
     await act(() => state.close(state.add.mock.results[0]!.value));
@@ -117,27 +117,27 @@ it("remembers dismissal across remounts but shows a genuinely different version"
   await using _screen = await render(<ServerUpdateNotice />);
   expect(state.active.size).toBe(0);
 
-  await setEnvironments([machine("build-mac", "0.0.46-nightly.20261007.2770")]);
+  await setEnvironments([machine("office", "0.0.46-nightly.20261007.2770")]);
   expect(state.active.size).toBe(1);
 });
 
 it("removes resolved/offline notices without treating reconnects as user dismissals", async () => {
   setup();
-  state.environments = [machine("build-mac")];
+  state.environments = [machine("office")];
   await using _screen = await render(<ServerUpdateNotice />);
-  await setEnvironments([{ ...machine("build-mac"), connection: { phase: "reconnecting" } }]);
+  await setEnvironments([{ ...machine("office"), connection: { phase: "reconnecting" } }]);
   expect(state.active.size).toBe(0);
   expect(state.storage.size).toBe(0);
 
-  await setEnvironments([machine("build-mac")]);
+  await setEnvironments([machine("office")]);
   expect(state.active.size).toBe(1);
-  await setEnvironments([machine("build-mac", "0.0.46-nightly.20261007.2787")]);
+  await setEnvironments([machine("office", "0.0.46-nightly.20261007.2787")]);
   expect(state.active.size).toBe(0);
 });
 
 it("does not leak a duplicate or dismiss the update during Strict Mode effect replay", async () => {
   setup();
-  state.environments = [machine("build-mac")];
+  state.environments = [machine("office")];
   await using _screen = await render(
     <StrictMode>
       <ServerUpdateNotice />

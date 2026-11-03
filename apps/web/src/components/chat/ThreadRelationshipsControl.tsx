@@ -432,7 +432,7 @@ export function ThreadRelationshipsPanel(props: {
     currentThreadId: props.threadId,
     mergeTargetThreadId,
   })
-    // Fork (Owner): a limit failover's continuation and the tab it continued are
+    // Fork: a limit failover's continuation and the tab it continued are
     // one conversation to the user, shown side by side in the tab strip.
     .filter(
       (row) =>

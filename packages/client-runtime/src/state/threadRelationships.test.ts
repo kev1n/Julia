@@ -12,7 +12,7 @@ import {
 } from "./threadRelationships.ts";
 
 describe("thread relationships", () => {
-  // Fork (Owner): apps/server/src/fork/limitFailover.ts.
+  // Fork: apps/server/src/fork/limitFailover.ts.
   it("pairs a limited thread with the tab that continued it, in either order", () => {
     const original = { id: ThreadId.make("original"), limitRecovery: null };
     const continuation = { id: ThreadId.make("limit-failover:continuation"), limitRecovery: null };

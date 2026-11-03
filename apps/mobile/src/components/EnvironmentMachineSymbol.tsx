@@ -28,7 +28,7 @@ export function EnvironmentMachineSymbol(props: {
   readonly tintColorClassName: string;
 }) {
   if (hasMachinePicture(props.kind)) {
-    // Fork (Owner): machine pictures
+    // Fork: machine pictures
     return (
       <MachinePicture
         kind={props.kind}

@@ -190,7 +190,7 @@ it("does not continue settled root runs with restart-cancelled background work",
       );
 });
 
-// Fork (Owner): recovery queues this only for work that was live (fork/restartWake.ts), so
+// Fork: recovery queues this only for work that was live (fork/restartWake.ts), so
 // delivery wakes the settled run with the note alone.
 it.effect.each(["completed", "waiting", "cancelled"] as const)(
   "wakes a %s run whose provider turn settled with the note of the work it lost",
@@ -597,7 +597,7 @@ it.effect("prepares no continuation for background work another provider thread 
       ),
     );
     yield* ownRecovery.prepareForShutdown;
-    // Fork (Owner): live work on the settled run's own provider thread wakes it.
+    // Fork: live work on the settled run's own provider thread wakes it.
     assert.lengthOf(writes, 1);
     assert.deepEqual(writes[0]!.effects[0]?.request, {
       type: "provider-runtime.continue",
@@ -644,7 +644,7 @@ it.effect.each([
   ["completed", ProjectId.make("restart-project"), devServer, true],
   ["waiting", scratchProjectId, devServer, true],
 ] as const)(
-  // Fork (Owner): the work's session is live, so a shell wakes the run too (fork/restartWake.ts).
+  // Fork: the work's session is live, so a shell wakes the run too (fork/restartWake.ts).
   "cleans up background work of a %s run in project %s and wakes it",
   ([status, projectId, background, wakes]) =>
     Effect.gen(function* () {

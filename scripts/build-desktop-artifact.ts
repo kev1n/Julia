@@ -62,7 +62,7 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-// Fork (Owner): forks install beside the official app under their own id and name.
+// Fork: forks install beside the official app under their own id and name.
 const DESKTOP_APP_ID = process.env.T3CODE_DESKTOP_APP_ID?.trim() || "com.t3tools.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
@@ -3855,7 +3855,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       ? path.join(stageAppDir, WINDOWS_SERVER_RESOURCE_SOURCE_DIR, WINDOWS_SERVER_ASAR_RESOURCE)
       : undefined;
   const stagePackageJson: StagePackageJson = {
-    // Fork (Owner): the package name also names the app's keychain item ("<name> Safe Storage").
+    // Fork: the package name also names the app's keychain item ("<name> Safe Storage").
     name: process.env.T3CODE_DESKTOP_PACKAGE_NAME?.trim() || "t3code",
     version: appVersion,
     buildVersion: appVersion,

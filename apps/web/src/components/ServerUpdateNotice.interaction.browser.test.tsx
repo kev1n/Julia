@@ -158,7 +158,7 @@ async function click(label: string) {
 
 it("opens update controls from the rendered Review button and follows the chosen machine through restart", async () => {
   using _registry = setup();
-  state.environments = [machine("build-mac"), machine("mac-a")];
+  state.environments = [machine("office"), machine("studio")];
   await using _screen = await renderNotice();
   expect(
     document.querySelectorAll('[role="dialog"]:not([data-ending-style]) [data-slot="toast-action"]')
@@ -167,32 +167,32 @@ it("opens update controls from the rendered Review button and follows the chosen
   await click("Review");
   const dialog = () => document.querySelector('[data-slot="dialog-popup"][data-open]');
   expect(dialog()?.textContent).toContain("Update T3 Code servers");
-  expect(dialog()?.textContent).toContain("mac-a");
+  expect(dialog()?.textContent).toContain("studio");
   expect(dialog()?.textContent).toContain(
     "0.0.46-nightly.20261007.2761 → 0.0.46-nightly.20261007.2787",
   );
   await click("Update");
   expect(state.updateServer).toHaveBeenCalledExactlyOnceWith({
-    environmentId: "build-mac",
+    environmentId: "office",
     input: { targetVersion: "0.0.46-nightly.20261007.2787" },
   });
 
   await change(() => {
-    state.registry!.set(updateStateAtoms("build-mac"), { status: "running", stage: "resuming" });
+    state.registry!.set(updateStateAtoms("office"), { status: "running", stage: "resuming" });
     state.environments = [
-      { ...machine("build-mac"), connection: { phase: "reconnecting" } },
-      machine("mac-a"),
+      { ...machine("office"), connection: { phase: "reconnecting" } },
+      machine("studio"),
     ];
   });
   expect(dialog()?.textContent).toContain("Restarting…");
   await change(() => {
-    state.registry!.set(updateStateAtoms("build-mac"), { status: "idle" });
-    state.environments = [machine("build-mac", "0.0.46-nightly.20261007.2787"), machine("mac-a")];
+    state.registry!.set(updateStateAtoms("office"), { status: "idle" });
+    state.environments = [machine("office", "0.0.46-nightly.20261007.2787"), machine("studio")];
   });
   expect(dialog()?.textContent).toContain("Up to date");
   await click("Close");
   await click("Review");
-  expect(dialog()?.textContent).not.toContain("build-mac");
+  expect(dialog()?.textContent).not.toContain("office");
 });
 
 it("offers a manual relaunch command when the server cannot self-update", async () => {
@@ -223,8 +223,8 @@ it("updates all eligible machines concurrently and skips manual, offline, runnin
   using _registry = setup();
   const manual = machine("manual");
   state.environments = [
-    machine("build-mac"),
-    machine("mac-a"),
+    machine("office"),
+    machine("studio"),
     machine("offline"),
     machine("running"),
     machine("updated"),
@@ -269,8 +269,8 @@ it("updates all eligible machines concurrently and skips manual, offline, runnin
   );
   await click("Update all");
   expect(state.updateServer.mock.calls.map(([request]) => request.environmentId)).toEqual([
-    "build-mac",
-    "mac-a",
+    "office",
+    "studio",
   ]);
   expect(state.updateServer.mock.calls[0]?.[0].input).toEqual({
     targetVersion: "0.0.46-nightly.20261007.2787",

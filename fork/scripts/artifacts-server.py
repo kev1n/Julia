@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-"""Fork (Owner): build-mac's artifacts server (com.example.t3code-fork.artifacts).
+"""Fork: the build Mac's artifacts server (install-jobs.sh artifacts).
 
-Serves ~/t3-fork/out to the tailnet (behind Tailscale Serve :8444) as static
+Serves ~/t3-fork/out to the other machines (behind Tailscale Serve :8444) as static
 files, plus /mobile/manifest, the Expo Updates protocol endpoint the phone app
-(T3 Code (Owner)) polls on every launch. A binary's runtime version is its
+(Julia) polls on every launch. A binary's runtime version is its
 native fingerprint, so the manifest is chosen by the request's
 expo-platform and expo-runtime-version headers:
 mobile/<platform>/<runtime>/manifest.json, written by build-mobile.sh publish.

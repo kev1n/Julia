@@ -71,14 +71,14 @@ const threadMetadataDependencies = [
 
 const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
   description:
-    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works. `machine` lists another of Owner's machines (MacBook, mac-a, build-mac; see `t3_fleet_list`) before `delegate_task` there.",
-  // Fork (Owner): `machine` reads another fleet machine's catalog (fork/fleet/remoteTasks.ts).
+    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works. `machine` lists another machine in your fleet (labels from `t3_fleet_list`) before `delegate_task` there.",
+  // Fork: `machine` reads another fleet machine's catalog (fork/fleet/remoteTasks.ts).
   parameters: Schema.Struct({
     ...OrchestratorMcpCapabilitiesInput.fields,
     machine: Schema.optional(
       Schema.String.annotate({
         description:
-          "Machine whose catalog to list: a label such as MacBook, mac-a or build-mac, or an environmentId. Omit for this machine.",
+          "Machine whose catalog to list: a label from `t3_fleet_list`, or an environmentId. Omit for this machine.",
       }),
     ),
   }),
@@ -94,7 +94,7 @@ const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. Leave `runtimeMode` unset: delegated tasks never run in approval-required or auto-accept-edits. `machine` runs it as a subagent of this thread on another of Owner's Macs (MacBook, mac-a, build-mac; see `t3_fleet_list`), only when the user names one or the task needs that Mac. It nests under this thread and its result wakes this thread the same way, but it starts in a fresh worktree of the base branch without this checkout's uncommitted or unpushed work, so make the task self-contained; its taskId starts with fleet:.",
+    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. Leave `runtimeMode` unset: delegated tasks never run in approval-required or auto-accept-edits. `machine` runs it as a subagent of this thread on another machine in your fleet (labels from `t3_fleet_list`), only when the user names one or the task needs that machine. It nests under this thread and its result wakes this thread the same way, but it starts in a fresh worktree of the base branch without this checkout's uncommitted or unpushed work, so make the task self-contained; its taskId starts with fleet:.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: OrchestratorMcpDelegateTaskResult,
   failure: OrchestratorMcpFailure,

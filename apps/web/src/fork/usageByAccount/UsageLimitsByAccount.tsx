@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): Usage > Limits as one card per subscription account. Replaces
+ * Fork: Usage > Limits as one card per subscription account. Replaces
  * upstream's pooled-by-window view (`UsageLimitsPooled`); the data, notices,
  * and reset credits come from the same shared helpers.
  */

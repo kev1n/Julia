@@ -92,7 +92,7 @@ export interface ThreadLaunchInput {
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
   /** Start the thread snoozed; its initial message keeps it snoozed (fork). */
   readonly snoozedUntil?: string;
-  /** Fork (Owner): the thread on another machine this one is a subagent of (fork/fleet/remoteTasks.ts). */
+  /** Fork: the thread on another machine this one is a subagent of (fork/fleet/remoteTasks.ts). */
   readonly remoteParentThreadId?: ThreadId;
   readonly initialMessage?: ThreadLaunchInitialMessage;
   readonly importedNativeThread?: {
@@ -115,7 +115,7 @@ export interface ThreadLaunchInput {
  * A client's `orchestration.launchThread` request as the service takes it. Server-only fields
  * (scheduled task, sender thread, imported native thread) stay unset, so a client cannot claim
  * them. Every client field must be carried here: the fork's `snoozedUntil` was once dropped,
- * and the Orchestrator bridge's routine threads launched visible.
+ * and an external task bridge's routine threads launched visible.
  */
 export const launchInputFromWire = (
   input: OrchestrationV2ThreadLaunchInput,

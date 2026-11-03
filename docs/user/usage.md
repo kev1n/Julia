@@ -138,7 +138,7 @@ after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custo
 or endpoint configurations do not report subscription limits.
 
 API-key accounts may not report subscription limits. This also applies to Claude connections
-using a proxy through `ANTHROPIC_AUTH_TOKEN`.
+using a proxy through `ANTHROPIC_AUTH_TOKEN`, unless the instance is linked to a hub (below).
 
 ## Connect a CLIProxyAPI hub
 
@@ -148,9 +148,23 @@ environment that will connect to the hub and enter its URL and management key.
 The accounts appear under **Usage → Limits**. Codex accounts show banked reset credits; select an
 account and choose **Use reset** to redeem one. No hub plugin is required.
 
-This connection supplies usage information; configure
-the provider separately to send agent requests through the hub. Remove the hub from the same
-settings section when you no longer need it.
+To send agent requests through the hub, point a provider instance at it: for Claude, set
+`ANTHROPIC_BASE_URL` to the hub's address and `ANTHROPIC_AUTH_TOKEN` to its client key in the
+instance's environment variables; for Codex, add a `cliproxy` model provider with
+`base_url="<hub>/v1"` in its launch arguments ([example](../../README.md#pooling-accounts)).
+
+Then open that instance in **Settings → Providers** and choose the hub under **Usage from hub**.
+When the instance's base URL matches a hub, T3 Code offers the link, but nothing is linked until
+you choose it. A linked instance:
+
+- reports the hub's accounts for its provider instead of this machine's login;
+- ranks in Auto account choice by the hub's best account, judged by its tightest window, so two
+  accounts at 90% session / 10% week and 10% / 90% each count as 10%;
+- counts as out of usage when every hub account for that provider is used up, or the hub lists
+  none;
+- counts as unknown, like an instance that reports no usage, while the hub cannot be read.
+
+Remove the hub from the same settings section when you no longer need it.
 
 ## Subscription usage widget
 

@@ -101,6 +101,7 @@ import * as ProviderInstanceRegistry from "./provider/ProviderInstanceRegistry.t
 import * as ProviderAdapterRegistry from "./orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIngestion.ts";
+import * as LinkedUsageProviderRegistry from "./usage/LinkedUsageProviderRegistry.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
@@ -637,7 +638,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(
     Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer),
   ),
-  Layer.provideMerge(ProviderRegistry.layer),
+  // Fork: linked instances report their usage limit source's accounts (one seam for every reader).
+  Layer.provideMerge(
+    LinkedUsageProviderRegistry.layer.pipe(
+      Layer.provide(Layer.merge(ProviderRegistry.layer, UsageLimitSources.layer)),
+    ),
+  ),
   Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
   // Provider hydration builds the Claude runner, which reports agents to the same scanner the
   // terminal and preview layers share.

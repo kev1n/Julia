@@ -2,7 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-import { withOwnerFork } from "./src/fork/appConfig.ts";
+import { withForkConfig } from "./src/fork/appConfig.ts";
 
 type AppVariant = "development" | "preview" | "production";
 
@@ -467,4 +467,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default withOwnerFork(config);
+export default withForkConfig(config);

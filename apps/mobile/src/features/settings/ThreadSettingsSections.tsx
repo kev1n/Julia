@@ -82,7 +82,7 @@ export function UsageLimitSettingsRows(props: {
     <View className="gap-6">
       {!projectSelected ? (
         <SettingsSection title="Usage limits">
-          {/* Fork (Owner): the fallback models are chosen in desktop Settings > Threads. */}
+          {/* Fork: the fallback models are chosen in desktop Settings > Threads. */}
           <SettingsSwitchRow
             icon="arrow.triangle.branch"
             label="Continue on another account"

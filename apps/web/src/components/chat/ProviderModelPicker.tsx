@@ -170,7 +170,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
-  // Fork (Owner): the subscription the selected model runs on and what it has left.
+  // Fork: the subscription the selected model runs on and what it has left.
   const nowMinute = useNowMinute();
   const showsAccount = activeEntry && !selectedEntries && props.triggerLabel === undefined;
   const accountSummary = showsAccount

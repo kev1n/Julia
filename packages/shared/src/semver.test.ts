@@ -43,12 +43,12 @@ describe("semver helpers", () => {
       prerelease: [],
     });
     const nightly = "0.0.46-nightly.20261007.2787";
-    expect(parseSemver(`${nightly}+owner.dd65a77`)?.prerelease).toEqual([
+    expect(parseSemver(`${nightly}+fork.dd65a77`)?.prerelease).toEqual([
       "nightly",
       "20261007",
       "2787",
     ]);
-    expect(compareSemverVersions(`${nightly}+owner.dd65a77`, `${nightly}+owner.9f0409f`)).toBe(0);
+    expect(compareSemverVersions(`${nightly}+fork.dd65a77`, `${nightly}+fork.9f0409f`)).toBe(0);
     expect(compareSemverVersions("1.2.3+build.4", "1.2.3+build.5")).toBe(0);
   });
 

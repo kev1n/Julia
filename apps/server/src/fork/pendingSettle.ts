@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): an agent that settles its own thread mid-turn gets the settle when
+ * Fork: an agent that settles its own thread mid-turn gets the settle when
  * that turn completes (ThreadManagementService.settleAfterRun). The request is kept
  * on the thread as `settleAfterRunId`, and at startup this waits again for each one
  * a restart cut off, following the run into its restart continuation.

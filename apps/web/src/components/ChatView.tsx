@@ -2506,7 +2506,7 @@ export default function ChatView(props: ChatViewProps) {
     });
     return item ? [item] : [];
   });
-  // Fork (Owner): a run limit failover continued in another tab needs no recovery choice.
+  // Fork: a run limit failover continued in another tab needs no recovery choice.
   const limitRecoveryBanner =
     serverRuntime?.status === "failed" &&
     serverRuntime.lastErrorClass === "usage_limit" &&
@@ -2800,7 +2800,7 @@ export default function ChatView(props: ChatViewProps) {
     setPendingServerThreadStartFromOriginByThreadId,
     scheduleComposerFocus,
   });
-  // Fork (Owner): Auto picks the account too; see fork/autoPlacement.
+  // Fork: Auto picks the account too; see fork/autoPlacement.
   const selectAutomaticModel = (instanceId: ProviderInstanceId, model: string) =>
     onProviderModelSelectStable(instanceId, model, { focusComposer: false, automatic: true });
   const selectAutomaticModelStable = useStableCallback(selectAutomaticModel);
@@ -3619,7 +3619,7 @@ export default function ChatView(props: ChatViewProps) {
                               showPlanFollowUpPrompt={showPlanFollowUpPrompt}
                               activeProposedPlan={activeProposedPlan}
                               threadSyncPhase={
-                                // Fork (Owner): a history restore says why the thread is syncing.
+                                // Fork: a history restore says why the thread is syncing.
                                 activeEnvironmentUnavailable ||
                                 threadHistoryBanner?.group === "environment"
                                   ? null

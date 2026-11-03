@@ -1,5 +1,5 @@
 /**
- * Fork (Owner): one machine's CPU, memory and disk on one line, for machine menus. Render it only
+ * Fork: one machine's CPU, memory and disk on one line, for machine menus. Render it only
  * inside the open menu: it polls that server for as long as it is mounted.
  */
 import type { EnvironmentId } from "@t3tools/contracts";

@@ -785,7 +785,7 @@ describe("subagent worktree ownership", () => {
           : scenario === "running" || scenario === "pending"
             ? "Thread is running or has pending work"
             : shared
-              ? // Fork (Owner): threads sharing a worktree without one subagent owner are
+              ? // Fork: threads sharing a worktree without one subagent owner are
                 // judged by the most recently active of them, here the unsettled child.
                 "Not settled"
               : scenario === "null-branch" || scenario === "stale-branch"
