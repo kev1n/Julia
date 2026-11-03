@@ -34,6 +34,18 @@ describe("resolveSendEnvMode", () => {
 });
 
 describe("resolveProjectSettings", () => {
+  it("lets one project turn its thread alerts off while others keep them", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      projectSettingsOverrides: { [projectId]: { threadAlertsEnabled: false } },
+    };
+    expect(DEFAULT_SERVER_SETTINGS.threadAlertsEnabled).toBe(true);
+    expect(resolveProjectSettings(settings, projectId).settings.threadAlertsEnabled).toBe(false);
+    expect(resolveProjectSettings(settings, otherProjectId).settings.threadAlertsEnabled).toBe(
+      true,
+    );
+  });
+
   it("ignores an override left undefined by a forward-compatible decode", () => {
     const resolved = resolveProjectSettings(
       {
