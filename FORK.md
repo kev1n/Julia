@@ -155,6 +155,15 @@ the uncommitted work arrives on the target committed, as the latest commit.
 `studio-b`), instead of the computer name. Clients store the name when they
 pair, so a client paired before the file existed keeps the old name until it is paired again.
 
+**Pairings stay paired** (`apps/server/src/fork/sessionRenewal.ts`). Upstream ends every pairing
+30 days after it was made, even while the client is connected, and a client has no way to renew
+it, so each paired desktop or phone stops connecting on that day until it is paired again. On the
+fork a pairing lasts until its client has not been connected for 30 days: each connect and
+disconnect, and a connection still open at the deadline, restarts the 30 days. Sessions issued for less (T3
+Connect's 1-hour tokens, `t3 auth session issue --ttl`) keep their fixed deadline. A client whose
+pairing already ended pairs again with a new link through its environment's **Add route** in
+Settings > Connections, which replaces the credential without disconnecting the environment.
+
 **Providers on every machine** (`apps/web/src/components/settings/addProviderEverywhere.tsx`,
 `apps/server/src/fork/claudeAuth.ts`, `apps/server/src/fork/pairedOperatorScopes.ts`). Adding a
 provider in Settings > Providers (any built-in driver, or a ChatGPT account for Codex) also adds it
@@ -609,6 +618,9 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
 - `apps/server/src/provider/CodexProvider.ts`: the Codex default model and effort from
   `fork/codexDefaults.ts`.
 - `apps/server/src/auth/SessionStore.ts`: session scopes go through `fork/pairedOperatorScopes.ts`.
+- `apps/server/src/auth/SessionStore.ts` (again): a session's deadline is its stored row, which
+  `fork/sessionRenewal.ts` moves on connect, on disconnect and when a live socket reaches it.
+- `apps/server/src/persistence/AuthSessions.ts`: `setExpiresAt`, the write that renewal uses.
 - `apps/server/src/provider/Drivers/ClaudeDriver.ts`: the Claude instance gets `fork/claudeAuth.ts`
   as its sign-in and advertises it.
 - `apps/web/src/components/settings/AddProviderInstanceDialog.tsx`, `AddCodexAccountDialog.tsx`:
