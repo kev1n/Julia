@@ -32,6 +32,7 @@ import type {
 import * as PayloadSigner from "./PayloadSigner.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { pairedOperatorScopes } from "../fork/pairedOperatorScopes.ts";
+import { renewedSessionExpiry } from "../fork/sessionRenewal.ts";
 import {
   REUSABLE_DEV_SESSION_EXPIRES_AT,
   REUSABLE_DEV_SESSION_PREFIX,
@@ -647,6 +648,17 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // Fork: a socket connecting or closing is use, so a renewable session restarts its lifetime.
+  const renewInUse = Effect.fnUntraced(function* (sessionId: AuthSessionId) {
+    const row = yield* authSessions.getById({ sessionId });
+    if (Option.isNone(row) || row.value.revokedAt !== null) return Option.none<DateTime.Utc>();
+    const expiresAt = renewedSessionExpiry(row.value, yield* DateTime.now, DEFAULT_SESSION_TTL);
+    if (Option.isSome(expiresAt)) {
+      yield* authSessions.setExpiresAt({ sessionId, expiresAt: expiresAt.value });
+    }
+    return expiresAt;
+  });
+
   const markConnected: SessionStore["Service"]["markConnected"] = (sessionId) =>
     Ref.modify(connectedSessionsRef, (current) => {
       const next = new Map(current);
@@ -663,6 +675,7 @@ const make = Effect.gen(function* () {
                   lastConnectedAt,
                 }),
               ),
+              Effect.andThen(renewInUse(sessionId)),
             )
           : Effect.void,
       ),
@@ -692,6 +705,15 @@ const make = Effect.gen(function* () {
       }
       return next;
     }).pipe(
+      Effect.flatMap(() =>
+        renewInUse(sessionId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("Failed to renew a disconnected session.").pipe(
+              Effect.annotateLogs({ sessionId, cause }),
+            ),
+          ),
+        ),
+      ),
       Effect.flatMap(() => loadActiveSession(sessionId)),
       Effect.flatMap((session) =>
         Option.isSome(session) ? emitUpsert(session.value) : emitRemoved(sessionId),
@@ -883,10 +905,10 @@ const make = Effect.gen(function* () {
           expirationClaim: claims.exp,
         });
       }
-      // A peer link's session renews while it is used and its token is never
-      // reissued, so the session row holds its deadline, not the token.
-      const rowHoldsDeadline = claims.plk === 1;
-      if (!rowHoldsDeadline && claims.exp <= observedAt.epochMilliseconds) {
+      // Fork: the session row holds the deadline, because use renews it. A renewable
+      // (rnw) token still ends at its own expiry and is traded through `renew`.
+      const tokenHoldsDeadline = claims.rnw === 1;
+      if (tokenHoldsDeadline && claims.exp <= observedAt.epochMilliseconds) {
         return yield* new SessionTokenExpiredError({
           sessionId: claims.sid,
           expiresAt: expiresAt.value,
@@ -910,10 +932,7 @@ const make = Effect.gen(function* () {
           revokedAt: row.value.revokedAt,
         });
       }
-      if (
-        rowHoldsDeadline &&
-        row.value.expiresAt.epochMilliseconds <= observedAt.epochMilliseconds
-      ) {
+      if (row.value.expiresAt.epochMilliseconds <= observedAt.epochMilliseconds) {
         return yield* new SessionTokenExpiredError({
           sessionId: claims.sid,
           expiresAt: row.value.expiresAt,
@@ -926,7 +945,7 @@ const make = Effect.gen(function* () {
         token,
         method: claims.method,
         client: toClientMetadata(row.value.client),
-        expiresAt: rowHoldsDeadline ? row.value.expiresAt : expiresAt.value,
+        expiresAt: tokenHoldsDeadline ? expiresAt.value : row.value.expiresAt,
         subject: claims.sub,
         scopes: pairedOperatorScopes(claims.sub, row.value.scopes),
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
@@ -1318,6 +1337,16 @@ const make = Effect.gen(function* () {
             latest.value.expiresAt.epochMilliseconds > current.expiresAt.epochMilliseconds
           ) {
             current = latest.value;
+            continue;
+          }
+          // Fork: the live socket is use, so a renewable session renews instead of ending.
+          const renewed = yield* renewInUse(current.sessionId).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SessionCredentialVerificationError({ sessionId: current.sessionId, cause }),
+            ),
+          );
+          if (Option.isSome(renewed)) {
             continue;
           }
           const successorId =

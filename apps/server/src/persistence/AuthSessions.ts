@@ -108,6 +108,12 @@ export const SetAuthSessionLastConnectedAtInput = Schema.Struct({
 });
 export type SetAuthSessionLastConnectedAtInput = typeof SetAuthSessionLastConnectedAtInput.Type;
 
+export const SetAuthSessionExpiresAtInput = Schema.Struct({
+  sessionId: AuthSessionId,
+  expiresAt: Schema.DateTimeUtcFromString,
+});
+export type SetAuthSessionExpiresAtInput = typeof SetAuthSessionExpiresAtInput.Type;
+
 export class AuthSessionRepository extends Context.Service<
   AuthSessionRepository,
   {
@@ -145,6 +151,9 @@ export class AuthSessionRepository extends Context.Service<
     readonly revokeByProofKey: (
       input: RevokeAuthSessionsByProofKeyInput,
     ) => Effect.Effect<ReadonlyArray<AuthSessionId>, AuthSessionRepositoryError>;
+    readonly setExpiresAt: (
+      input: SetAuthSessionExpiresAtInput,
+    ) => Effect.Effect<void, AuthSessionRepositoryError>;
   }
 >()("t3/persistence/AuthSessions/AuthSessionRepository") {}
 
@@ -344,6 +353,17 @@ export const make = Effect.gen(function* () {
       sql`
         UPDATE auth_sessions
         SET last_connected_at = ${lastConnectedAt}
+        WHERE session_id = ${sessionId}
+          AND revoked_at IS NULL
+      `,
+  });
+
+  const setExpiresAtRow = SqlSchema.void({
+    Request: SetAuthSessionExpiresAtInput,
+    execute: ({ sessionId, expiresAt }) =>
+      sql`
+        UPDATE auth_sessions
+        SET expires_at = ${expiresAt}
         WHERE session_id = ${sessionId}
           AND revoked_at IS NULL
       `,
@@ -586,6 +606,17 @@ export const make = Effect.gen(function* () {
       Effect.map((rows) => rows.map((row) => row.sessionId)),
     );
 
+  const setExpiresAt: AuthSessionRepository["Service"]["setExpiresAt"] = (input) =>
+    setExpiresAtRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "AuthSessionRepository.setExpiresAt:query",
+          "AuthSessionRepository.setExpiresAt:encodeRequest",
+          { sessionId: input.sessionId },
+        ),
+      ),
+    );
+
   return {
     create,
     createReplacingActive,
@@ -598,6 +629,7 @@ export const make = Effect.gen(function* () {
     setLastConnectedAt,
     getProofKeyThumbprint,
     revokeByProofKey,
+    setExpiresAt,
   } satisfies AuthSessionRepository["Service"];
 });
 
