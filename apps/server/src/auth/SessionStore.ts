@@ -26,6 +26,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { pairedOperatorScopes } from "../fork/pairedOperatorScopes.ts";
+import { renewedSessionExpiry } from "../fork/sessionRenewal.ts";
 import {
   REUSABLE_DEV_SESSION_EXPIRES_AT,
   REUSABLE_DEV_SESSION_PREFIX,
@@ -575,6 +576,17 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // Fork: a socket connecting or closing is use, so a renewable session restarts its lifetime.
+  const renew = Effect.fnUntraced(function* (sessionId: AuthSessionId) {
+    const row = yield* authSessions.getById({ sessionId });
+    if (Option.isNone(row) || row.value.revokedAt !== null) return Option.none<DateTime.Utc>();
+    const expiresAt = renewedSessionExpiry(row.value, yield* DateTime.now, DEFAULT_SESSION_TTL);
+    if (Option.isSome(expiresAt)) {
+      yield* authSessions.setExpiresAt({ sessionId, expiresAt: expiresAt.value });
+    }
+    return expiresAt;
+  });
+
   const markConnected: SessionStore["Service"]["markConnected"] = (sessionId) =>
     Ref.modify(connectedSessionsRef, (current) => {
       const next = new Map(current);
@@ -591,6 +603,7 @@ const make = Effect.gen(function* () {
                   lastConnectedAt,
                 }),
               ),
+              Effect.andThen(renew(sessionId)),
             )
           : Effect.void,
       ),
@@ -620,6 +633,15 @@ const make = Effect.gen(function* () {
       }
       return next;
     }).pipe(
+      Effect.flatMap(() =>
+        renew(sessionId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("Failed to renew a disconnected session.").pipe(
+              Effect.annotateLogs({ sessionId, cause }),
+            ),
+          ),
+        ),
+      ),
       Effect.flatMap(() => loadActiveSession(sessionId)),
       Effect.flatMap((session) =>
         Option.isSome(session) ? emitUpsert(session.value) : emitRemoved(sessionId),
@@ -803,13 +825,6 @@ const make = Effect.gen(function* () {
           expirationClaim: claims.exp,
         });
       }
-      if (claims.exp <= observedAt.epochMilliseconds) {
-        return yield* new SessionTokenExpiredError({
-          sessionId: claims.sid,
-          expiresAt: expiresAt.value,
-          observedAt,
-        });
-      }
 
       const row = yield* authSessions
         .getById({ sessionId: claims.sid })
@@ -827,13 +842,21 @@ const make = Effect.gen(function* () {
           revokedAt: row.value.revokedAt,
         });
       }
+      // Fork: the row, not the signed claim, holds the deadline, because renewal moves it.
+      if (row.value.expiresAt.epochMilliseconds <= observedAt.epochMilliseconds) {
+        return yield* new SessionTokenExpiredError({
+          sessionId: claims.sid,
+          expiresAt: row.value.expiresAt,
+          observedAt,
+        });
+      }
 
       return {
         sessionId: claims.sid,
         token,
         method: claims.method,
         client: toClientMetadata(row.value.client),
-        expiresAt: expiresAt.value,
+        expiresAt: row.value.expiresAt,
         subject: claims.sub,
         scopes: pairedOperatorScopes(claims.sub, claims.scopes),
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
@@ -1048,18 +1071,34 @@ const make = Effect.gen(function* () {
             ),
           );
         if (Option.isNone(row) || row.value.revokedAt !== null) return;
-        const now = yield* DateTime.now;
-        const remaining = row.value.expiresAt.epochMilliseconds - now.epochMilliseconds;
-        if (remaining <= 0) return;
-        yield* Effect.raceFirst(
-          Stream.fromSubscription(subscription).pipe(
-            Stream.filter(
-              (change) => change.type === "clientRemoved" && change.sessionId === sessionId,
-            ),
-            Stream.runHead,
+        const removed = Stream.fromSubscription(subscription).pipe(
+          Stream.filter(
+            (change) => change.type === "clientRemoved" && change.sessionId === sessionId,
           ),
-          Effect.sleep(Duration.millis(remaining)),
+          Stream.runHead,
+          Effect.as(true),
         );
+        let expiresAt = row.value.expiresAt;
+        for (;;) {
+          const now = yield* DateTime.now;
+          const remaining = expiresAt.epochMilliseconds - now.epochMilliseconds;
+          if (remaining > 0) {
+            const ended = yield* Effect.raceFirst(
+              removed,
+              Effect.sleep(Duration.millis(remaining)).pipe(Effect.as(false)),
+            );
+            if (ended) return;
+            continue;
+          }
+          // Fork: the live socket is use, so a renewable session renews instead of ending.
+          const renewed = yield* renew(sessionId).pipe(
+            Effect.mapError(
+              (cause) => new SessionCredentialVerificationError({ sessionId, cause }),
+            ),
+          );
+          if (Option.isNone(renewed)) return;
+          expiresAt = renewed.value;
+        }
       }),
     );
   });

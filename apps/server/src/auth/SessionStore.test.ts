@@ -133,6 +133,56 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(layerSessionStore(), TestClock.layer()))),
   );
 
+  it.effect("renews a paired client's session while it is used, but not a short-lived one", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const paired = yield* sessions.issue({
+        subject: "one-time-token",
+        method: "bearer-access-token",
+      });
+      const shortLived = yield* sessions.issue({
+        subject: "cli-issued-session",
+        method: "bearer-access-token",
+        ttl: Duration.days(1),
+      });
+      // Its server is killed while it is connected, so it never sees a disconnect.
+      const reconnected = yield* sessions.issue({
+        subject: "one-time-token",
+        method: "bearer-access-token",
+      });
+      yield* sessions.markConnected(paired.sessionId);
+      yield* sessions.markConnected(shortLived.sessionId);
+      const invalidated = yield* Deferred.make<void>();
+      const socket = yield* sessions
+        .awaitInvalidation(paired.sessionId)
+        .pipe(
+          Effect.andThen(Deferred.succeed(invalidated, undefined)),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+
+      yield* TestClock.adjust(Duration.days(20));
+      yield* sessions.markConnected(reconnected.sessionId);
+      yield* TestClock.adjust(Duration.days(11));
+      expect(yield* Deferred.isDone(invalidated)).toBe(false);
+      expect((yield* sessions.verify(reconnected.token)).sessionId).toBe(reconnected.sessionId);
+      yield* Fiber.interrupt(socket);
+      yield* sessions.markDisconnected(paired.sessionId);
+      yield* sessions.markDisconnected(shortLived.sessionId);
+
+      yield* TestClock.adjust(Duration.days(29));
+      const verified = yield* sessions.verify(paired.token);
+      expect(verified.sessionId).toBe(paired.sessionId);
+      expect((yield* Effect.flip(sessions.verify(shortLived.token)))._tag).toBe(
+        "SessionTokenExpiredError",
+      );
+
+      yield* TestClock.adjust(Duration.days(2));
+      expect((yield* Effect.flip(sessions.verify(paired.token)))._tag).toBe(
+        "SessionTokenExpiredError",
+      );
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(layerSessionStore(), TestClock.layer()))),
+  );
+
   it.effect("keys remote cookies by environment identity instead of state directory", () =>
     Effect.gen(function* () {
       const cookieName = (stateDir: string, environmentId: EnvironmentId) =>
