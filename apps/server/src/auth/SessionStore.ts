@@ -586,11 +586,16 @@ const make = Effect.gen(function* () {
   const renew = Effect.fnUntraced(function* (sessionId: AuthSessionId) {
     const row = yield* authSessions.getById({ sessionId });
     if (Option.isNone(row) || row.value.revokedAt !== null) return Option.none<DateTime.Utc>();
-    const expiresAt = renewedSessionExpiry(row.value, yield* DateTime.now, DEFAULT_SESSION_TTL);
+    const now = yield* DateTime.now;
+    const expiresAt = renewedSessionExpiry(row.value, now, DEFAULT_SESSION_TTL);
     if (Option.isSome(expiresAt)) {
       yield* authSessions.setExpiresAt({ sessionId, expiresAt: expiresAt.value });
+      return expiresAt;
     }
-    return expiresAt;
+    // Another socket of this session may have renewed it already: its stored deadline still holds.
+    return row.value.expiresAt.epochMilliseconds > now.epochMilliseconds
+      ? Option.some(DateTime.toUtc(row.value.expiresAt))
+      : Option.none<DateTime.Utc>();
   });
 
   const markConnected: SessionStore["Service"]["markConnected"] = (sessionId) =>

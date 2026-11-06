@@ -281,6 +281,30 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.lay
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(layerSessionStore(), TestClock.layer()))),
   );
 
+  it.effect("keeps every socket of a session open when they reach its deadline together", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const paired = yield* sessions.issue({
+        subject: "one-time-token",
+        method: "bearer-access-token",
+      });
+      yield* sessions.markConnected(paired.sessionId);
+      yield* sessions.markConnected(paired.sessionId);
+      const invalidated = yield* Deferred.make<void>();
+      const watch = sessions
+        .awaitInvalidation(paired.sessionId)
+        .pipe(
+          Effect.andThen(Deferred.succeed(invalidated, undefined)),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+      yield* watch;
+      yield* watch;
+
+      yield* TestClock.adjust(Duration.days(31));
+      expect(yield* Deferred.isDone(invalidated)).toBe(false);
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(layerSessionStore(), TestClock.layer()))),
+  );
+
   it.effect("keys remote cookies by environment identity instead of state directory", () =>
     Effect.gen(function* () {
       const cookieName = (stateDir: string, environmentId: EnvironmentId) =>
