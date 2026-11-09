@@ -50,5 +50,12 @@ grep -q '^fork/owner.txt:1:' <<<"$out" || fail "--commit did not name the denyli
 echo 'scratch: alice-example' > "$repo/fork/scratch.txt"
 run --commit HEAD~1 || fail "--commit read the working tree (a committed file the commit lacks, or an untracked one)"
 
+git rm -q fork/owner.txt && git commit -qm 'drop owner'
+run --commit HEAD || fail "--commit flagged a clean commit identity"
+GIT_AUTHOR_NAME=Alice-Example GIT_AUTHOR_EMAIL=1+alice-example@users.noreply.github.com git commit -q --allow-empty -m noreply
+run --commit HEAD || fail "--commit flagged a GitHub noreply identity"
+GIT_AUTHOR_EMAIL=alice-example@example.com git commit -q --allow-empty -m personal
+run --commit HEAD && fail "--commit missed a denylisted author email"
+
 [ "$status" = 0 ] && echo ok
 exit "$status"
