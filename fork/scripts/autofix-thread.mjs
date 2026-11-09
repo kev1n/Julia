@@ -17,6 +17,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename } from "node:path";
+import { chatWaiter, ended } from "./autofix-wait.mjs";
 
 const [repoRoot, worktree, title, promptFile, limitSeconds] = process.argv.slice(2);
 const settling = repoRoot === "settle";
@@ -26,8 +27,6 @@ if (!limitSeconds && !settling)
   );
 const server = "http://127.0.0.1:3773";
 const t3 = `${process.env.HOME}/.local/bin/t3`;
-// A run is over once it reaches one of these and no background work remains.
-const ended = new Set(["idle", "completed", "interrupted", "failed", "cancelled", "rolled_back"]);
 
 // The daily sync starts a fresh run every 24 h, so a session never needs to
 // outlive one day; it is revoked when we exit.
@@ -171,7 +170,7 @@ console.error(`autofix: thread ${threadId} launched on ${environment.label}`);
 
 // Follow the thread on the shell stream; reconnect if the socket drops (a
 // server restart, say) and read the state again from the fresh snapshot.
-let started = false;
+const done = chatWaiter();
 let current = conn;
 let runId = null;
 const status = await new Promise((resolve, reject) => {
@@ -196,15 +195,8 @@ const status = await new Promise((resolve, reject) => {
     const check = (thread) => {
       if (!thread || thread.id !== threadId) return;
       runId = thread.activeRunId ?? thread.latestRunId ?? runId;
-      if (thread.activeRunId || !ended.has(thread.status)) started = true;
-      const idle =
-        !thread.activeRunId &&
-        ended.has(thread.status) &&
-        (thread.pendingBackgroundTasks ?? []).length === 0;
-      if (thread.pendingRuntimeRequest)
-        resolve(`waiting for input (${thread.pendingRuntimeRequest.kind})`);
-      else if (started && idle) resolve(thread.status);
-      else if (!started && thread.latestRunCompletedAt && idle) resolve(thread.status);
+      const status = done(thread);
+      if (status) resolve(status);
     };
     c.call("orchestration.subscribeShell", {}, (item) => {
       if (item.kind === "snapshot") item.snapshot.threads.forEach(check);
