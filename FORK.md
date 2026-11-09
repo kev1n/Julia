@@ -695,9 +695,10 @@ offloaded (1).
 
 One Mac is the build Mac: it holds a clone of your fork at `~/src/t3code-fork` (with `origin` =
 your fork, `upstream` = pingdotgg/t3code), rebases and builds daily, and serves the build
-outputs. The scripts push code only to that clone's `origin` remote; releases and issues go to
-`fork_repo`, which can be a different, private repository. Every Mac, the build Mac included,
-pulls and installs the newest release.
+outputs. The scripts push code to that clone's `origin` remote; releases and issues go to
+`fork_repo`, which can be a different, private repository. When it is, `sync.sh` also
+force-pushes the rebased branch there, since a release can only point at a commit its repository
+has. Every Mac, the build Mac included, pulls and installs the newest release.
 
 ```
 build Mac 05:00  <prefix>.sync    fork/scripts/sync.sh
