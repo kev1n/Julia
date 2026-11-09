@@ -168,6 +168,12 @@ if $dry_run; then
   exit 0
 fi
 git push -q --force-with-lease="$fork_branch:$before" origin "$fork_branch" || fail "Push of the rebased branch failed."
+# A release can only target a commit its repository has, so a separate fork_repo gets the branch too.
+origin_repo=$(git remote get-url origin | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')
+if [ "$origin_repo" != "$fork_repo" ]; then
+  git push -q --force "https://github.com/$fork_repo.git" "HEAD:refs/heads/$fork_branch" ||
+    fail "Push of the rebased branch to $fork_repo failed."
+fi
 # Uploading the 80-150 MB artifacts from the build Mac to GitHub failed about one time in
 # three (broken pipe / TLS errors, measured 2026-10-06), so the Macs download them
 # from the build Mac's artifacts server (install-jobs.sh artifacts) and the release
