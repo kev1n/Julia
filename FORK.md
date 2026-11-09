@@ -496,7 +496,10 @@ built-in patterns for tailnet hosts, Mac host names and Tailscale IPs. Keep it o
 least, since the sync runs the check there. The repository's pre-push hook
 (`.vite-hooks/pre-push`) runs the same check on each pushed commit, so a committed personal value
 blocks any push from a clone whose hooks are installed (the `prepare` script, `vp config`, sets
-`core.hooksPath`), while uncommitted and untracked files do not.
+`core.hooksPath`), while uncommitted and untracked files do not. With `--commit`, as in that hook, it also
+checks the author, committer and message of every commit since the base; an author or committer
+on GitHub's `<id>+<login>@users.noreply.github.com` address is skipped, since GitHub shows that
+login and name on the commit anyway.
 
 ### Per-machine server files (`~/.t3/userdata/`)
 
