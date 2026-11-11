@@ -32,7 +32,7 @@ build() {
   mkdir -p "$out"
   stage="$(cd "$out" && pwd)/mobile"
   rm -rf "$stage" && mkdir -p "$stage"
-  export PATH="$HOME/.local/share/vite-plus/bin:$PATH"
+  export PATH="$HOME/.local/share/vite-plus/bin:$HOME/.local/share/vite-plus/fallback-bin:$PATH"
   export JAVA_HOME=${JAVA_HOME:-$HOME/t3-fork/toolchain/jdk21/Contents/Home}
   export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
   [ -n "$artifacts_url" ] || { echo "mobile: set build_mac_url or artifacts_url in $fork_local_config (FORK.md)" >&2; exit 1; }
