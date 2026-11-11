@@ -14,7 +14,7 @@ cd "$repo"
 . fork/scripts/fork.env
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-export PATH="$HOME/.local/share/vite-plus/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/share/vite-plus/bin:$HOME/.local/share/vite-plus/fallback-bin:$HOME/.cargo/bin:$PATH"
 unset GITHUB_REPOSITORY T3CODE_DESKTOP_UPDATE_REPOSITORY # no update feed in the app
 # The web build reads APP_VERSION before package.json; a value left in the shell
 # would make every server look out of date.
