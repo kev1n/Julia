@@ -8,7 +8,7 @@ set -euo pipefail
 base=${1:?upstream base ref}
 cd "$(git rev-parse --show-toplevel)"
 fork/scripts/check-literals.sh "$base"
-export PATH="$HOME/.local/share/vite-plus/bin:$PATH"
+export PATH="$HOME/.local/share/vite-plus/bin:$HOME/.local/share/vite-plus/fallback-bin:$PATH"
 vp i # a new upstream base can change dependencies
 # macOS ships bash 3.2 (no mapfile); file names here contain no newlines.
 IFS=$'\n'
