@@ -4,7 +4,7 @@
 # <version> is the upstream nightly plus an ordered fork revision and hash, e.g.
 # 0.0.46-nightly.20261007.2787.fork.1791429000+fork.1a2b3c4. Writes
 #   <output-dir>/t3-<version>-darwin-arm64.tar.gz   (server runtime, the Macs)
-#   <output-dir>/t3-<version>-linux-x64.tar.gz      (server runtime, Linux machines)
+#   <output-dir>/t3-<version>-linux-x64.tar.gz      (server runtime, Linux machines; left out if only its build fails)
 #   <output-dir>/T3-Code-*-arm64.zip                (Julia.app)
 set -euo pipefail
 version=${1:?version}
@@ -61,12 +61,16 @@ rm -f "$out"/*.blockmap "$out"/builder-debug.yml "$out"/*.dmg
 # Linux x64, cross-built here: Node's single executable for linux-x64, the runtime packages'
 # linux-x64 builds, and a static (musl) resource monitor linked by Rust's own lld, so no
 # Linux C toolchain is needed. Needs `rustup target add x86_64-unknown-linux-musl` once.
+# A failure here only leaves the Linux archive out (sync.sh reports it); the Macs' build stands.
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld cargo +stable build --locked --release \
-  --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-musl
-mkdir -p "$work/resource-monitor-linux/linux-x64"
-cp native/resource-monitor/target/x86_64-unknown-linux-musl/release/t3-resource-monitor "$work/resource-monitor-linux/linux-x64/"
-node apps/server/scripts/cli.ts build-exe --target linux-x64
-node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$version" \
-  --resource-monitor-dir "$work/resource-monitor-linux" --output-dir "$out"
+  --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-musl &&
+  mkdir -p "$work/resource-monitor-linux/linux-x64" &&
+  cp native/resource-monitor/target/x86_64-unknown-linux-musl/release/t3-resource-monitor "$work/resource-monitor-linux/linux-x64/" &&
+  node apps/server/scripts/cli.ts build-exe --target linux-x64 &&
+  node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$version" \
+    --resource-monitor-dir "$work/resource-monitor-linux" --output-dir "$out" || {
+  rm -f "$out/t3-$version-linux-x64.tar.gz"
+  echo "!! The linux-x64 server build failed; this build has no Linux archive." >&2
+}
 echo "$version" > "$out/VERSION"
 ls -la "$out"

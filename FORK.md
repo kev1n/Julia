@@ -850,7 +850,9 @@ client's fork version.
 Linux x86_64 machines (systemd, for example Ubuntu Server) run the same server from the
 release's `t3-<version>-linux-x64.tar.gz`, cross-built on the build Mac by `build.sh`: Node's
 single executable for linux-x64, the runtime packages' linux-x64 builds, and a static (musl)
-resource monitor. Every machine downloads only the files it installs (`fork_release_files` in
+resource monitor. If only that cross-build fails, the release ships without it: the Macs deploy
+it, `latest-release` keeps naming the last release with a Linux archive, and the "Fork sync
+failed" issue says so. Every machine downloads only the files it installs (`fork_release_files` in
 `fork.env`): a Linux machine its archive, a Mac everything else.
 
 The service is upstream's systemd user unit `t3code.service`, which `t3 service install` writes
@@ -865,7 +867,8 @@ the desktop app, the build jobs. Packages the scripts need: `libatomic1`, `curl`
 `sqlite3` (for `live-work.sh`).
 
 A Linux machine holds no GitHub login. It learns the newest release from `artifacts_url/latest-release`
-(`<tag> <version>`, which `sync.sh` writes once the release is published) and downloads
+(`<tag> <version>`, which `sync.sh` writes with `latest-release.sh` once the release is
+published, and again when a rerun finds it already published) and downloads
 `VERSION`, `SHA256SUMS` and `fork-scripts.tar.gz` from `artifacts_url/<version>/` beside the
 archive (`fork_latest_release` and `fork_download_release` in `fork.env`; a Mac still uses the
 GitHub release). Its checksums so come from the same server as the archive: they catch transfer
@@ -884,7 +887,7 @@ port 3773 with `tailscale serve --bg --https=443 http://127.0.0.1:3773`.
 ```
 
 Run it on each Mac. It switches the service back to the stock runtime and stops the daily
-deploy job. On a Linux machine, give it the previous fork version under `~/.t3/runtime/versions`. Desktop: quit Julia and open T3 Code (Nightly), which keeps its own pairings. To
+deploy job and any pending `deploy-when-idle` job. On a Linux machine, give it the previous fork version under `~/.t3/runtime/versions`. Desktop: quit Julia and open T3 Code (Nightly), which keeps its own pairings. To
 resume the fork: `fork/scripts/install-jobs.sh deploy` then `~/t3-fork/pull-deploy.sh`.
 
 ### Building by hand

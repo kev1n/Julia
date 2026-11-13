@@ -33,7 +33,7 @@ notify_failure() {
   local title="Fork sync failed"
   local body
   local outcome="Nothing was published, so nothing was deployed; every Mac keeps running ${current_release:-the last release}."
-  [ -n "${released:-}" ] && outcome="Release $tag is out and the Macs will deploy it; only the phone keeps its last update."
+  [ -n "${released:-}" ] && outcome="Release $tag is out and the Macs will deploy it; only what failed above keeps its last update."
   body=$(printf '%s\n\nUpstream: %s\nFork head before sync: %s\nHost: %s\nLog: %s\n\n%s\n\nLast lines:\n```\n%s\n```\n' \
     "$1" "${latest:-unknown}" "${before:-unknown}" "$(hostname -s)" "$log" "$outcome" "$(tail -40 "$log")")
   if $dry_run; then printf '(dry run: no issue opened) The issue would get:\n%s\n' "$body"; return; fi
@@ -103,6 +103,8 @@ $conflicts"
   esac
   tag="$version_label-$upstream_version-$sha"
   if ! $dry_run && [ "$current_release" = "$tag" ]; then
+    # An earlier run may have stopped between publishing and latest-release: catch the Linux machines up.
+    fork/scripts/latest-release.sh "$tag" || fail "Writing latest-release for the published $tag failed."
     echo "Release $tag already published; nothing to do."
     exit 0
   fi
@@ -179,7 +181,10 @@ fi
 # from the build Mac's artifacts server (install-jobs.sh artifacts) and the release
 # only carries the version, checksums and install scripts. A draft first, so no
 # Mac sees a release before its assets are in it.
-(cd "$out" && shasum -a 256 t3-*-darwin-arm64.tar.gz t3-*-linux-x64.tar.gz T3-Code-*-arm64.zip > SHA256SUMS)
+# build.sh leaves out the Linux archive when only its Linux build failed; the Macs still get theirs.
+linux_archive="t3-$version-linux-x64.tar.gz"
+[ -f "$out/$linux_archive" ] || linux_archive=
+(cd "$out" && shasum -a 256 t3-*-darwin-arm64.tar.gz $linux_archive T3-Code-*-arm64.zip > SHA256SUMS)
 publish() {
   gh release create "$tag" -R "$fork_repo" --draft --target "$(git rev-parse HEAD)" \
     --title "$version" --notes "$notes" \
@@ -191,12 +196,10 @@ publish || {
   fail "Publishing release $tag failed (the partial release was removed)."
 }
 released=1
-# Linux machines hold no GitHub login: they learn the newest release from this file on the
-# artifacts server (fork_latest_release). Only a published release writes it; dry runs also
-# fill out/<version>/, so those folders cannot be the list.
-printf '%s %s\n' "$tag" "$version" > "$state/out/latest-release.partial" &&
-  mv "$state/out/latest-release.partial" "$state/out/latest-release" ||
-  fail "Writing latest-release failed, so Linux machines do not see $tag."
+# Only a published release names itself to the Linux machines; dry runs also fill out/<version>/.
+fork/scripts/latest-release.sh "$tag" "$version" || fail "Writing latest-release failed, so Linux machines do not see $tag."
+[ -n "$linux_archive" ] ||
+  notify_failure "The linux-x64 server build failed for $version, so this release has no Linux archive and the Linux machines keep their release. The build's error is in the log."
 fork/scripts/build-mobile.sh publish "$out" "$state/out/mobile" ||
   fail "Publishing the phone app update for $version failed."
 if ls "$out"/mobile/*.apk >/dev/null 2>&1; then
@@ -212,7 +215,7 @@ if ls "$out"/mobile/*.apk >/dev/null 2>&1; then
   fi
 fi
 open_issue=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync failed\" in:title" --json number -q '.[0].number' 2>/dev/null)
-[ -n "$open_issue" ] && gh issue close "$open_issue" -R "$fork_repo" --comment "Fixed: $tag published." >/dev/null
+[ -n "$open_issue" ] && [ -n "$linux_archive" ] && gh issue close "$open_issue" -R "$fork_repo" --comment "Fixed: $tag published." >/dev/null
 # Keep the output of this build and the one before it on disk.
 ls -1dt "$state/out"/*/ 2>/dev/null | grep -v '/mobile/$' | tail -n +3 | xargs rm -rf
 # The fork is current, so no earlier auto-fix chat needs attention any more.
