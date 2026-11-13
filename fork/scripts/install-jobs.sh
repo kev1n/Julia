@@ -15,15 +15,16 @@ state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$HOME/Library/LaunchAgents"
 launcher="$HOME/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
 # load_job <label> <service>: installs the plist on stdin and (re)loads the job. On a Mac
-# whose ~/t3-fork is on a removable volume, only ExternalLauncher.app holds the macOS
-# access grant: the job runs as `ExternalLauncher <service>`, which runs the same command
-# and writes the same log on the volume, so launchd's own log and working directory stay
-# on the internal disk. A job this Mac's launcher has no service for is refused rather
-# than left failing every run.
+# whose ~/t3-fork is a symlink onto a removable volume, only ExternalLauncher.app holds the
+# macOS access grant: the job runs as `ExternalLauncher <service>`, which runs the same
+# command and writes the same log on the volume, so launchd's own log and working directory
+# stay on the internal disk. A job this Mac's launcher has no service for is refused rather
+# than left failing every run. Where ~/t3-fork is a real directory (on the internal disk),
+# the job runs its script directly even if the launcher is installed.
 load_job() {
   local label=$1 service=$2 plist="$HOME/Library/LaunchAgents/$1.plist" new
   new=$(cat)
-  if [ -x "$launcher" ]; then
+  if [ -x "$launcher" ] && [ -L "$state" ]; then
     new=$(/usr/bin/python3 -c '
 import os, plistlib, sys
 launcher, service, label = sys.argv[1:]
