@@ -35,7 +35,7 @@ export interface SignInMachine {
  * the instance gets it from the source machine's entry, and a shared token is
  * removed first because it would override the new login.
  */
-export function useClaudeSignInEverywhere(
+function useClaudeSignInEverywhere(
   sourceEnvironmentId: EnvironmentId,
   instanceId: ProviderInstanceId,
 ) {

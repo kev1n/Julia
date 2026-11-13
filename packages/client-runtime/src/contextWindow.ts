@@ -28,7 +28,7 @@ export type ContextWindowSnapshot = NullableContextWindowUsage & {
 
 /** Newest usage report across a thread's provider turns. Snapshots order turns
     by provider thread, not time, so pick by timestamp. */
-export function latestProviderTurnTokenUsage(
+function latestProviderTurnTokenUsage(
   turns: ReadonlyArray<Pick<OrchestrationV2ProviderTurn, "tokenUsage">>,
   projection?: Pick<ThreadStructure, "thread" | "contextTransfers"> | null,
   providerThread?: Pick<OrchestrationV2ProviderThread, "contextUsage"> | null,
@@ -60,7 +60,7 @@ export function latestProviderTurnTokenUsage(
 }
 
 /** Prefers the provider's live usage report; falls back to the last compaction item. */
-export function deriveLatestContextWindowSnapshot(
+function deriveLatestContextWindowSnapshot(
   entries: ReadonlyArray<{
     readonly item: ThreadStructureTurnItem;
   }>,

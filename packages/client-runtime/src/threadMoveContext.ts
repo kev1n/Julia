@@ -3,7 +3,7 @@
  * client selects like T3's portable handoff: the original request, then the latest whole messages
  * that fit T3's handoff default (16,000 tokens, one per UTF-8 byte).
  */
-export const MOVE_CONTEXT_BUDGET_BYTES = 16_000;
+const MOVE_CONTEXT_BUDGET_BYTES = 16_000;
 
 export interface MoveContextMessage {
   readonly role: "user" | "assistant" | "system";

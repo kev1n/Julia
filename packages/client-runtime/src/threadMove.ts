@@ -18,7 +18,6 @@ import { buildMoveMessage, type MoveContextMessage } from "./threadMoveContext.t
 export {
   buildMoveMessage,
   selectMoveHistory,
-  MOVE_CONTEXT_BUDGET_BYTES,
   type MoveContextMessage,
 } from "./threadMoveContext.ts";
 

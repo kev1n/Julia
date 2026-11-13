@@ -41,6 +41,9 @@
         "prepare-server-compile-cache.cjs",
         "smoke-desktop-app.ts",
         "verify-windows-desktop-artifact.ts",
+        // Fork: upstream's icon exporters, kept for rebases; the fork's icons:* scripts run export-julia-icons.ts.
+        "export-android-icons.ts",
+        "export-brand-icons.ts",
       ],
       "ignoreDependencies": ["esbuild"],
       // The `t3` npm package's files: copied into the package, never imported.
@@ -105,7 +108,16 @@
       // UI component modules are copied and adapted as cohesive sets. Keep their
       // named subcomponents even before they have callers; the file audit still
       // reports an entire component module when nothing imports it.
-      "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
+      "ignoreIssues": {
+        "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
+        // Fork: upstream code whose only callers the fork replaced; kept to rebase cleanly.
+        "src/components/ServerUpdateAction.tsx": ["exports"],
+        "src/components/sidebar/mainAppLocation.ts": ["exports"],
+        "src/modelOrdering.ts": ["exports"],
+        "src/providerInstances.ts": ["exports"],
+      },
+      // Fork: replaced by fork/autoPlacement/useAutoPlacement.ts; upstream's file stays for rebases.
+      "ignoreFiles": ["src/hooks/useLoadBalancedEnvironment.ts"],
     },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
