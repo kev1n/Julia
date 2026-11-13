@@ -17,6 +17,7 @@ import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
 import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
+import { FleetWaitInput, FleetWaitResult } from "./messageWait.ts";
 import { FleetCoverage, FleetIntent, FleetLifecycle } from "./model.ts";
 
 const Envelope = {
@@ -144,10 +145,28 @@ const FleetThreadReadTool = Tool.make("t3_fleet_thread_read", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
 
+const FleetThreadWaitTool = Tool.make("t3_fleet_thread_wait", {
+  ...shared,
+  description:
+    "Wait for a thread on any machine in your fleet, on the machine that owns it. Same input as t3_thread_wait, plus messageId from t3_fleet_thread_send to wait for the run holding your message. Once the run ends, output is its last assistant message or the error it failed on. timedOut=true means it is still running: wait again, never resend. A failure means the machine did not answer, not that the run failed.",
+  parameters: Schema.Struct({
+    ...FleetWaitInput.fields,
+    environmentId: Schema.String,
+  }),
+  success: Schema.Struct({
+    ...Envelope,
+    environmentId: Schema.String,
+    result: FleetWaitResult,
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
 const FleetThreadSendTool = Tool.make("t3_fleet_thread_send", {
   ...shared,
   description:
-    "Send a message to a thread on any machine in your fleet about that thread's own work. It is not for handing a new task to another machine, and the sender gets no notice when the thread finishes; for a new task there, use delegate_task with machine. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
+    "Send a message to a thread on any machine in your fleet about that thread's own work. It is not for handing a new task to another machine; for that, use delegate_task with machine. Nothing notifies you when the thread answers: call t3_fleet_thread_wait with the returned messageId. The owning machine checks that the target runs within this thread's permission modes. mode: auto (start if idle, steer an active turn, else queue), queue, or steer; restart is not offered across machines. idempotencyKey is required: retrying with the same key delivers at most once. If the outcome is 'unknown' (timeout or lost answer), it was not retried for you; retry with the same idempotencyKey.",
   parameters: Schema.Struct({
     environmentId: Schema.String,
     threadId: Schema.String,
@@ -171,6 +190,7 @@ export const FleetToolkit = Toolkit.make(
   WhoElseTool,
   WorkPublishTool,
   FleetThreadReadTool,
+  FleetThreadWaitTool,
   FleetThreadSendTool,
 );
 

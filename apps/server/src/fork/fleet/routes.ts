@@ -2,7 +2,7 @@
 // @effect-diagnostics globalDateInEffect:off
 /**
  * Fork: the fleet's HTTP routes under /fork/fleet, all requiring the fleet secret, reached
- * over the tailnet. A peer read or send acts for the calling thread as a client capped at that
+ * over the tailnet. A peer read, wait or send acts for the calling thread as a client capped at that
  * thread's runtime mode, so a target never runs with broader modes than its caller; idempotency
  * keys are namespaced per source thread.
  */
@@ -20,10 +20,12 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
+import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ForkDrain from "../drain.ts";
 import { MoveFailure, packBranch } from "../moveThread.ts";
 import { FleetOperationError, authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
+import { FleetWaitInput, waitOnThisMachine } from "./messageWait.ts";
 import { FleetSnapshot } from "./model.ts";
 import { PeerSource, peerScope } from "./peer.ts";
 import * as ProjectMirror from "./projectMirror.ts";
@@ -31,6 +33,7 @@ import * as RemoteTasks from "./remoteTasks.ts";
 import { fleetConfig } from "./publisher.ts";
 
 const PeerRead = Schema.Struct({ source: PeerSource, input: OrchestratorMcpThreadReadInput });
+const PeerWait = Schema.Struct({ source: PeerSource, input: FleetWaitInput });
 const PeerSend = Schema.Struct({
   source: PeerSource,
   input: Schema.Struct({
@@ -59,6 +62,7 @@ const decodeSnapshot = Schema.decodeUnknownEffect(FleetSnapshot);
 const decodeMovePack = Schema.decodeUnknownEffect(MovePack);
 const isMoveFailure = Schema.is(MoveFailure);
 const decodePeerRead = Schema.decodeUnknownEffect(PeerRead);
+const decodePeerWait = Schema.decodeUnknownEffect(PeerWait);
 const decodePeerSend = Schema.decodeUnknownEffect(PeerSend);
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
 
@@ -82,6 +86,7 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
     const remoteTasks: RemoteTasks.PeerHandlers = new Map([
       ...(yield* RemoteTasks.makePeerHandlers),
       ...(yield* ProjectMirror.makePeerHandlers),
@@ -89,7 +94,11 @@ export const layer = Layer.unwrap(
     // Optional, so a layer built without the database (tests) still builds; the
     // server provides it, and without it the drain answers 404 like an old server.
     const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
-    return HttpRouter.add("*", "/fork/fleet/*", handle(environment, service, remoteTasks, sql));
+    return HttpRouter.add(
+      "*",
+      "/fork/fleet/*",
+      handle(environment, service, threads, remoteTasks, sql),
+    );
   }),
 );
 
@@ -97,6 +106,7 @@ const handle = Effect.fn("routes.handle")(
   function* (
     environment: ServerEnvironment.ServerEnvironment["Service"],
     service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+    threads: ThreadManagementService.ThreadManagementService["Service"],
     remoteTasks: RemoteTasks.PeerHandlers,
     sql: Option.Option<SqlClient.SqlClient>,
   ) {
@@ -152,7 +162,10 @@ const handle = Effect.fn("routes.handle")(
     if (remoteTask !== undefined && request.method === "POST") {
       return yield* asReply(remoteTask(yield* request.json));
     }
-    if (request.method !== "POST" || (path !== "peer/read" && path !== "peer/send")) {
+    if (
+      request.method !== "POST" ||
+      (path !== "peer/read" && path !== "peer/wait" && path !== "peer/send")
+    ) {
       return HttpServerResponse.text("Not Found", { status: 404 });
     }
     const descriptor = yield* environment.getDescriptor;
@@ -162,6 +175,14 @@ const handle = Effect.fn("routes.handle")(
       if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
       const { source, input } = decoded.success;
       return yield* asReply(service.readThread(peerScope(descriptor.environmentId, source), input));
+    }
+    if (path === "peer/wait") {
+      const decoded = yield* decodePeerWait(body).pipe(Effect.result);
+      if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);
+      const { source, input } = decoded.success;
+      return yield* asReply(
+        waitOnThisMachine(service, threads, peerScope(descriptor.environmentId, source), input),
+      );
     }
     const decoded = yield* decodePeerSend(body).pipe(Effect.result);
     if (decoded._tag === "Failure") return json({ error: "invalid request" }, 400);

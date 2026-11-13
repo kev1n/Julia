@@ -195,7 +195,7 @@ studio-a ─┼─ and at once on lifecycle change ──▶│ latest snapshot 
 studio-b ─┘   POST /fork/fleet/hub/publish      │ stale after 3 missed heartbeats       │
                                                └───────────────────────────────────────┘
 tool on any server ── GET hub/index ─▶ overlaps computed locally, own snapshot substituted
-t3_fleet_thread_read/send ─────────── POST <owner>/fork/fleet/peer/{read,send}
+t3_fleet_thread_read/wait/send ────── POST <owner>/fork/fleet/peer/{read,wait,send}
 ```
 
 A record keeps four things apart: declared intent (keys published with `t3_work_publish`, read or
@@ -221,7 +221,11 @@ environment and thread id plus the repository's canonical key; paths are reposit
   call), `t3_fleet_thread_read` (fetched from the owning server, T3's paging) and
   `t3_fleet_thread_send` (auto, queue or steer; no restart across machines; `idempotencyKey`
   required; a timeout or lost answer comes back as `outcome: "unknown"` and is never retried
-  silently). File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
+  silently), and `t3_fleet_thread_wait` for the reply (`messageWait.ts`). The wait is keyed by
+  the sent `messageId`, not the `runId`: promoting a queued message to steer cancels its run and
+  moves the message onto the active one, so the wait follows the message. Each peer request waits
+  at most one slice (8 s, under the HTTP limit) and the caller loops until its own deadline.
+  File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
 - Project mirroring (`projectMirror.ts`): a project created on one machine is cloned on the
   others into their Add-project base folder (`~` when unset), and deleting it deletes it there
   too, with its threads; folders stay on disk. Machines match projects by repository, so one with
