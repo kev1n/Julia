@@ -1,6 +1,7 @@
 #!/bin/bash
 # install-jobs.sh writes plists that run the job's script directly, or, where
-# ExternalLauncher.app is installed, through it with launchd's log on the internal disk.
+# ExternalLauncher.app is installed and ~/t3-fork is a symlink onto a removable volume,
+# through it with launchd's log on the internal disk.
 #   fork/scripts/install-jobs.test.sh
 # Runs the real script against a scratch HOME; launchctl is stubbed by a script first
 # on PATH, checked before any run so the real one is never reached.
@@ -33,12 +34,19 @@ check org.example.fork.watchdog \
   'd["ProgramArguments"] == ["/bin/bash", h+"/t3-fork/watchdog.sh"] and d["StandardOutPath"] == h+"/t3-fork/logs/watchdog.log" and "WorkingDirectory" not in d' ||
   fail "without ExternalLauncher the watchdog does not run its script directly"
 
-# With the launcher: [launcher, service], launchd's log and cwd on the internal disk,
-# the job's other keys unchanged.
 mkdir -p "$tmp/Applications/ExternalLauncher.app/Contents/MacOS"
 launcher="$tmp/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
 printf '\0t3-deploy\0t3-watchdog\0' > "$launcher"
 chmod 755 "$launcher"
+# Launcher installed but ~/t3-fork a real directory (internal disk): still direct.
+run watchdog
+check org.example.fork.watchdog \
+  'd["ProgramArguments"] == ["/bin/bash", h+"/t3-fork/watchdog.sh"] and d["StandardOutPath"] == h+"/t3-fork/logs/watchdog.log" and "WorkingDirectory" not in d' ||
+  fail "with ~/t3-fork on the internal disk the watchdog does not run its script directly"
+
+# ~/t3-fork a symlink onto a volume, with the launcher: [launcher, service], launchd's log
+# and cwd on the internal disk, the job's other keys unchanged.
+mv "$tmp/t3-fork" "$tmp/volume-t3-fork" && ln -s "$tmp/volume-t3-fork" "$tmp/t3-fork"
 logs="h+\"/Library/Logs/external-launcher\""
 run watchdog deploy
 check org.example.fork.watchdog \
