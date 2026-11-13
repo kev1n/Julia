@@ -56,6 +56,8 @@ fail() {
 
 cd "$repo" || exit 1
 git fetch -q origin || fail "git fetch origin failed"
+# T3 Code cuts new worktrees from origin/HEAD, which git never refreshes on its own.
+git remote set-head origin -a >/dev/null || echo "!! Could not refresh origin/HEAD."
 git fetch -q upstream --tags || fail "git fetch upstream failed"
 git checkout -q "$fork_branch" && git reset -q --hard "origin/$fork_branch" || fail "could not check out origin/$fork_branch"
 before=$(git rev-parse HEAD)
