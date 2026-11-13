@@ -781,8 +781,10 @@ chat to finish, at most one hour: after that it stops the chat's turn, as the St
 and treats it as unresolved. It then accepts its branch only if the report says `RESOLVED`, no
 rebase is left in progress, the branch sits on the upstream ref, the fork's commit subjects are
 unchanged in order and number (no "fix conflicts" commit), nothing under `fork/` changed, the
-fork's test cases did not drop, and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable
-count did not grow. It then runs the very same rebase check, checks and builds itself on that
+fork's own test cases did not drop, upstream tests went only from test files the fork already
+strips (a fork commit deletes that feature, as with automatic thread settling; the release notes
+list them), and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable count did not
+grow (`fork/scripts/autofix-guards.sh`). It then runs the very same rebase check, checks and builds itself on that
 branch; only if they pass does the normal push and release happen, and the release notes carry
 the chat link and the agent's report for audit. The chat's worktree is removed then. Each
 auto-fix chat is settled once a newer one starts or a sync publishes, so the active list shows at
