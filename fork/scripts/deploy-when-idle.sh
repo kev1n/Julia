@@ -1,11 +1,11 @@
 #!/bin/bash
-# Installs one release of the fork on this Mac as soon as nothing would be cut off.
+# Installs one release of the fork on this machine as soon as nothing would be cut off.
 #
 #   fork/scripts/deploy-when-idle.sh --schedule <release tag> [--now]
 #   fork/scripts/deploy-when-idle.sh --cancel <release tag>
 #
-# --schedule copies this script to ~/t3-fork and starts a LaunchAgent that runs it
-# every 30 s (log: ~/t3-fork/logs/deploy-when-idle-<sha>.log). Each run downloads and
+# --schedule copies this script to ~/t3-fork and starts a LaunchAgent (on Linux, a systemd
+# user timer) that runs it every 30 s (log: ~/t3-fork/logs/deploy-when-idle-<sha>.log). Each run downloads and
 # checks the release, then asks the running server what a restart would cut off (runs,
 # and background subagents, shells and Monitors a thread left running after its turn
 # ended) without changing anything, and waits while that is anything. Once it is
@@ -44,13 +44,28 @@ state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
 label="$job_label_prefix.deploy-when-idle-${tag##*-}"
 plist="$HOME/Library/LaunchAgents/$label.plist"
+units="$HOME/.config/systemd/user"
+log="$state/logs/${label#"$job_label_prefix".}.log"
 if [ "$action" = schedule ]; then
   # The agent scheduling this, if any: Claude and Codex give their shells their own id.
   requester="${CLAUDE_CODE_SESSION_ID:-${CODEX_THREAD_ID:-}}"
   # A copy outside any checkout, so the job survives a worktree being removed;
   # a new file, so a job of an earlier tag running the old copy is not disturbed.
-  install -S -m 600 "$(dirname "$0")/fork.env" "$state/fork.env"
-  install -S -m 700 "$0" "$state/deploy-when-idle.sh"
+  fork_install -m 600 "$(dirname "$0")/fork.env" "$state/fork.env"
+  fork_install -m 700 "$0" "$state/deploy-when-idle.sh"
+  if [ "$fork_platform" = linux-x64 ]; then
+    # A timer that starts at once (and at boot, like RunAtLoad) and again 30 s after each run.
+    mkdir -p "$units"
+    args="/bin/bash $state/deploy-when-idle.sh $tag"
+    if [ "$now" = 1 ]; then args="$args --now"; fi
+    printf '%s\n' "[Unit]" "Description=Install $tag once nothing would be cut off" "" "[Service]" "Type=oneshot" \
+      "ExecStart=$args${requester:+ --requester $requester}" \
+      "StandardOutput=append:$log" "StandardError=append:$log" > "$units/$label.service"
+    printf '%s\n' "[Unit]" "Description=Install $tag once nothing would be cut off" "" "[Timer]" \
+      "OnActiveSec=1s" "OnUnitInactiveSec=30s" "AccuracySec=1s" "" "[Install]" "WantedBy=timers.target" > "$units/$label.timer"
+    systemctl --user daemon-reload
+    systemctl --user enable --now "$label.timer"
+  else
   /usr/bin/python3 - "$plist" "$label" "$state" "$tag" "$now" "$requester" "$job_label_prefix" <<'PY'
 import os, plistlib, sys
 path, label, state, tag, now, requester, prefix = sys.argv[1:]
@@ -76,6 +91,7 @@ with open(path, "wb") as f:
 os.chmod(path, 0o600)
 PY
   launchctl bootstrap "gui/$(id -u)" "$plist"
+  fi
   if [ "$now" = 1 ]; then
     echo "Scheduled $tag to install now, cutting off whatever runs."
   else
@@ -86,6 +102,12 @@ fi
 waiting_since="$state/$label.waiting-since"
 finish() {
   rm -f "$waiting_since"
+  if [ -f "$units/$label.timer" ]; then
+    systemctl --user disable --now "$label.timer" || true
+    mv "$units/$label.timer" "$state/$label.completed.timer"
+    mv "$units/$label.service" "$state/$label.completed.service"
+    systemctl --user daemon-reload || true
+  fi
   if [ -f "$plist" ]; then
     mv "$plist" "$state/$label.completed.plist"
     launchctl bootout "gui/$(id -u)/$label" || true
@@ -118,7 +140,7 @@ if [ "$action" = cancel ]; then
   echo "Cancelled $tag; the server takes new work again."
   exit 0
 fi
-latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
+latest=$(fork_latest_release)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag; not overwriting it."
   cancel_drain
@@ -129,12 +151,13 @@ dir="$state/releases/$tag"
 if [ ! -f "$dir/VERSION" ]; then
   partial="$dir.partial"
   mkdir -p "$partial"
-  gh release download "$tag" -R "$fork_repo" --clobber -D "$partial"
+  fork_download_release "$tag" "$partial"
   target=$(cat "$partial/VERSION")
+  fork_release_files "$partial/SHA256SUMS" > "$partial/SHA256SUMS.here"
   while read -r checksum filename; do
     curl -fsS --max-time 240 --retry 2 --output "$partial/$filename" "$artifacts_url/$target/$filename"
-  done < "$partial/SHA256SUMS"
-  (cd "$partial" && shasum -a 256 -c SHA256SUMS)
+  done < "$partial/SHA256SUMS.here"
+  (cd "$partial" && fork_sha256_check SHA256SUMS.here)
   mv "$partial" "$dir"
 fi
 target=$(cat "$dir/VERSION")
@@ -167,7 +190,7 @@ report() {
   local since minutes
   since=$(cat "$waiting_since")
   minutes=$(( ($(date -u +%s) - since) / 60 ))
-  echo "$(date -u): $1 $(printf '%s\n' "$2" | wc -l | tr -d ' ') live item(s), waiting since $(date -u -r "$since" +%H:%MZ) (${minutes} min); no restart:"
+  echo "$(date -u): $1 $(printf '%s\n' "$2" | wc -l | tr -d ' ') live item(s), waiting since $(date -u -d "@$since" +%H:%MZ 2>/dev/null || date -u -r "$since" +%H:%MZ) (${minutes} min); no restart:"
   printf '%s\n' "$2" | sort | uniq -c | sed 's/^/    /'
   return 1
 }
@@ -233,7 +256,7 @@ else
   quiet || exit 0
 fi
 # Check again just before restarting: another release may have arrived during download.
-latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
+latest=$(fork_latest_release)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag during download; not overwriting it."
   cancel_drain
@@ -252,7 +275,7 @@ if [ "$now" = 1 ]; then
 else
   echo "$(date -u): Nothing left to cut off; installing $target."
 fi
-if "$dir/scripts/install-runtime.sh" "$dir/t3-$target-darwin-arm64.tar.gz"; then
+if "$dir/scripts/install-runtime.sh" "$dir/t3-$target-$fork_platform.tar.gz"; then
   echo "$(date -u): Installer verified $target."
 else
   echo "$(date -u): Installer failed; its rollback was attempted. Disabling this job for review."
