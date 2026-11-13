@@ -179,7 +179,7 @@ fi
 # from the build Mac's artifacts server (install-jobs.sh artifacts) and the release
 # only carries the version, checksums and install scripts. A draft first, so no
 # Mac sees a release before its assets are in it.
-(cd "$out" && shasum -a 256 t3-*-darwin-arm64.tar.gz T3-Code-*-arm64.zip > SHA256SUMS)
+(cd "$out" && shasum -a 256 t3-*-darwin-arm64.tar.gz t3-*-linux-x64.tar.gz T3-Code-*-arm64.zip > SHA256SUMS)
 publish() {
   gh release create "$tag" -R "$fork_repo" --draft --target "$(git rev-parse HEAD)" \
     --title "$version" --notes "$notes" \

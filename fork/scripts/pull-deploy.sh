@@ -1,7 +1,8 @@
 #!/bin/bash
-# Daily on every Mac (LaunchAgent <job_label_prefix>.deploy): install the
-# newest release of the fork's repository if this Mac does not run it yet. Server runtime
-# on every Mac; the desktop app too where Julia or the legacy fork app is installed.
+# Daily on every Mac (LaunchAgent <job_label_prefix>.deploy) and Linux machine (systemd
+# user timer of the same name): install the newest release of the fork's repository if this
+# machine does not run it yet. Server runtime everywhere; the desktop app too where Julia or
+# the legacy fork app is installed.
 # Waits for a later run while any thread is working or has background work
 # live (live-work.sh); when there is none it hands the install to a
 # deploy-when-idle.sh job, which drains the server first, so a deploy never
@@ -30,10 +31,11 @@ if [ ! -f "$dir/VERSION" ]; then
   rm -rf "$dir.partial"
   gh release download "$tag" -R "$fork_repo" -D "$dir.partial" || exit 1
   v=$(cat "$dir.partial/VERSION")
-  for file in $(awk '{print $2}' "$dir.partial/SHA256SUMS"); do
+  fork_release_files "$dir.partial/SHA256SUMS" > "$dir.partial/SHA256SUMS.here" || exit 1
+  for file in $(awk '{print $2}' "$dir.partial/SHA256SUMS.here"); do
     curl -fsS --output "$dir.partial/$file" "$artifacts_url/$v/$file" || exit 1
   done
-  (cd "$dir.partial" && shasum -a 256 -c SHA256SUMS) || exit 1
+  (cd "$dir.partial" && fork_sha256_check SHA256SUMS.here) || exit 1
   mv "$dir.partial" "$dir"
 fi
 version=$(cat "$dir/VERSION")

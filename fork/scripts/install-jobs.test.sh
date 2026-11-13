@@ -59,5 +59,20 @@ check org.example.fork.deploy \
 run sync && fail "installed sync though ExternalLauncher has no t3-sync"
 [ ! -e "$agents/org.example.fork.sync.plist" ] || fail "wrote a sync plist ExternalLauncher cannot run"
 
+# Linux: deploy is a systemd user timer at 05:45 that catches up after downtime; the
+# Mac-only jobs are refused.
+mkdir -p "$tmp/linux"
+printf '#!/bin/bash\necho Linux\n' > "$tmp/linux/uname"
+printf '#!/bin/bash\necho "$*" >> "%s/systemctl"\n' "$tmp" > "$tmp/linux/systemctl"
+chmod +x "$tmp/linux/uname" "$tmp/linux/systemctl"
+units="$tmp/.config/systemd/user"
+PATH="$tmp/linux:$PATH" run deploy
+grep -qx "ExecStart=/bin/bash $tmp/t3-fork/pull-deploy.sh" "$units/org.example.fork.deploy.service" &&
+  grep -qx "OnCalendar=\*-\*-\* 05:45:00" "$units/org.example.fork.deploy.timer" &&
+  grep -qx "Persistent=true" "$units/org.example.fork.deploy.timer" &&
+  grep -qx -- "--user enable --now org.example.fork.deploy.timer" "$tmp/systemctl" ||
+  fail "on Linux the deploy job is not a daily systemd timer"
+PATH="$tmp/linux:$PATH" run watchdog && fail "installed the watchdog on Linux"
+
 [ "$status" = 0 ] && echo ok
 exit "$status"

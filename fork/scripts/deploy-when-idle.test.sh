@@ -20,7 +20,7 @@ echo 1.0.0+new > "$dir/VERSION"
 echo '{"activeVersion": "1.0.0+old"}' > "$tmp/.t3/runtime/service-state.json"
 echo '{"secret": "fleet-secret"}' > "$tmp/.t3/userdata/fork-fleet.json"
 touch "$tmp/t3-fork/desktop-local-build"
-printf '#!/bin/bash\ntouch "%s/installed"\n' "$tmp" > "$dir/scripts/install-runtime.sh"
+printf '#!/bin/bash\necho "$1" > "%s/installed"\n' "$tmp" > "$dir/scripts/install-runtime.sh"
 chmod +x "$dir/scripts/install-runtime.sh"
 # live-work.sh, exiting with $1 after printing nothing (the old "idle").
 live_work() {
@@ -44,7 +44,10 @@ curl() {
   esac
 }
 launchctl() { :; }
-export -f gh curl launchctl
+# uname answers $STUB_UNAME when set, so a run can take the Linux path; systemctl records.
+uname() { if [ -n "${STUB_UNAME:-}" ]; then echo "$STUB_UNAME"; else command uname "$@"; fi; }
+systemctl() { printf '%s\n' "$*" >> "$STUB_LOG.systemctl"; }
+export -f gh curl launchctl uname systemctl
 export STUB_TAG="$tag" STUB_LOG="$tmp/drain-requests"
 status=0
 fail() { echo "FAIL: $1"; printf 'output:\n%s\n' "$out"; status=1; }
@@ -68,7 +71,7 @@ grep -q 'Authorization: Bearer fleet-secret' "$STUB_LOG" || fail "the request wa
 
 # Idle, and the drain is idle too: install, logging the requester's work it left out.
 STUB_PEEK="$drained" STUB_DRAIN_CODE=200 run "$tag" --requester claude-session-1
-[ -e "$tmp/installed" ] || fail "did not install once drained"
+grep -qx "$dir/t3-1.0.0+new-darwin-arm64.tar.gz" "$tmp/installed" 2>/dev/null || fail "did not install the darwin-arm64 archive once drained"
 grep -q '"action": "start"' "$STUB_LOG" || fail "installed without starting the drain"
 grep -q 'Not waiting for the thread that scheduled this deploy: monitor Deploys' <<<"$out" ||
   fail "no log of the requester's work left out"
@@ -122,6 +125,22 @@ mv "$tmp/t3-fork" "$tmp/volume-t3-fork" && ln -s "$tmp/volume-t3-fork" "$tmp/t3-
 CLAUDE_CODE_SESSION_ID= CODEX_THREAD_ID= run --schedule "$tag" --now
 /usr/bin/python3 -c 'import plistlib,sys; d=plistlib.load(open(sys.argv[1],"rb")); log=sys.argv[3]+"/Library/Logs/external-launcher/org.example.fork.deploy-when-idle-abc1234.log"; sys.exit(d["ProgramArguments"] != [sys.argv[2], "t3-deploy-when-idle", "fork-1.0.0-abc1234", "--now"] or d["StandardOutPath"] != log or d["WorkingDirectory"] != sys.argv[3]+"/Library/Logs/external-launcher")' "$plist" "$launcher" "$tmp" ||
   fail "with ExternalLauncher installed the scheduled job does not run through it"
+
+# Linux: --schedule writes a systemd user timer and service instead of a plist, and the
+# install takes the linux-x64 archive and then retires the timer.
+units="$tmp/.config/systemd/user"
+label=org.example.fork.deploy-when-idle-abc1234
+rm -f "$STUB_LOG.systemctl"
+STUB_UNAME=Linux CLAUDE_CODE_SESSION_ID=claude-session-1 run --schedule "$tag"
+grep -qx "ExecStart=/bin/bash $tmp/t3-fork/deploy-when-idle.sh $tag --requester claude-session-1" "$units/$label.service" ||
+  fail "the Linux job does not run the installed copy for the requesting session"
+grep -qx "OnUnitInactiveSec=30s" "$units/$label.timer" || fail "the Linux timer does not repeat every 30 s"
+grep -qx -- "--user enable --now $label.timer" "$STUB_LOG.systemctl" || fail "the Linux timer was not started"
+live_work 0
+STUB_UNAME=Linux STUB_PEEK="$drained" STUB_DRAIN_CODE=200 run "$tag"
+grep -qx "$dir/t3-1.0.0+new-linux-x64.tar.gz" "$tmp/installed" 2>/dev/null || fail "Linux did not install the linux-x64 archive"
+[ ! -e "$units/$label.timer" ] && grep -qx -- "--user disable --now $label.timer" "$STUB_LOG.systemctl" ||
+  fail "the Linux timer was not retired after the install"
 
 [ "$status" = 0 ] && echo ok
 exit "$status"
