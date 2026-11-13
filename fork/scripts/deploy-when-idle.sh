@@ -103,6 +103,8 @@ drain() {
   case "${answer##*$'\n'}" in
     200) printf '%s\n' "${answer%$'\n'*}" ;;
     404) return 2 ;;
+    # MCP auth answering for the drain route (release d379001): no drain is reachable.
+    401) case "${answer%$'\n'*}" in *'"invalid_mcp_credential"'*) return 2 ;; *) return 1 ;; esac ;;
     *) return 1 ;;
   esac
 }
