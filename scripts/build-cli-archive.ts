@@ -645,8 +645,14 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
   });
 
   const executablePath = path.join(contentDir, executableName);
-  if (input.platform === "linux") {
+  if (input.platform === "linux" && hostPlatform === "linux") {
     yield* bundleLinuxLibatomic({ repoRoot, contentDir, executablePath });
+  } else if (input.platform === "linux") {
+    // Fork: a cross-build from macOS has no ldd, dpkg-query or patchelf, so the machine
+    // that runs this archive must have libatomic1 installed instead (FORK.md, Linux machines).
+    yield* Effect.logWarning(
+      "[cli-archive] Cross-built: libatomic.so.1 is not bundled; install libatomic1 where t3 runs.",
+    );
   }
   // TEMPORARY one-time Node fix. Remove when fixed: https://github.com/nodejs/node/issues/67048
   if (input.platform === "linux" && input.arch === "arm64") {
@@ -695,7 +701,7 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
     // npm rejects Linux hardlink entries; macOS pnpm clones and bsdtar lacks this flag.
     yield* runCommand(
       ChildProcess.make("tar", [
-        ...(input.platform === "linux" ? ["--hard-dereference"] : []),
+        ...(input.platform === "linux" && hostPlatform === "linux" ? ["--hard-dereference"] : []),
         "-czf",
         archivePath,
         "-C",
