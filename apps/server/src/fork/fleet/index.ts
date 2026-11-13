@@ -1,5 +1,5 @@
 /**
- * Fork: fleet agent awareness, one layer added to the MCP server.
+ * Fork: fleet agent awareness, added to the MCP server and beside its `/mcp` route.
  * See FORK.md "Fleet awareness".
  */
 import * as Effect from "effect/Effect";
@@ -38,10 +38,12 @@ const layerRemoteTaskDelivery = Layer.effectDiscard(
 export const layer = (register: typeof toolkitRegistration) =>
   Layer.mergeAll(
     register(FleetToolkit, Handlers.layer),
-    Routes.layer,
     layerPublisher,
     layerRemoteTaskDelivery,
   ).pipe(
     Layer.provide(OrchestratorMcpService.layer),
     Layer.provide(ThreadMetadataMcpService.layer),
   );
+
+/** `/fork/fleet/*`, authorized by the fleet secret alone: McpHttpServer mounts it beside `/mcp`. */
+export const layerRoutes = Routes.layer.pipe(Layer.provide(OrchestratorMcpService.layer));

@@ -1263,6 +1263,13 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerMcpTransport(
+/** Registrations inherit `/mcp`'s auth middleware, so routes with their own auth sit beside it. */
+export const layerHttp = <RA, RE, RR, RB, EB, RRB>(
+  registrations: Layer.Layer<RA, RE, RR>,
+  routes: Layer.Layer<RB, EB, RRB>,
+) => Layer.mergeAll(layerMcpTransport(registrations), routes);
+
+export const layer = layerHttp(
   Layer.mergeAll(layerTools, ForkFleet.layer(toolkitRegistration)),
+  ForkFleet.layerRoutes,
 );
