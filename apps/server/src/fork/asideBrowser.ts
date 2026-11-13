@@ -31,7 +31,7 @@ export class AsideUnavailableError extends Schema.TaggedError<AsideUnavailableEr
   }
 }
 
-export const asideSocketPath = (env: NodeJS.ProcessEnv = process.env) =>
+const asideSocketPath = (env: NodeJS.ProcessEnv = process.env) =>
   env.T3_ASIDE_SOCKET ?? NodePath.join(NodeOS.homedir(), ".t3-aside", "cdp.sock");
 
 const connectSocket = (socketPath: string) =>

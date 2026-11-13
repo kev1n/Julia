@@ -28,7 +28,7 @@ import type * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { isForkableSourceRunStatus } from "../orchestration-v2/ThreadForkService.ts";
 import type * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 
-export const LIMIT_FAILOVER_PROMPT =
+const LIMIT_FAILOVER_PROMPT =
   "Your previous turn stopped on a usage limit, so this conversation moved to another account. Continue where you left off.";
 
 /**

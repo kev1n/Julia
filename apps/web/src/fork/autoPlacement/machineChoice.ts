@@ -6,7 +6,7 @@
 import { type EnvironmentMachineKind, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 
 /** The weight Auto uses for a machine that has no saved preference. */
-export function defaultAutoWeight(kind: EnvironmentMachineKind): number {
+function defaultAutoWeight(kind: EnvironmentMachineKind): number {
   return kind === "laptop" ? 0 : 50;
 }
 

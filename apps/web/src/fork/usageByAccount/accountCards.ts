@@ -40,7 +40,7 @@ const KIND_ORDER: Record<ServerProviderUsageWindow["kind"], number> = {
   other: 3,
 };
 
-export function accountLogin(account: LimitAccount): string {
+function accountLogin(account: LimitAccount): string {
   const local = account.email?.split("@")[0]?.trim();
   return local || account.displayName || account.key;
 }
