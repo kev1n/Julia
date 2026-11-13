@@ -66,7 +66,7 @@ $commits
 ## Rules (the sync checks these mechanically and rejects your branch otherwise)
 
 - The commit list after \`$latest\` must have exactly the subjects above, in the same order. No "fix conflicts" commit.
-- Do not touch anything under \`fork/\` (the checks and build scripts), and do not delete, skip, \`.only\` or weaken tests, or add \`@ts-ignore\`, \`@ts-expect-error\`, \`@ts-nocheck\`, or lint-disable comments (except the reason comment upstream requires on a React effect: \`// oxlint-disable-next-line t3code/no-unreasoned-state-sync -- <why>\`). If the only way to green is one of these, stop and say so.
+- Do not touch anything under \`fork/\` (the checks and build scripts), and do not delete, skip, \`.only\` or weaken tests, or add \`@ts-ignore\`, \`@ts-expect-error\`, \`@ts-nocheck\`, or lint-disable comments (except the reason comment upstream requires on a React effect: \`// oxlint-disable-next-line t3code/no-unreasoned-state-sync -- <why>\`). If the only way to green is one of these, stop and say so. One exception: a new upstream test of code that a fork commit deletes goes with that code; name it in the report.
 - Do not push, publish, open issues, or touch \`~/src/t3code-fork\`, the \`$fork_branch\` branch, \`~/t3-fork/out\`, or \`~/.t3/userdata\`. The sync reruns the same checks and build itself and publishes only if they pass.
 
 ## When you finish
@@ -98,19 +98,8 @@ git merge-base --is-ancestor "$latest" "$result" || verdict "the agent's branch 
 [ "$(git log --reverse --format=%s "$base..$before")" = "$(git log --reverse --format=%s "$latest..$result")" ] ||
   verdict "the agent's branch changed the fork's commit series (added, dropped, reordered or renamed commits)"
 git diff --quiet "$before" "$result" -- fork || verdict "the agent changed files under fork/ (the checks and build scripts)"
-
-# What the fork adds on top of upstream must not lose test cases or gain skips,
-# focus, type suppressions or lint disables, compared with before the sync.
-# Upstream requires a reason disable on every React effect, so those do not count.
-count() { git grep -h -E "$1" "$2" -- "${@:3}" 2>/dev/null | grep -v 't3code/no-unreasoned-state-sync' | wc -l; }
-fork_delta() { echo $(($(count "$1" "$before" "${@:2}") - $(count "$1" "$base" "${@:2}"))) $(($(count "$1" "$result" "${@:2}") - $(count "$1" "$latest" "${@:2}"))); }
-tests='^[[:space:]]*(it|test)(\.[a-zA-Z]+)*\('
-read -r was now <<<"$(fork_delta "$tests" '*.test.ts' '*.test.tsx')"
-[ "$now" -ge "$was" ] || verdict "the fork's test cases went from $was to $now"
-weakeners='\.(skip|only|todo|skipIf|runIf)\(|@ts-(ignore|nocheck|expect-error)|(eslint|oxlint)-disable'
-read -r was now <<<"$(fork_delta "$weakeners" '*.ts' '*.tsx')"
-[ "$now" -le "$was" ] || verdict "the fork's skips, type suppressions or lint disables went from $was to $now"
+guards=$("$here/autofix-guards.sh" "$base" "$before" "$latest" "$result") || verdict "$guards"
 
 echo "$result" > "$dir/result"
-echo "agent's branch $result passed the guards" > "$dir/verdict"
+printf "agent's branch %s passed the guards\n%s\n" "$result" "$guards" > "$dir/verdict"
 echo "autofix: $(cat "$dir/verdict")"
