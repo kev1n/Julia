@@ -15,9 +15,19 @@ import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../../mcp/McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
 import { readCaller } from "../../mcp/threadAccess.ts";
-import { FleetHttpError, FleetOperationError, STALE_AFTER_MS, fleetRequest } from "./config.ts";
+import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
+import {
+  DEFAULT_WAIT_MS,
+  FleetHttpError,
+  FleetOperationError,
+  MAX_WAIT_MS,
+  STALE_AFTER_MS,
+  WAIT_SLICE_MS,
+  fleetRequest,
+} from "./config.ts";
 import { findOverlaps, isActive } from "./fleetIndex.ts";
-import type { FleetIntent } from "./model.ts";
+import { type FleetWaitResult, waitOnThisMachine } from "./messageWait.ts";
+import type { FleetIntent, FleetSnapshot } from "./model.ts";
 import { fleetConfig, localSnapshot, refreshNow, setIntents } from "./publisher.ts";
 import type { PeerSource } from "./peer.ts";
 import { FleetToolkit } from "./tools.ts";
@@ -114,8 +124,28 @@ type PeerReply<A> =
       readonly failure: { code: OrchestratorMcpFailure["code"]; message: string };
     };
 
+/** One request to the machine that owns a thread; a failure names that machine. */
+const askPeer = <A>(target: FleetSnapshot, path: string, body: unknown) =>
+  Effect.tryPromise({
+    try: () => fleetRequest(fleetConfig()!, `${target.baseUrl}/fork/fleet/${path}`, body),
+    catch: (cause) => new FleetOperationError({ cause }),
+  }).pipe(
+    Effect.mapError((error) =>
+      fail(
+        "orchestration_error",
+        `${target.label} did not answer: ${String(error.cause ?? error)}`,
+      ),
+    ),
+    Effect.flatMap((reply) => {
+      const typed = reply as PeerReply<A>;
+      return typed.ok
+        ? Effect.succeed(typed.result)
+        : Effect.fail(fail(typed.failure.code, `${target.label}: ${typed.failure.message}`));
+    }),
+  );
+
 /**
- * Access (McpToolAccess): listing, overlaps and reading change nothing;
+ * Access (McpToolAccess): listing, overlaps, reading and waiting change nothing;
  * publishing intents acts as the calling thread; sending writes the target
  * thread, checked here when it is on this server and by the destination
  * server (the sender's modes are its ceiling, routes.ts) when it is not.
@@ -170,24 +200,41 @@ const handlers = {
       }
       const target = yield* owner(current, environmentId);
       const source = yield* peerSource;
-      const reply = (yield* Effect.tryPromise({
-        try: () =>
-          fleetRequest(fleetConfig()!, `${target.baseUrl}/fork/fleet/peer/read`, {
-            source,
-            input: readInput,
-          }),
-        catch: (cause) => new FleetOperationError({ cause }),
-      }).pipe(
-        Effect.mapError((error) =>
-          fail(
-            "orchestration_error",
-            `${target.label} did not answer: ${String(error.cause ?? error)}`,
-          ),
-        ),
-      )) as PeerReply<OrchestratorMcpThreadReadResult>;
-      if (!reply.ok)
-        return yield* fail(reply.failure.code, `${target.label}: ${reply.failure.message}`);
-      return { ...envelope(current), environmentId, result: reply.result };
+      const result = yield* askPeer<OrchestratorMcpThreadReadResult>(target, "peer/read", {
+        source,
+        input: readInput,
+      });
+      return { ...envelope(current), environmentId, result };
+    }),
+  ),
+  t3_fleet_thread_wait: McpToolAccess.reads(({ environmentId, ...waitInput }) =>
+    Effect.gen(function* () {
+      const current = yield* view();
+      const descriptor = yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      if (environmentId === descriptor.environmentId) {
+        const result = yield* waitOnThisMachine(
+          yield* OrchestratorMcpService.OrchestratorMcpService,
+          yield* ThreadManagementService.ThreadManagementService,
+          yield* McpInvocationContext.McpInvocationContext,
+          waitInput,
+        );
+        return { ...envelope(current), environmentId, result };
+      }
+      const target = yield* owner(current, environmentId);
+      const source = yield* peerSource;
+      // Each request must answer within fleetRequest's timeout, so wait in slices.
+      const deadline =
+        Date.now() + Math.min(MAX_WAIT_MS, Math.max(1, waitInput.timeoutMs ?? DEFAULT_WAIT_MS));
+      while (true) {
+        const timeoutMs = Math.max(1, Math.min(WAIT_SLICE_MS, deadline - Date.now()));
+        const result = yield* askPeer<FleetWaitResult>(target, "peer/wait", {
+          source,
+          input: { ...waitInput, timeoutMs },
+        });
+        if (!result.timedOut || Date.now() >= deadline) {
+          return { ...envelope(current), environmentId, result };
+        }
+      }
     }),
   ),
   t3_fleet_thread_send: McpToolAccess.writesThreads(

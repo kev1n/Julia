@@ -32,6 +32,11 @@ export interface FleetConfig {
 export const HEARTBEAT_MS = 10_000;
 /** Records turn stale after three missed heartbeats (one late beat is not an outage). */
 export const STALE_AFTER_MS = 3 * HEARTBEAT_MS;
+/** Budget for a wait on another machine, which runs as a series of slices. */
+export const DEFAULT_WAIT_MS = 10 * 60 * 1_000;
+export const MAX_WAIT_MS = 60 * 60 * 1_000;
+/** One waiting peer request, under fleetRequest's timeout. */
+export const WAIT_SLICE_MS = HEARTBEAT_MS - 2_000;
 
 export function readFleetConfig(userdataDir: string): FleetConfig | null {
   try {
