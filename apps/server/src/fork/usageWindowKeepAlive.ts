@@ -29,7 +29,7 @@ const DRIVERS = [ProviderDriverKind.make("claudeAgent"), ProviderDriverKind.make
  */
 export const KEEPALIVE_RETRY_MS = 10 * 60 * 1000;
 
-export function keepAliveAccountKey(provider: ServerProvider): string {
+function keepAliveAccountKey(provider: ServerProvider): string {
   const email = provider.auth.email?.trim().toLowerCase();
   const credential = provider.usageLimits?.credentialFingerprint;
   return `${provider.driver}:${email ?? (credential ? `credential:${credential}` : provider.instanceId)}`;
