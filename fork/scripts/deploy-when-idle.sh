@@ -59,11 +59,12 @@ args = ["/bin/bash", os.path.join(state, "deploy-when-idle.sh"), tag]
 extra = ["--now"] if now == "1" else []
 extra += ["--requester", requester] if requester else []
 data = {"Label": label, "RunAtLoad": True, "StartInterval": 30}
-# On a Mac whose ~/t3-fork is on a removable volume, only ExternalLauncher.app holds the
-# macOS access grant: it runs the job's script itself and writes the log above, so
-# launchd's own log and working directory stay on the internal disk.
+# On a Mac whose ~/t3-fork is a symlink onto a removable volume, only ExternalLauncher.app
+# holds the macOS access grant: it runs the job's script itself and writes the log above, so
+# launchd's own log and working directory stay on the internal disk. A real ~/t3-fork
+# directory (internal disk) runs the script directly.
 launcher = os.path.expanduser("~/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher")
-if os.access(launcher, os.X_OK):
+if os.access(launcher, os.X_OK) and os.path.islink(state):
     args = [launcher, "t3-deploy-when-idle", tag]
     log = os.path.expanduser("~/Library/Logs/external-launcher/" + label + ".log")
     os.makedirs(os.path.dirname(log), exist_ok=True)

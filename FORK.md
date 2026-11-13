@@ -747,9 +747,10 @@ with access to your fork, write `~/.config/julia/fork.env`, then from a fork che
 `fork/scripts/install-jobs.sh sync artifacts deploy`. Toolchain on the build Mac: `vp`
 (`curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash`), Rust stable via rustup, Node 24,
 Xcode command line tools, `gh`, Tailscale (for `tailscale serve`), and the Android toolchain
-above. Where `~/t3-fork` is on a removable volume, an `ExternalLauncher.app` in `~/Applications`
-holding the macOS access grant runs the jobs (`install-jobs.sh`, `deploy-when-idle.sh`); jobs it
-has no service for are refused.
+above. Where `~/t3-fork` is a symlink onto a removable volume, an `ExternalLauncher.app` in
+`~/Applications` holding the macOS access grant runs the jobs (`install-jobs.sh`,
+`deploy-when-idle.sh`); jobs it has no service for are refused. Where `~/t3-fork` is a real
+directory, the jobs run their scripts directly even with the launcher installed.
 
 **Why a build Mac and not a GitHub Action:** the desktop app must be built on macOS. GitHub's
 macOS runners bill private-repo minutes at ten times the Linux rate, and an Action cannot reach
