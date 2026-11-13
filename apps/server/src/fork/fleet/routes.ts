@@ -26,6 +26,7 @@ import { FleetOperationError, authorized } from "./config.ts";
 import { hubIndex, hubPublish } from "./hub.ts";
 import { FleetSnapshot } from "./model.ts";
 import { PeerSource, peerScope } from "./peer.ts";
+import * as ProjectMirror from "./projectMirror.ts";
 import * as RemoteTasks from "./remoteTasks.ts";
 import { fleetConfig } from "./publisher.ts";
 
@@ -81,7 +82,10 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-    const remoteTasks = yield* RemoteTasks.makePeerHandlers;
+    const remoteTasks: RemoteTasks.PeerHandlers = new Map([
+      ...(yield* RemoteTasks.makePeerHandlers),
+      ...(yield* ProjectMirror.makePeerHandlers),
+    ]);
     // Optional, so a layer built without the database (tests) still builds; the
     // server provides it, and without it the drain answers 404 like an old server.
     const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
