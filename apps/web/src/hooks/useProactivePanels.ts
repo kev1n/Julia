@@ -105,7 +105,7 @@ export function useProactivePanels(input: {
         threadRef,
         pullRequestSurface(linkedThreadPullRequest),
         userActionRevision,
-        true,
+        { activateExisting: true },
       );
     }
     if (!clientSettingsHydrated) return;
@@ -129,6 +129,7 @@ export function useProactivePanels(input: {
           threadRef,
           { id: "pull-requests", kind: "pull-requests" },
           userActionRevision,
+          { offerKey: proactivePullRequestsKey ?? undefined },
         );
       } else if (
         !followSelectedPullRequest &&
@@ -139,6 +140,7 @@ export function useProactivePanels(input: {
           threadRef,
           pullRequestSurface(linkedThreadPullRequest),
           userActionRevision,
+          { offerKey: proactivePullRequestsKey ?? undefined },
         );
       }
     }
