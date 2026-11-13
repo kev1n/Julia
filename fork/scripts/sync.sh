@@ -191,6 +191,12 @@ publish || {
   fail "Publishing release $tag failed (the partial release was removed)."
 }
 released=1
+# Linux machines hold no GitHub login: they learn the newest release from this file on the
+# artifacts server (fork_latest_release). Only a published release writes it; dry runs also
+# fill out/<version>/, so those folders cannot be the list.
+printf '%s %s\n' "$tag" "$version" > "$state/out/latest-release.partial" &&
+  mv "$state/out/latest-release.partial" "$state/out/latest-release" ||
+  fail "Writing latest-release failed, so Linux machines do not see $tag."
 fork/scripts/build-mobile.sh publish "$out" "$state/out/mobile" ||
   fail "Publishing the phone app update for $version failed."
 if ls "$out"/mobile/*.apk >/dev/null 2>&1; then

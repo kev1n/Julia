@@ -717,6 +717,7 @@ build Mac 05:00  <prefix>.sync    fork/scripts/sync.sh
                 it, then the same checks and builds run again (see "When the sync fails")
              -> push fork_branch, GitHub release <version_label>-<version>-<sha> on fork_repo
                 (VERSION, SHA256SUMS, install scripts)
+             -> ~/t3-fork/out/latest-release (<tag> <version>), for the Linux machines
              -> build-mobile.sh publish (into ~/t3-fork/out/mobile); a new APK opens the issue
                 "Install the new phone app build"
 build Mac always <prefix>.artifacts  ~/t3-fork/artifacts-server.py: ~/t3-fork/out served at
@@ -860,14 +861,21 @@ where no service exists yet) and rolls back the same way. The deploy job is a sy
 and service named like the LaunchAgent (`<prefix>.deploy`, 05:45, `Persistent=true`), and
 `deploy-when-idle.sh --schedule` writes a timer that runs every 30 s and retires itself after the
 install. Not on Linux: the watchdog (the unit's `Restart=always` covers a crash, not a hang),
-the desktop app, the build jobs. Packages the scripts need: `libatomic1`, `curl`, `python3`,
-`sqlite3` (for `live-work.sh`) and `gh`.
+the desktop app, the build jobs. Packages the scripts need: `libatomic1`, `curl`, `python3` and
+`sqlite3` (for `live-work.sh`).
 
-Setting up one: put the four local files (Configuration) in place, `gh auth login` with read
-access to `fork_repo`, download the newest release (`VERSION`, `SHA256SUMS`,
-`fork-scripts.tar.gz` from GitHub, the archive from `artifacts_url/<version>/`), run its
-`install-runtime.sh <archive>`, then `install-jobs.sh deploy`, and publish port 3773 with
-`tailscale serve --bg --https=443 http://127.0.0.1:3773`.
+A Linux machine holds no GitHub login. It learns the newest release from `artifacts_url/latest-release`
+(`<tag> <version>`, which `sync.sh` writes once the release is published) and downloads
+`VERSION`, `SHA256SUMS` and `fork-scripts.tar.gz` from `artifacts_url/<version>/` beside the
+archive (`fork_latest_release` and `fork_download_release` in `fork.env`; a Mac still uses the
+GitHub release). Its checksums so come from the same server as the archive: they catch transfer
+errors, and the build Mac is trusted for both, as it already is for the archives.
+
+Setting up one: put the four local files (Configuration) in place, download the newest release
+(the tag and version in `artifacts_url/latest-release`, then `VERSION`, `SHA256SUMS`,
+`fork-scripts.tar.gz` and the archive from `artifacts_url/<version>/`), check the archive with
+`sha256sum -c`, run its `install-runtime.sh <archive>`, then `install-jobs.sh deploy`, and publish
+port 3773 with `tailscale serve --bg --https=443 http://127.0.0.1:3773`.
 
 ### Rollback (one line per machine)
 

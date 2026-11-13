@@ -9,7 +9,7 @@
 # cuts either off. Where the desktop app is installed it also raises a
 # notification while a "Fork sync failed" issue is open.
 set -uo pipefail
-# fork_repo, and artifacts_url: the build outputs the build Mac serves.
+# fork_repo, and artifacts_url: the build outputs the build Mac serves (fork_latest_release).
 . "$(dirname "$0")/fork.env" || exit 1
 state="$HOME/t3-fork"
 mkdir -p "$state/logs" "$state/releases"
@@ -24,12 +24,12 @@ if fork_desktop_installed; then
   [ -n "$failed" ] && /usr/bin/osascript -e "display notification \"Nothing was deployed. Details: $failed\" with title \"T3 Code fork sync failed\""
 fi
 
-tag=$(gh release list -R "$fork_repo" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName') || exit 1
+tag=$(fork_latest_release) || exit 1
 [ -n "$tag" ] || { echo "no release"; exit 0; }
 dir="$state/releases/$tag"
 if [ ! -f "$dir/VERSION" ]; then
   rm -rf "$dir.partial"
-  gh release download "$tag" -R "$fork_repo" -D "$dir.partial" || exit 1
+  fork_download_release "$tag" "$dir.partial" || exit 1
   v=$(cat "$dir.partial/VERSION")
   fork_release_files "$dir.partial/SHA256SUMS" > "$dir.partial/SHA256SUMS.here" || exit 1
   for file in $(awk '{print $2}' "$dir.partial/SHA256SUMS.here"); do

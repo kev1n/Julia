@@ -140,7 +140,7 @@ if [ "$action" = cancel ]; then
   echo "Cancelled $tag; the server takes new work again."
   exit 0
 fi
-latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
+latest=$(fork_latest_release)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag; not overwriting it."
   cancel_drain
@@ -151,7 +151,7 @@ dir="$state/releases/$tag"
 if [ ! -f "$dir/VERSION" ]; then
   partial="$dir.partial"
   mkdir -p "$partial"
-  gh release download "$tag" -R "$fork_repo" --clobber -D "$partial"
+  fork_download_release "$tag" "$partial"
   target=$(cat "$partial/VERSION")
   fork_release_files "$partial/SHA256SUMS" > "$partial/SHA256SUMS.here"
   while read -r checksum filename; do
@@ -256,7 +256,7 @@ else
   quiet || exit 0
 fi
 # Check again just before restarting: another release may have arrived during download.
-latest=$(gh release view -R "$fork_repo" --json tagName -q .tagName)
+latest=$(fork_latest_release)
 if [ "$latest" != "$tag" ]; then
   echo "$(date -u): $latest superseded $tag during download; not overwriting it."
   cancel_drain
