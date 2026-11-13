@@ -97,6 +97,7 @@ export interface ThreadRightPanelState {
   dismissedDeviceSurfaceIds?: string[];
   maximized?: true;
   proactiveDiffTurnId?: RunId;
+  proactivePullRequestsKey?: string;
 }
 
 export interface ThreadPanelVisibility {
@@ -121,7 +122,8 @@ interface RightPanelStoreState {
       | Extract<RightPanelSurface, { kind: "pull-request" | "pull-requests" }>
       | { kind: "diff"; turnId: RunId },
     expectedUserActionRevision: number,
-    activateExisting?: boolean,
+    /** `offerKey` names the linked change requests; each key is offered once per thread. */
+    options?: { readonly activateExisting?: boolean; readonly offerKey?: string | undefined },
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
@@ -331,7 +333,8 @@ const updateThreadStateMap = (
     next.activeSurfaceId === null &&
     next.surfaces.length === 0 &&
     !next.dismissedDeviceSurfaceIds?.length &&
-    next.proactiveDiffTurnId === undefined
+    next.proactiveDiffTurnId === undefined &&
+    next.proactivePullRequestsKey === undefined
   ) {
     if (!(threadKey in byThreadKey)) return byThreadKey;
     const { [threadKey]: _removed, ...rest } = byThreadKey;
@@ -602,6 +605,9 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                   ...(typeof validThreadState?.proactiveDiffTurnId === "string"
                     ? { proactiveDiffTurnId: RunId.make(validThreadState.proactiveDiffTurnId) }
                     : {}),
+                  ...(typeof validThreadState?.proactivePullRequestsKey === "string"
+                    ? { proactivePullRequestsKey: validThreadState.proactivePullRequestsKey }
+                    : {}),
                   ...(Array.isArray(validThreadState?.dismissedDeviceSurfaceIds)
                     ? {
                         dismissedDeviceSurfaceIds:
@@ -660,7 +666,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         }));
         return revision;
       },
-      openProactive: (ref, request, expectedUserActionRevision, activateExisting = false) => {
+      openProactive: (ref, request, expectedUserActionRevision, options = {}) => {
+        const { activateExisting = false, offerKey } = options;
         let opened = false;
         set((state) => {
           const threadKey = scopedThreadKey(ref);
@@ -681,22 +688,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               proactiveDiffTurnId: request.turnId,
             }));
           }
-          if (
-            (state.userActionRevisionByThreadKey[threadKey] ?? 0) !== expectedUserActionRevision
-          ) {
-            return state;
-          }
-          // Keep an existing PR tab where the user left it when revisiting a thread.
-          if (
-            !activateExisting &&
-            selectThreadRightPanelState(state.byThreadKey, ref).surfaces.some(
-              (entry) => entry.id === request.id,
-            )
-          ) {
-            return state;
-          }
-          opened = true;
-          return automaticUpdate(state, threadKey, (current) => upsertSurface(current, request));
+          const current = selectThreadRightPanelState(state.byThreadKey, ref);
+          if (offerKey !== undefined && current.proactivePullRequestsKey === offerKey) return state;
+          opened =
+            (state.userActionRevisionByThreadKey[threadKey] ?? 0) === expectedUserActionRevision &&
+            // Keep an existing PR tab where the user left it when revisiting a thread.
+            (activateExisting || !current.surfaces.some((entry) => entry.id === request.id));
+          if (!opened && offerKey === undefined) return state;
+          // Record the offer even when refused, so a closed tab stays closed on revisit.
+          return automaticUpdate(state, threadKey, (thread) => ({
+            ...(opened ? upsertSurface(thread, request) : thread),
+            ...(offerKey !== undefined ? { proactivePullRequestsKey: offerKey } : {}),
+          }));
         });
         return opened;
       },

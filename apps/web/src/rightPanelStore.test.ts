@@ -351,6 +351,32 @@ describe("rightPanelStore", () => {
     },
   );
 
+  it.each([
+    { surface: linkedPullRequest },
+    { surface: { id: "pull-requests", kind: "pull-requests" } as const },
+  ])("keeps a closed $surface.kind tab closed on revisit and reload", async ({ surface }) => {
+    const store = useRightPanelStore.getState();
+    const offer = () =>
+      store.openProactive(refA, surface, store.getUserActionRevision(refA), {
+        offerKey: "links-1",
+      });
+    expect(offer()).toBe(true);
+
+    store.closeSurface(refA, surface.id);
+    expect(offer()).toBe(false);
+    await reloadRightPanelStore();
+    expect(offer()).toBe(false);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toEqual([]);
+
+    expect(
+      store.openProactive(refA, surface, store.getUserActionRevision(refA), {
+        offerKey: "links-2",
+      }),
+    ).toBe(true);
+  });
+
   it("retargets an existing PR tab but respects a later manual choice", () => {
     const store = useRightPanelStore.getState();
     const relinkedPullRequest = pullRequestSurface({ ...linkedPullRequest, number: 43 });
@@ -358,13 +384,17 @@ describe("rightPanelStore", () => {
     store.openPullRequest(refA, linkedPullRequest);
     const revision = store.getUserActionRevision(refA);
 
-    expect(store.openProactive(refA, relinkedPullRequest, revision, true)).toBe(true);
+    expect(
+      store.openProactive(refA, relinkedPullRequest, revision, { activateExisting: true }),
+    ).toBe(true);
     expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual(
       relinkedPullRequest,
     );
 
     store.close(refA);
-    expect(store.openProactive(refA, linkedPullRequest, revision, true)).toBe(false);
+    expect(store.openProactive(refA, linkedPullRequest, revision, { activateExisting: true })).toBe(
+      false,
+    );
     expect(
       selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA),
     ).toMatchObject({
