@@ -583,7 +583,7 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
   `packages/shared/src/cliRelease.ts`) at build time.
 - `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment
   (`build.sh` passes them from `fork.env`).
-- `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, routes, publisher) to the MCP server.
+- `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, publisher) to the MCP server, and the fleet routes beside `/mcp`, outside its auth middleware.
 - `packages/contracts/src/orchestratorMcp.ts`: optional `machine` on `delegate_task`, `machine` and
   `link` on its result.
 - `apps/server/src/mcp/toolkits/orchestrator/handlers.ts`, `tools.ts`: `delegate_task`,

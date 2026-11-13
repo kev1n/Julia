@@ -39,6 +39,7 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as McpOAuth from "../auth/McpOAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as FleetRoutes from "../fork/fleet/routes.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 
@@ -1246,6 +1247,57 @@ it.effect("accepts case-insensitive MCP bearer schemes and diagnoses rejected cr
     ),
   );
 });
+
+it.effect("leaves /fork/fleet to the fleet secret and keeps /mcp behind MCP auth", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fleetRoutes = FleetRoutes.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(ServerEnvironment.ServerEnvironment)({}),
+            Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({}),
+            Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+          ),
+        ),
+      );
+      yield* HttpRouter.serve(
+        McpHttpServer.layerHttp(Layer.empty, fleetRoutes).pipe(
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(
+            Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+              resolve: () => Effect.undefined,
+            }),
+          ),
+          Layer.provide(
+            Layer.succeed(McpHttpServer.McpClientAuthenticator, {
+              authenticate: () => Effect.undefined,
+            }),
+          ),
+        ),
+        { disableListenLog: true, disableLogger: true },
+      ).pipe(Layer.build);
+      const httpClient = yield* HttpClient.HttpClient;
+
+      // No fork-fleet.json here, so the fleet handler answers 404 as routes.ts does.
+      const drain = yield* httpClient.post("/fork/fleet/drain", {
+        headers: { authorization: "Bearer fleet-secret" },
+        body: HttpBody.text(`{"action":"peek","release":"r"}`, "application/json"),
+      });
+      expect(drain.status).toBe(404);
+      expect(yield* drain.text).not.toContain("invalid_mcp_credential");
+
+      const mcp = yield* httpClient.post("/mcp", {
+        headers: { accept: "application/json, text/event-stream" },
+        body: HttpBody.text(
+          `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
+          "application/json",
+        ),
+      });
+      expect(mcp.status).toBe(401);
+      expect(yield* mcp.text).toContain("invalid_mcp_credential");
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
 
 it.effect("hides tools for links and refuses another environment while the beta is off", () =>
   Effect.scoped(
