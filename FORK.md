@@ -677,6 +677,10 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
   agent how to rewrite it, and the card shows expired (`fork/claudeSafetyCheckAutoDeny.ts`). The
   SDK passes no window or check kind to `canUseTool`, so the reason text identifies the check.
   Tests in `ClaudeAdapterV2.test.ts`.
+- `scripts/build-cli-archive.ts`: a Linux archive built on a Mac skips the steps that need a Linux
+  host (bundling `libatomic.so.1` with `ldd`, `dpkg-query` and `patchelf`, and GNU tar's
+  `--hard-dereference`), so a Linux machine running it needs the `libatomic1` package (Linux
+  machines, below).
 
 Commit series on the fork branch (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -706,12 +710,14 @@ build Mac 05:00  <prefix>.sync    fork/scripts/sync.sh
              -> fork/scripts/checks.sh (check-literals.sh: no personal host or ID in the fork's
                 changes; typecheck of contracts/web/server/desktop/scripts/mobile,
                 lint of every file the fork touches, fork tests + tests beside touched files)
-             -> fork/scripts/build.sh (server runtime archive + Julia.app)
+             -> fork/scripts/build.sh (server runtime archives darwin-arm64 and linux-x64
+                + Julia.app)
              -> fork/scripts/build-mobile.sh build (phone update; an APK only on a new fingerprint)
              any of these fails -> fork/scripts/autofix.sh: an agent chat on the build Mac fixes
                 it, then the same checks and builds run again (see "When the sync fails")
              -> push fork_branch, GitHub release <version_label>-<version>-<sha> on fork_repo
                 (VERSION, SHA256SUMS, install scripts)
+             -> ~/t3-fork/out/latest-release (<tag> <version>), for the Linux machines
              -> build-mobile.sh publish (into ~/t3-fork/out/mobile); a new APK opens the issue
                 "Install the new phone app build"
 build Mac always <prefix>.artifacts  ~/t3-fork/artifacts-server.py: ~/t3-fork/out served at
@@ -747,7 +753,8 @@ with access to your fork, write `~/.config/julia/fork.env`, then from a fork che
 `fork/scripts/install-jobs.sh sync artifacts deploy`. Toolchain on the build Mac: `vp`
 (`curl -fsSL https://vite.plus | VP_NODE_MANAGER=no bash`), Rust stable via rustup, Node 24,
 Xcode command line tools, `gh`, Tailscale (for `tailscale serve`), and the Android toolchain
-above. Where `~/t3-fork` is a symlink onto a removable volume, an `ExternalLauncher.app` in
+above; for the Linux archive, `rustup target add x86_64-unknown-linux-musl` once. Where
+`~/t3-fork` is a symlink onto a removable volume, an `ExternalLauncher.app` in
 `~/Applications` holding the macOS access grant runs the jobs (`install-jobs.sh`,
 `deploy-when-idle.sh`); jobs it has no service for are refused. Where `~/t3-fork` is a real
 directory, the jobs run their scripts directly even with the launcher installed.
@@ -838,6 +845,41 @@ embedded at build; see Configuration) and exact-version directories, including c
 verification; `T3CODE_RELEASE_BASE_URL` still overrides the source for an explicit mirror. The built-in **Update all** can then synchronize older servers with the
 client's fork version.
 
+### Linux machines
+
+Linux x86_64 machines (systemd, for example Ubuntu Server) run the same server from the
+release's `t3-<version>-linux-x64.tar.gz`, cross-built on the build Mac by `build.sh`: Node's
+single executable for linux-x64, the runtime packages' linux-x64 builds, and a static (musl)
+resource monitor. If only that cross-build fails, the release ships without it: the Macs deploy
+it, `latest-release` keeps naming the last release with a Linux archive, and the "Fork sync
+failed" issue says so. Every machine downloads only the files it installs (`fork_release_files` in
+`fork.env`): a Linux machine its archive, a Mac everything else.
+
+The service is upstream's systemd user unit `t3code.service`, which `t3 service install` writes
+and which needs lingering (`sudo loginctl enable-linger <user>`). It starts the launcher of the
+runtime it was installed from, and there is no stock runtime to keep, so `install-runtime.sh`
+switches versions with the new runtime's own `t3 service install` (also on the first install,
+where no service exists yet) and rolls back the same way. The deploy job is a systemd user timer
+and service named like the LaunchAgent (`<prefix>.deploy`, 05:45, `Persistent=true`), and
+`deploy-when-idle.sh --schedule` writes a timer that runs every 30 s and retires itself after the
+install. Not on Linux: the watchdog (the unit's `Restart=always` covers a crash, not a hang),
+the desktop app, the build jobs. Packages the scripts need: `libatomic1`, `curl`, `python3` and
+`sqlite3` (for `live-work.sh`).
+
+A Linux machine holds no GitHub login. It learns the newest release from `artifacts_url/latest-release`
+(`<tag> <version>`, which `sync.sh` writes with `latest-release.sh` once the release is
+published, and again when a rerun finds it already published) and downloads
+`VERSION`, `SHA256SUMS` and `fork-scripts.tar.gz` from `artifacts_url/<version>/` beside the
+archive (`fork_latest_release` and `fork_download_release` in `fork.env`; a Mac still uses the
+GitHub release). Its checksums so come from the same server as the archive: they catch transfer
+errors, and the build Mac is trusted for both, as it already is for the archives.
+
+Setting up one: put the four local files (Configuration) in place, download the newest release
+(the tag and version in `artifacts_url/latest-release`, then `VERSION`, `SHA256SUMS`,
+`fork-scripts.tar.gz` and the archive from `artifacts_url/<version>/`), check the archive with
+`sha256sum -c`, run its `install-runtime.sh <archive>`, then `install-jobs.sh deploy`, and publish
+port 3773 with `tailscale serve --bg --https=443 http://127.0.0.1:3773`.
+
 ### Rollback (one line per machine)
 
 ```
@@ -845,14 +887,14 @@ client's fork version.
 ```
 
 Run it on each Mac. It switches the service back to the stock runtime and stops the daily
-deploy job. Desktop: quit Julia and open T3 Code (Nightly), which keeps its own pairings. To
+deploy job and any pending `deploy-when-idle` job. On a Linux machine, give it the previous fork version under `~/.t3/runtime/versions`. Desktop: quit Julia and open T3 Code (Nightly), which keeps its own pairings. To
 resume the fork: `fork/scripts/install-jobs.sh deploy` then `~/t3-fork/pull-deploy.sh`.
 
 ### Building by hand
 
 ```
 fork/scripts/build.sh <version> <out-dir>
-fork/scripts/install-runtime.sh <out-dir>/t3-<version>-darwin-arm64.tar.gz
+fork/scripts/install-runtime.sh <out-dir>/t3-<version>-darwin-arm64.tar.gz   # linux-x64 on Linux
 fork/scripts/install-desktop.sh <out-dir>/T3-Code-*-arm64.zip
 fork/scripts/install-jobs.sh deploy        # every Mac;  on the build Mac: sync artifacts deploy
 ```

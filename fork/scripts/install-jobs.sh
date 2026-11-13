@@ -1,5 +1,6 @@
 #!/bin/bash
-# Install the fork's LaunchAgents on this Mac (idempotent).
+# Install the fork's LaunchAgents on this Mac (idempotent). On Linux only deploy exists,
+# as a systemd user timer and service of the same label.
 #   fork/scripts/install-jobs.sh deploy        every Mac: daily pull of the newest release
 #   fork/scripts/install-jobs.sh watchdog      every Mac: restart a hung T3 service (each
 #                                              release's installer refreshes it)
@@ -12,7 +13,28 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/fork.env" # job_label_prefix
 state="$HOME/t3-fork"
-mkdir -p "$state/logs" "$HOME/Library/LaunchAgents"
+mkdir -p "$state/logs"
+if [ "$fork_platform" = linux-x64 ]; then
+  units="$HOME/.config/systemd/user"
+  mkdir -p "$units"
+  for job in "$@"; do
+    [ "$job" = deploy ] || { echo "$job is not available on Linux; only deploy is." >&2; exit 1; }
+    label="$job_label_prefix.deploy"
+    fork_install -m 600 "$here/fork.env" "$state/"
+    fork_install -m 700 "$here/pull-deploy.sh" "$here/rollback.sh" "$state/"
+    printf '%s\n' "[Unit]" "Description=Install the newest fork release" "" "[Service]" "Type=oneshot" \
+      "ExecStart=/bin/bash $state/pull-deploy.sh" \
+      "StandardOutput=append:$state/logs/$label.out.log" "StandardError=append:$state/logs/$label.out.log" > "$units/$label.service"
+    # Persistent: a run missed while the machine was off runs at boot, as launchd does at wake.
+    printf '%s\n' "[Unit]" "Description=Install the newest fork release daily" "" "[Timer]" \
+      "OnCalendar=*-*-* 05:45:00" "Persistent=true" "" "[Install]" "WantedBy=timers.target" > "$units/$label.timer"
+    systemctl --user daemon-reload
+    systemctl --user enable --now "$label.timer"
+    echo "installed $label (05:45 daily) -> $state/pull-deploy.sh"
+  done
+  exit 0
+fi
+mkdir -p "$HOME/Library/LaunchAgents"
 launcher="$HOME/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
 # load_job <label> <service>: installs the plist on stdin and (re)loads the job. On a Mac
 # whose ~/t3-fork is a symlink onto a removable volume, only ExternalLauncher.app holds the
