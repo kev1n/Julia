@@ -20,6 +20,8 @@ export interface FleetConfig {
   readonly hub: boolean;
   readonly userdataDir: string;
   readonly pathMeanings: ReadonlyArray<PathMeaningRule>;
+  /** `"mirrorProjects": false` keeps this machine out of project mirroring (`projectMirror.ts`). */
+  readonly mirrorProjects: boolean;
 }
 
 /**
@@ -35,7 +37,10 @@ export function readFleetConfig(userdataDir: string): FleetConfig | null {
   try {
     const raw = JSON.parse(
       NodeFS.readFileSync(NodePath.join(userdataDir, "fork-fleet.json"), "utf8"),
-    ) as Partial<Omit<FleetConfig, "pathMeanings">> & { readonly pathMeanings?: unknown };
+    ) as Partial<Omit<FleetConfig, "pathMeanings" | "mirrorProjects">> & {
+      readonly pathMeanings?: unknown;
+      readonly mirrorProjects?: unknown;
+    };
     if (!raw.hubUrl || !raw.selfUrl || !raw.secret) return null;
     return {
       hubUrl: raw.hubUrl.replace(/\/$/, ""),
@@ -44,6 +49,7 @@ export function readFleetConfig(userdataDir: string): FleetConfig | null {
       hub: raw.hub === true,
       userdataDir,
       pathMeanings: parsePathMeanings(raw.pathMeanings),
+      mirrorProjects: raw.mirrorProjects !== false,
     };
   } catch {
     return null;
