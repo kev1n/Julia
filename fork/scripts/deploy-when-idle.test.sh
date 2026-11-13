@@ -95,6 +95,12 @@ grep -q 'live-work.sh failed (exit 3)' <<<"$out" || fail "no log of the failed l
 live_work 0
 STUB_PEEK='Not Found' STUB_DRAIN_CODE=404 run "$tag"
 [ -e "$tmp/installed" ] || fail "the live-work.sh fallback did not install when idle"
+# A server whose MCP auth answers for the drain route has no drain either; any
+# other refusal is a failed request, not idle.
+STUB_PEEK='{"error":"invalid_mcp_credential","message":"A valid T3 Code MCP credential is required."}' STUB_DRAIN_CODE=401 run "$tag"
+[ -e "$tmp/installed" ] || fail "an MCP-auth 401 on the drain did not fall back to live-work.sh"
+STUB_PEEK='Unauthorized' STUB_DRAIN_CODE=401 run "$tag"
+[ ! -e "$tmp/installed" ] || fail "installed on a 401 that is not MCP auth"
 
 # --schedule from an agent's shell names that agent's session in the job.
 CLAUDE_CODE_SESSION_ID=claude-session-1 run --schedule "$tag"
