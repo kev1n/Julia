@@ -11,7 +11,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 
-export const pendingSettles = Effect.gen(function* () {
+const pendingSettles = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* sql<{
     readonly threadId: string;
