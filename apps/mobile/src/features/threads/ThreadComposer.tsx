@@ -491,7 +491,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const contextReadout = (
     <Text
       accessibilityLabel={formatContextWindowReadout(contextWindow)}
-      className="shrink-0 px-1 text-xs text-foreground-muted"
+      className="shrink-0 px-1 text-xs font-medium text-foreground"
       style={{ fontVariant: ["tabular-nums"] }}
     >
       {contextWindow?.usedPercentage != null
