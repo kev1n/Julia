@@ -222,6 +222,14 @@ environment and thread id plus the repository's canonical key; paths are reposit
   `t3_fleet_thread_send` (auto, queue or steer; no restart across machines; `idempotencyKey`
   required; a timeout or lost answer comes back as `outcome: "unknown"` and is never retried
   silently). File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
+- Project mirroring (`projectMirror.ts`): a project created on one machine is cloned on the
+  others into their Add-project base folder (`~` when unset), and deleting it deletes it there
+  too, with its threads; folders stay on disk. Machines match projects by repository, so one with
+  no remote is first published as a private GitHub repository, and a non-git folder stays local.
+  A delete goes out only when no other project on that machine has the repository. Requests wait
+  in `fork-project-mirror.json` until the other machine answers (up to 7 days), so a sleeping
+  laptop catches up when it wakes. `"mirrorProjects": false` in `fork-fleet.json` opts a machine
+  out both ways.
 - Remote subagents (`remoteTasks.ts`): `delegate_task` takes an optional `machine` (label or
   environment id); omitted or this machine means T3's own local child. On another machine the
   child is a subagent thread of the parent: its lineage names the parent (`remoteParentThreadId`
@@ -511,7 +519,8 @@ login and name on the commit anyway.
   same on every machine): `[{"repo": "<regex on the repository key, case-insensitive>", "path":
   "<regex whose first group is the label>", "kind": "sku" | "provider"}]`; the first matching
   rule names the path, and a malformed rule is skipped. Without the file the fleet is off and the
-  drain falls back to `live-work.sh`.
+  drain falls back to `live-work.sh`. `"mirrorProjects": false` turns off project mirroring on that
+  machine.
 - `fork-thread-history.json` (mode 600): offloading settled threads.
   `{"store": "azure-keyvault", "keyVault": "<vault name>", "secret": "<secret name>"}`, the same on
   every machine. Put it on every machine before the first deploy that uses it if any thread was

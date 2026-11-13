@@ -31,6 +31,8 @@ import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { HttpBody, HttpClient, HttpClientRequest, HttpRouter, HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
 
+import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
+import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
@@ -38,6 +40,7 @@ import * as AssetSigner from "../assets/AssetSigner.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as McpOAuth from "../auth/McpOAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
@@ -1774,6 +1777,10 @@ it.effect("leaves /fork/fleet to the fleet secret and keeps /mcp behind MCP auth
             Layer.mock(ServerEnvironment.ServerEnvironment)({}),
             Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({}),
             Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
+            Layer.mock(ProjectEnrichmentService.ProjectEnrichmentService)({}),
+            Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
           ),
         ),
       );
