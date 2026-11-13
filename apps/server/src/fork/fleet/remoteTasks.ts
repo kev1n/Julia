@@ -51,9 +51,11 @@ import * as ThreadLaunch from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../../orchestration-v2/ThreadManagementService.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import {
-  HEARTBEAT_MS,
+  DEFAULT_WAIT_MS,
   FleetHttpError,
   FleetOperationError,
+  MAX_WAIT_MS,
+  WAIT_SLICE_MS,
   fleetRequest,
   readFleetConfig,
 } from "./config.ts";
@@ -68,10 +70,6 @@ const fail = (code: OrchestratorMcpFailure["code"], message: string) =>
   new OrchestratorMcpFailure({ code, message });
 
 const TASK_ID_PREFIX = "fleet:";
-const DEFAULT_WAIT_MS = 10 * 60 * 1_000;
-const MAX_WAIT_MS = 60 * 60 * 1_000;
-/** One peer/task wait, under fleetRequest's timeout. */
-const WAIT_SLICE_MS = HEARTBEAT_MS - 2_000;
 const MAX_MESSAGE_CHARS = 100_000;
 /** A result its parent machine never took is dropped after this long. */
 const UNDELIVERED_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
