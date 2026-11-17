@@ -11,7 +11,7 @@ import {
   OrchestratorMcpThreadSendResult,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../mcp/OrchestratorMcpService.ts";
@@ -125,7 +125,8 @@ const WorkPublishTool = Tool.make("t3_work_publish", {
   }),
 })
   .annotate(Tool.Destructive, false)
-  .annotate(Tool.Idempotent, true);
+  .annotate(Tool.Idempotent, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const FleetThreadReadTool = Tool.make("t3_fleet_thread_read", {
   ...shared,
