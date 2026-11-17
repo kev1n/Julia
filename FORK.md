@@ -226,6 +226,13 @@ environment and thread id plus the repository's canonical key; paths are reposit
   moves the message onto the active one, so the wait follows the message. Each peer request waits
   at most one slice (8 s, under the HTTP limit) and the caller loops until its own deadline.
   File-evidence answers carry `asOf`, the hub's state and per-machine `coverage`.
+- Threads attach across the fleet (`unlinked.ts`): a composer's `@` picker, paste and drop offer
+  the threads of every fleet machine, not only linked ones, and the agent reads the attached
+  thread with the chip's `t3_thread_read(environmentId)`, which goes to the owner's `peer/read`
+  when the fleet lists that machine and over a link otherwise. No pairing code and no expiry, and
+  it does not need the Linked environments beta. Clients ask the composer's server which machines
+  those are (`fork.fleetMachines`, cached for a minute). Only reads: sending or launching there
+  still takes a link or the fleet tools.
 - Project mirroring (`projectMirror.ts`): a project created on one machine is cloned on the
   others into their Add-project base folder (`~` when unset), and deleting it deletes it there
   too, with its threads; folders stay on disk. Machines match projects by repository, so one with
@@ -597,6 +604,11 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
 - `scripts/build-desktop-artifact.ts`: app id, product name and package name from the environment
   (`build.sh` passes them from `fork.env`).
 - `apps/server/src/mcp/McpHttpServer.ts`: adds the fleet layer (toolkit, publisher) to the MCP server, and the fleet routes beside `/mcp`, outside its auth middleware.
+- `apps/server/src/peer/PeerForwarding.ts`, `apps/server/src/mcp/McpToolAccess.ts`: a
+  `t3_thread_read` naming a fleet machine is read over the fleet (`fork/fleet/unlinked.ts`), also
+  while the Linked environments beta is off. `packages/client-runtime/src/linkRequest.ts`,
+  `state/peerLinks.ts`, and `state/peerLinks.ts` in `apps/web` and `apps/mobile`: fleet machines
+  count among the machines whose threads a composer may attach.
 - `packages/contracts/src/orchestratorMcp.ts`: optional `machine` on `delegate_task`, `machine` and
   `link` on its result.
 - `apps/server/src/mcp/toolkits/orchestrator/handlers.ts`, `tools.ts`: `delegate_task`,

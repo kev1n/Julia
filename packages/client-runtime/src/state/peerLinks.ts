@@ -101,6 +101,12 @@ export function createPeerLinkEnvironmentAtoms<R, E>(
   return {
     list,
     names,
+    // Fork: the fleet's other machines; an environment without a fleet lists none.
+    fleetMachines: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:fork:fleet-machines",
+      tag: WS_METHODS.forkFleetMachines,
+      staleTimeMs: 60_000,
+    }),
     link: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:peer-links:link",
       tag: WS_METHODS.peerLinksLink,
