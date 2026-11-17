@@ -265,6 +265,8 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 // Fork: move a thread to another machine.
 import { receiveMove } from "./fork/moveThread.ts";
+import { fleetConfig, localSnapshot } from "./fork/fleet/publisher.ts";
+import { fleetMachines } from "./fork/fleet/unlinked.ts";
 import * as ForkDrain from "./fork/drain.ts";
 import { ForkMoveError } from "@t3tools/contracts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -2879,6 +2881,10 @@ export const layerWsRpc = (
               }),
           }),
         [WS_METHODS.forkThreadHistory]: (input) => threadHistory.watch(input.threadId),
+        [WS_METHODS.forkFleetMachines]: (_input) =>
+          fleetMachines(fleetConfig(), localSnapshot()).pipe(
+            Effect.map((machines) => ({ machines })),
+          ),
         [WS_METHODS.serverGetProcessResourceHistory]: (input) =>
           processResourceMonitor.readHistory(input),
         [WS_METHODS.serverGetResourceTelemetryHistory]: (input) =>

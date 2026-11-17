@@ -17,7 +17,7 @@ import { useAtomCommand } from "./use-atom-command";
 export const peerLinkEnvironment = createPeerLinkEnvironmentAtoms(connectionAtomRuntime);
 
 /**
- * The machines `environmentId` links to, by name, while it offers links, and none otherwise.
+ * The machines `environmentId` links to, by name, while it offers links, plus its fleet's.
  * Its agents can read threads there, and so can a client allowed to read threads on it.
  * A `wanted` machine this app is not connected to and the names lack makes them reread.
  */
@@ -49,9 +49,18 @@ export function useLinkedEnvironments(
   useEffect(() => {
     if (refreshKey !== "") refreshLacking();
   }, [refreshKey]);
+  // Fork: fleet machines are read without a link, whether or not links are offered.
+  const fleet = useEnvironmentQuery(
+    environmentId === null ? null : peerLinkEnvironment.fleetMachines({ environmentId, input: {} }),
+  );
   return useMemo(
-    () => linkedEnvironmentNames({ links: offered ? (links.data?.links ?? []) : [], environments }),
-    [environments, links.data, offered],
+    () =>
+      linkedEnvironmentNames({
+        links: offered ? (links.data?.links ?? []) : [],
+        environments,
+        fleet: fleet.data?.machines ?? [],
+      }),
+    [environments, links.data, offered, fleet.data],
   );
 }
 

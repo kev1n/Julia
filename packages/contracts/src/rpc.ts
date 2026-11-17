@@ -45,6 +45,7 @@ import * as Schema from "effect/Schema";
 // Fork: move a thread to another machine.
 import { ForkThreadHistoryInput, ForkThreadHistoryStatus } from "./forkThreadHistory.ts";
 import { ForkMoveError, ForkMoveReceiveInput, ForkMoveReceiveResult } from "./forkMoveThread.ts";
+import { ForkFleetMachinesResult } from "./forkFleet.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -638,6 +639,7 @@ export const WS_METHODS = {
   serverGetHostResources: "server.getHostResources",
   forkMoveReceive: "fork.moveReceive",
   forkThreadHistory: "fork.threadHistory",
+  forkFleetMachines: "fork.fleetMachines",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
@@ -1176,6 +1178,13 @@ const WsForkThreadHistoryRpc = Rpc.make(WS_METHODS.forkThreadHistory, {
   success: ForkThreadHistoryStatus,
   error: EnvironmentAuthorizationError,
   stream: true,
+});
+
+// Fork: the fleet's other machines, whose threads this server's agents read without a link.
+const WsForkFleetMachinesRpc = Rpc.make(WS_METHODS.forkFleetMachines, {
+  payload: Schema.Struct({}),
+  success: ForkFleetMachinesResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsServerGetProcessResourceHistoryRpc = Rpc.make(WS_METHODS.serverGetProcessResourceHistory, {
@@ -2599,6 +2608,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetHostResourcesRpc,
   WsForkMoveReceiveRpc,
   WsForkThreadHistoryRpc,
+  WsForkFleetMachinesRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,

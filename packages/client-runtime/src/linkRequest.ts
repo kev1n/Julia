@@ -3,6 +3,7 @@ import {
   type AuthMcpClientAccess,
   type EnvironmentId,
   type EnvironmentMachineKind,
+  type ForkFleetMachine,
   type OrchestrationV2TurnItem,
   type PeerLinkRequestAnswerInput,
   type PeerLinkName,
@@ -37,15 +38,21 @@ export function linkedEnvironmentNames(input: {
     readonly environmentId: EnvironmentId;
     readonly label: string;
   }>;
+  /** Fork: the fleet's other machines, whose threads its agents read without a link. */
+  readonly fleet?: ReadonlyArray<ForkFleetMachine>;
 }): ReadonlyMap<EnvironmentId, string> {
   const names = new Map(
     input.environments.map((environment) => [environment.environmentId, environment.label]),
   );
-  return new Map(
-    input.links.map(
+  return new Map([
+    ...(input.fleet ?? []).map(
+      (machine) =>
+        [machine.environmentId, names.get(machine.environmentId) ?? machine.label] as const,
+    ),
+    ...input.links.map(
       (link) => [link.environmentId, names.get(link.environmentId) ?? link.label] as const,
     ),
-  );
+  ]);
 }
 
 /** The access a request opens with: the agent's suggestion, else supervised. */

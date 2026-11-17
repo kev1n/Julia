@@ -26,6 +26,8 @@ import { assertNotLinked } from "../mcp/linkOrigin.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { readCaller, unavailable } from "../mcp/threadAccess.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+import { fleetConfig, localSnapshot } from "../fork/fleet/publisher.ts";
+import { readFleetThread } from "../fork/fleet/unlinked.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
 
@@ -263,6 +265,25 @@ const make = Effect.gen(function* () {
       : undefined;
   };
 
+  /** Fork: `t3_thread_read` answered by the fleet machine that owns the thread, if it is one. */
+  const readOverFleet = Effect.fn("PeerForwarding.readOverFleet")(function* (
+    scope: Scope,
+    environmentId: EnvironmentId,
+    read: OrchestratorMcpThreadReadInput,
+  ) {
+    const config = fleetConfig();
+    if (config === null) return Option.none<OrchestratorMcpThreadReadResult>();
+    const { caller } = yield* forwardingCaller(scope);
+    return yield* readFleetThread({
+      config,
+      local: localSnapshot(),
+      scope,
+      caller,
+      environmentId,
+      read,
+    });
+  });
+
   const call: PeerForwarding["Service"]["call"] = (scope, tool, environmentId, params) => {
     const forwardTool = (
       args: unknown,
@@ -281,7 +302,18 @@ const make = Effect.gen(function* () {
       : newest === undefined
         ? forwardTool(params)
         : readNewestOrRetry(forwardTool, newest, params);
-    return Effect.andThen(requireEnabled, forwarded);
+    const linked = Effect.andThen(requireEnabled, forwarded);
+    // Fork: a fleet machine's thread is read over the fleet channel, link or not.
+    return tool.name === "t3_thread_read"
+      ? readOverFleet(scope, environmentId, params as OrchestratorMcpThreadReadInput).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => linked,
+              onSome: (read) => Effect.succeed(read as Tool.Success<typeof tool>),
+            }),
+          ),
+        )
+      : linked;
   };
 
   /**
