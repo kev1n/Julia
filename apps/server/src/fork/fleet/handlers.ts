@@ -29,7 +29,7 @@ import { findOverlaps, isActive } from "./fleetIndex.ts";
 import { type FleetWaitResult, waitOnThisMachine } from "./messageWait.ts";
 import type { FleetIntent, FleetSnapshot } from "./model.ts";
 import { fleetConfig, localSnapshot, refreshNow, setIntents } from "./publisher.ts";
-import type { PeerSource } from "./peer.ts";
+import { askPeer as askFleetPeer, type PeerReply, peerSourceOf } from "./peer.ts";
 import { FleetToolkit } from "./tools.ts";
 import { loadView, overlapOut, summarize, type FleetView } from "./view.ts";
 
@@ -94,14 +94,7 @@ const overlapsForCaller = Effect.fn("handlers.overlapsForCaller")(function* (
 const peerSource = Effect.gen(function* () {
   const { scope, caller } = yield* readCaller();
   const descriptor = yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
-  return {
-    environmentId: descriptor.environmentId,
-    label: descriptor.label,
-    threadId: caller?.id ?? `client:${scope.client?.sessionId ?? "unknown"}`,
-    title: caller?.title ?? scope.client?.label ?? "client",
-    runtimeMode:
-      caller?.runtimeMode ?? McpInvocationContext.clientModeCeiling(scope.client).runtimeMode,
-  } satisfies PeerSource;
+  return peerSourceOf(descriptor, scope, caller);
 });
 
 const owner = Effect.fn("handlers.owner")(function* (current: FleetView, environmentId: string) {
@@ -117,32 +110,8 @@ const owner = Effect.fn("handlers.owner")(function* (current: FleetView, environ
   return entry.snapshot;
 });
 
-type PeerReply<A> =
-  | { readonly ok: true; readonly result: A }
-  | {
-      readonly ok: false;
-      readonly failure: { code: OrchestratorMcpFailure["code"]; message: string };
-    };
-
-/** One request to the machine that owns a thread; a failure names that machine. */
 const askPeer = <A>(target: FleetSnapshot, path: string, body: unknown) =>
-  Effect.tryPromise({
-    try: () => fleetRequest(fleetConfig()!, `${target.baseUrl}/fork/fleet/${path}`, body),
-    catch: (cause) => new FleetOperationError({ cause }),
-  }).pipe(
-    Effect.mapError((error) =>
-      fail(
-        "orchestration_error",
-        `${target.label} did not answer: ${String(error.cause ?? error)}`,
-      ),
-    ),
-    Effect.flatMap((reply) => {
-      const typed = reply as PeerReply<A>;
-      return typed.ok
-        ? Effect.succeed(typed.result)
-        : Effect.fail(fail(typed.failure.code, `${target.label}: ${typed.failure.message}`));
-    }),
-  );
+  askFleetPeer<A>(fleetConfig()!, target, path, body);
 
 /**
  * Access (McpToolAccess): listing, overlaps, reading and waiting change nothing;
