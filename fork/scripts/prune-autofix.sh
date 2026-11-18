@@ -14,8 +14,20 @@ cwds=$(/usr/sbin/lsof -n -a -u "$(id -u)" -d cwd -Fn) || { echo "prune-autofix: 
 in_use() { # lsof -Fn prints each cwd as a line "n<path>"
   printf '%s\n' "$cwds" | awk -v p="n$1" '$0 == p || index($0, p "/") == 1 { found = 1 } END { exit !found }'
 }
-for run in "$autofix"/*/; do
-  run=$(cd "$run" && pwd -P) || continue
+# Delete only real folders directly inside the resolved autofix folder, never through a symlink.
+root=$(cd "$autofix" && pwd -P) || exit 1
+for entry in "$autofix"/*; do
+  if [ -L "$entry" ] || [ -L "$entry/worktree" ]; then
+    echo "prune-autofix: kept $entry (a symlink)"
+    continue
+  fi
+  [ -d "$entry" ] || continue
+  run=$(cd "$entry" && pwd -P) || continue
+  case "$run" in
+    "$root"/*/*) continue ;;
+    "$root"/?*) ;;
+    *) continue ;;
+  esac
   if in_use "$run"; then
     echo "prune-autofix: kept $run (a process is working in it)"
     continue
