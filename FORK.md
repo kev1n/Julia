@@ -841,7 +841,8 @@ are left alone.
 out after 1 hour"), or its branch fails the guards or the rerun, nothing is released, so nothing
 deploys, and the job opens (or comments on) the issue **"Fork sync failed"** on `fork_repo` with
 the step, conflicting files, the chat link, the agent's report and verdict, and the log tail. The
-agent's worktree is kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from. GitHub
+agent's worktree is kept in `~/t3-fork/autofix/<stamp>/worktree` to continue from until a sync
+publishes (`fork/scripts/prune-autofix.sh` then removes every run nothing works in; branches stay). GitHub
 notifies the repository's owner; the daily deploy job on a Mac with the desktop app also raises
 a macOS notification while that issue is open. The next successful sync closes it. Logs:
 `~/t3-fork/logs/` on each Mac.
@@ -1012,7 +1013,9 @@ Each series is independent of the packaging and tooling commits.
 - Disk: worktree `node_modules` are APFS clones that share blocks, so `du` and Finder count each
   copy in full (about 250 GB for 70 GB actually used on one machine).
   `fork/scripts/disk-usage.py <dirs> --context <other dirs> --skip-git` reports what a folder really
-  uses and what deleting it would free. Never run `pnpm store prune` here: with clones every store
+  uses and what deleting it would free. `fork/scripts/prune-build-caches.py --apply` (hourly on the
+  build Mac) trims idle checkouts' build output and dependencies, following a symlinked
+  `~/t3-fork` or `~/.t3/worktrees` and judging low space on the volume that holds them. Never run `pnpm store prune` here: with clones every store
   file has one link, so prune deletes the whole store and the next install downloads it again.
 
 ## Deviations

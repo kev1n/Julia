@@ -220,6 +220,8 @@ open_issue=$(gh issue list -R "$fork_repo" --state open --search "\"Fork sync fa
 [ -n "$open_issue" ] && [ -n "$linux_archive" ] && gh issue close "$open_issue" -R "$fork_repo" --comment "Fixed: $tag published." >/dev/null
 # Keep the output of this build and the one before it on disk.
 ls -1dt "$state/out"/*/ 2>/dev/null | grep -v '/mobile/$' | tail -n +3 | xargs rm -rf
+# Nobody continues from an earlier auto-fix run once a release is out.
+fork/scripts/prune-autofix.sh || echo "!! Could not remove the settled auto-fix runs."
 # The fork is current, so no earlier auto-fix chat needs attention any more.
 node fork/scripts/autofix-thread.mjs settle || echo "!! Could not settle the auto-fix chats."
 echo "Published $tag"
