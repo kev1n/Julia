@@ -72,6 +72,15 @@ default text model: Haiku, `gpt-6-luna`) and re-reads its limits. One prompt per
 most every 10 minutes; accounts with no session window (Codex Pro Lite) or out of quota are
 skipped. New logins are covered as soon as T3 sees them. Machine-local and off by default: turn it
 on in one environment, since each one with it on pings.
+
+**Codex updates itself** (`apps/server/src/fork/providerAutoUpdate.ts`). A new Codex model needs a
+newer Codex CLI, and upstream only offers an Update button per machine. When the server's update
+check finds a newer Codex that it can install, it runs that same update at once (the button's
+checks apply, so a version this T3 Code release marks broken is not installed). Running Codex
+sessions keep their binary; new ones use the new CLI. One attempt per version until the server
+restarts, a planned restart waits for a running install, and Settings > General > Check for
+provider updates off turns it off. Upstream cannot trace an asdf shim to its npm install and
+leaves it manual-only; the fork follows the shim with `asdf which`.
 **Continue limited threads on another account** (`apps/server/src/fork/limitFailover.ts`). When a
 turn stops on a usage limit, the server forks the thread into a new tab of the same chat (title
 unchanged) and sends it "continue where you left off" on the first model in Settings > General >
@@ -554,6 +563,9 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
 - `packages/contracts/src/settings.test.ts`: the test of that default.
 - `packages/contracts/src/settings.ts` (again): `keepUsageWindowsOpen`, off by default.
 - `apps/server/src/orchestration-v2/runtimeLayer.ts`: registers the session window keep-alive.
+- `apps/server/src/orchestration-v2/runtimeLayer.ts` (again): registers the Codex auto-update.
+- `packages/provider-core/src/server/maintenanceResolver.ts`: `followAsdfShim`, so an npm global
+  behind an asdf shim gets an update command (`maintenanceResolver.test.ts`: its test).
 - `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts`: its toggle.
 - `packages/contracts/src/settings.ts` (again): `syncAutofixModelSelections`, the auto-fix chat's
   models in order (default Claude Opus, then GPT-6.1).
