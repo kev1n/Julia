@@ -697,6 +697,22 @@ it.layer(
       ),
   );
 
+  it("installs an exact version through Claude's native installer", () => {
+    const capabilities = makeProviderMaintenanceCapabilities({
+      provider: driver("claudeAgent"),
+      packageName: "@anthropic-ai/claude-code",
+      updateExecutable: "/home/me/.local/bin/claude",
+      updateArgs: ["update"],
+      updateLockKey: "claudeAgent-native",
+      platform: "linux",
+    });
+    expect(makeTargetedProviderUpdateAction(capabilities, "2.1.325")).toMatchObject({
+      command: "/home/me/.local/bin/claude install 2.1.325",
+      executable: "/home/me/.local/bin/claude",
+      args: ["install", "2.1.325"],
+    });
+  });
+
   it("pins the advertised stable version in a pnpm-global update command", () => {
     const advisoryFor = (
       maintenanceCapabilities: ReturnType<typeof makeProviderMaintenanceCapabilities>,

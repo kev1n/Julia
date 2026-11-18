@@ -63,6 +63,8 @@ export interface ProviderMaintenanceRunnerShape {
           readonly provider: ProviderDriverKind;
           readonly instanceId?: ProviderInstanceId | undefined;
           readonly targetVersion?: string | undefined;
+          /** Fork: the server picked `targetVersion` itself; the manifest need not recommend it. */
+          readonly unrecommended?: boolean | undefined;
         },
   ) => Effect.Effect<ServerProviderUpdatedPayload, ServerProviderUpdateError>;
 }
@@ -406,6 +408,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
         ? defaultInstanceIdForDriver(provider)
         : (target.instanceId ?? defaultInstanceIdForDriver(provider));
     const targetVersion = typeof target === "string" ? undefined : target.targetVersion;
+    const unrecommended = typeof target !== "string" && target.unrecommended === true;
     const targetKey = `instance:${instanceId}`;
     const capabilities = yield* providerRegistry.getProviderMaintenanceCapabilitiesForInstance(
       instanceId,
@@ -501,7 +504,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
                 ? makeTargetedProviderUpdateAction(fresh, targetVersion)
                 : resolveLatestProviderUpdateAction(fresh, candidateVersion);
             const rejected =
-              targetVersion !== undefined
+              targetVersion !== undefined && !unrecommended
                 ? !command ||
                   advisory?.recommendedVersion !== targetVersion ||
                   advisory.status !== "supported"

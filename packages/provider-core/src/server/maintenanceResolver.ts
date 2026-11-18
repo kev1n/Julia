@@ -176,6 +176,14 @@ export function makeTargetedProviderUpdateAction(
   const update = capabilities.update;
   const packageName = capabilities.packageName;
   if (!update || !packageName) return null;
+  // Fork: Claude's native installer installs an exact version with `install <version>`.
+  if (update.lockKey === "claudeAgent-native") {
+    return {
+      ...update,
+      args: ["install", version],
+      command: update.command.replace(/update$/, `install ${version}`),
+    };
+  }
   if (
     !/^(?:npm-global:|bun-global$|pnpm-global$|vite-plus-global$|yarn-global$|volta$)/.test(
       update.lockKey,

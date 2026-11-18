@@ -73,13 +73,19 @@ most every 10 minutes; accounts with no session window (Codex Pro Lite) or out o
 skipped. New logins are covered as soon as T3 sees them. Machine-local and off by default: turn it
 on in one environment, since each one with it on pings.
 
-**Codex updates itself** (`apps/server/src/fork/providerAutoUpdate.ts`). A new Codex model needs a
-newer Codex CLI, and upstream only offers an Update button per machine. When the server's update
-check finds a newer Codex that it can install, it runs that same update at once (the button's
-checks apply, so a version this T3 Code release marks broken is not installed). Running Codex
-sessions keep their binary; new ones use the new CLI. One attempt per version until the server
-restarts, a planned restart waits for a running install, and Settings > General > Check for
-provider updates off turns it off. Upstream cannot trace an asdf shim to its npm install and
+**Codex and Claude Code update themselves** (`apps/server/src/fork/providerAutoUpdate.ts`). A new
+model can need a newer CLI, and upstream only offers an Update button per machine. When the
+server's update check finds a newer version that it can install, it runs that same update itself
+(a version this T3 Code release marks broken is not installed):
+
+- Codex gets the newest release at once.
+- Claude Code ships almost daily and every agent runs on it, so it gets the newest release that
+  npm has listed for at least three days, installed by exact version (`claude install <version>`,
+  the native installer). A bad release is usually replaced before it is three days old.
+
+Running sessions keep their binary; new ones use the new CLI. One attempt per version until the
+server restarts, a planned restart waits for a running install, and Settings > General > Check
+for provider updates off turns it off. Upstream cannot trace an asdf shim to its npm install and
 leaves it manual-only; the fork follows the shim with `asdf which`.
 **Continue limited threads on another account** (`apps/server/src/fork/limitFailover.ts`). When a
 turn stops on a usage limit, the server forks the thread into a new tab of the same chat (title
@@ -563,9 +569,12 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
 - `packages/contracts/src/settings.test.ts`: the test of that default.
 - `packages/contracts/src/settings.ts` (again): `keepUsageWindowsOpen`, off by default.
 - `apps/server/src/orchestration-v2/runtimeLayer.ts`: registers the session window keep-alive.
-- `apps/server/src/orchestration-v2/runtimeLayer.ts` (again): registers the Codex auto-update.
+- `apps/server/src/orchestration-v2/runtimeLayer.ts` (again): registers the CLI auto-update.
 - `packages/provider-core/src/server/maintenanceResolver.ts`: `followAsdfShim`, so an npm global
-  behind an asdf shim gets an update command (`maintenanceResolver.test.ts`: its test).
+  behind an asdf shim gets an update command, and an exact-version install for Claude's native
+  installer (`maintenanceResolver.test.ts`: their tests).
+- `apps/server/src/provider/providerMaintenanceRunner.ts`: `unrecommended`, so the server can
+  install a version it picked without the manifest recommending it.
 - `apps/web/src/components/settings/SettingsPanels.tsx`, `settingsSearch.ts`: its toggle.
 - `packages/contracts/src/settings.ts` (again): `syncAutofixModelSelections`, the auto-fix chat's
   models in order (default Claude Opus, then GPT-6.1).
