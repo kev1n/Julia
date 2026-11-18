@@ -4,9 +4,10 @@
 #   fork/scripts/install-jobs.sh deploy        every Mac: daily pull of the newest release
 #   fork/scripts/install-jobs.sh watchdog      every Mac: restart a hung T3 service (each
 #                                              release's installer refreshes it)
-#   fork/scripts/install-jobs.sh sync artifacts deploy
-#                                              the build Mac: daily sync + build, and
-#                                              its build outputs served to the tailnet on :8444
+#   fork/scripts/install-jobs.sh sync artifacts deploy cleanup
+#                                              the build Mac: daily sync + build, its build
+#                                              outputs served to the tailnet on :8444, and
+#                                              hourly prune-build-caches.py --apply
 # Times are local: sync at 05:00, deploy at 05:45 (a missed run, e.g. while a
 # laptop sleeps, runs at wake). Labels are <job_label_prefix>.<job> (fork.env).
 set -euo pipefail
@@ -108,6 +109,23 @@ for job in "$@"; do
 </plist>
 PLIST
       echo "installed $job_label_prefix.watchdog (every 60 s) -> $state/watchdog.sh" ;;
+    cleanup)
+      install -S -m 700 "$here/prune-build-caches.py" "$state/"
+      load_job "$job_label_prefix.cleanup" t3-cleanup <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$job_label_prefix.cleanup</string>
+  <key>ProgramArguments</key>
+  <array><string>/usr/bin/python3</string><string>$state/prune-build-caches.py</string><string>--apply</string></array>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>StandardOutPath</key><string>$state/logs/cleanup.log</string>
+  <key>StandardErrorPath</key><string>$state/logs/cleanup.log</string>
+</dict>
+</plist>
+PLIST
+      echo "installed $job_label_prefix.cleanup (every 3600 s) -> $state/prune-build-caches.py" ;;
     artifacts)
       # A static file server on localhost (plus the phone app's update manifest),
       # published to the tailnet only by Tailscale Serve (the macOS Tailscale app
