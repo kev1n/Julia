@@ -8,7 +8,9 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -178,6 +180,32 @@ it.effect("the requesting thread does not hold up its own deploy", () =>
     // Its own subagent still runs; the restart may cut it off.
     assert.isTrue((yield* ForkDrain.peek("claude-session-1")).idle);
     assert.isTrue((yield* ForkDrain.start(RELEASE, "claude-session-1")).idle);
+    yield* ForkDrain.cancel(RELEASE);
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("a restart waits for server-owned work, and none starts while draining", () =>
+  Effect.gen(function* () {
+    const installer = yield* Deferred.make<void>();
+    const fiber = yield* ForkDrain.unlessDraining(
+      "installing Codex 1.2.3",
+      Deferred.await(installer),
+    ).pipe(Effect.forkChild({ startImmediately: true }));
+    assert.deepEqual((yield* ForkDrain.peek(null)).waitingFor, [
+      { kind: "server", title: "", what: "installing Codex 1.2.3" },
+    ]);
+    yield* Deferred.succeed(installer, undefined);
+    yield* Fiber.join(fiber);
+
+    assert.isTrue((yield* ForkDrain.start(RELEASE, null)).idle);
+    let started = false;
+    yield* ForkDrain.unlessDraining(
+      "installing Codex 1.2.4",
+      Effect.sync(() => {
+        started = true;
+      }),
+    );
+    assert.isFalse(started);
     yield* ForkDrain.cancel(RELEASE);
   }).pipe(Effect.provide(layerTest([]))),
 );

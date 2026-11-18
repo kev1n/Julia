@@ -863,6 +863,38 @@ it.layer(
       }),
   );
 
+  it.effect.skipIf(!symlinksSupported)("follows an asdf shim to the npm global it runs", () =>
+    Effect.gen(function* () {
+      const tempDir = yield* makeTempDir("t3-asdf-capabilities");
+      const prefix = NodePath.join(tempDir, ".asdf", "installs", "nodejs", "24.0.0");
+      const installed = linkIntoPackage(prefix, "package-tool", [
+        "lib",
+        "node_modules",
+        "@example",
+        "package-tool",
+      ]);
+      const shim = NodePath.join(tempDir, ".asdf", "shims", "package-tool");
+      writeExecutable(shim);
+      const asked: Array<string> = [];
+
+      const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(packageToolUpdate, {
+        binaryPath: shim,
+        env: { PATH: NodePath.dirname(shim) },
+      }).pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          stdoutSpawner((command, args) => {
+            asked.push([command, ...args].join(" "));
+            return `${installed}\n`;
+          }),
+        ),
+      );
+
+      expect(asked).toEqual(["asdf which package-tool"]);
+      expect(capabilities.update?.lockKey).toBe(`npm-global:${normalizeCommandPath(prefix)}`);
+    }),
+  );
+
   it("derives the npm prefix only from the global lib/node_modules layout", () => {
     expect(
       npmGlobalPrefixFromCommandPath(

@@ -2,6 +2,7 @@ import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as PendingSettle from "../fork/pendingSettle.ts";
+import * as ProviderAutoUpdate from "../fork/providerAutoUpdate.ts";
 import * as UsageWindowKeepAlive from "../fork/usageWindowKeepAlive.ts";
 import * as ThreadHistory from "../fork/threadHistory/ThreadHistory.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -17,6 +18,7 @@ import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.t
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ProviderInstallationGate from "../provider/ProviderInstallationGate.ts";
+import * as ProviderMaintenanceRunner from "../provider/providerMaintenanceRunner.ts";
 import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -475,6 +477,7 @@ export const layerProduction = Layer.mergeAll(
     ),
   ),
   UsageWindowKeepAlive.layer.pipe(Layer.provide(TextGeneration.layer)),
+  ProviderAutoUpdate.layer.pipe(Layer.provide(ProviderMaintenanceRunner.layer)),
   PendingSettle.layer.pipe(Layer.provide(layerThreadManagementProvided)),
   ThreadHistory.layerSweep.pipe(Layer.provide(layerThreadHistoryProvided)),
   layerProviderContinuationWorkerProvided,

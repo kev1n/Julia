@@ -881,6 +881,36 @@ const followVitePlusSystemFirstShim = Effect.fn("followVitePlusSystemFirstShim")
   return { ...context, resolvedCommandPath, realCommandPath };
 });
 
+function isAsdfShimCommandPath(commandPath: string, env: NodeJS.ProcessEnv): boolean {
+  const normalized = normalizeCommandPath(commandPath);
+  const dataDir = nonEmptyString(env.ASDF_DATA_DIR);
+  return (
+    normalized.includes("/.asdf/shims/") ||
+    (dataDir !== null &&
+      normalized.startsWith(`${normalizeCommandPath(dataDir).replace(/\/+$/, "")}/shims/`))
+  );
+}
+
+/**
+ * Fork: an asdf shim is a script, so realpath stops at it and its npm install stays manual-only.
+ * `asdf which` names the executable the shim runs.
+ */
+const followAsdfShim = Effect.fn("followAsdfShim")(function* (
+  context: ProviderMaintenanceResolutionContext,
+) {
+  if (!isAsdfShimCommandPath(context.resolvedCommandPath, context.env)) return context;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const target = nonEmptyString(
+    yield* runProbe("asdf", ["which", path.basename(context.resolvedCommandPath)], context.env),
+  );
+  if (!target) return context;
+  const realCommandPath = yield* fileSystem
+    .realPath(target)
+    .pipe(Effect.orElseSucceed(() => target));
+  return { ...context, realCommandPath };
+});
+
 export const resolvePackageManagedProviderMaintenance = Effect.fn(
   "resolvePackageManagedProviderMaintenance",
 )(function* (
@@ -893,7 +923,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       packageName: definition.npmPackageName,
     });
   }
-  const context = yield* followVitePlusSystemFirstShim(configuredContext);
+  const context = yield* followAsdfShim(yield* followVitePlusSystemFirstShim(configuredContext));
   const manual = makeManualOnlyProviderMaintenanceCapabilities({
     provider: definition.provider,
     packageName: definition.npmPackageName,

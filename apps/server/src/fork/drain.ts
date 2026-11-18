@@ -15,6 +15,8 @@ const REFUSAL = "Not taking new work: this machine restarts for an update";
 
 let drain: { readonly release: string; waitingFor: ReadonlyArray<string> } | null = null;
 let accepting = 0;
+// Server-owned work no projection shows, such as a provider installer.
+const held = new Map<symbol, string>();
 
 type NewWork = Extract<
   OrchestrationV2ServerCommand,
@@ -67,6 +69,18 @@ export const admit = <A, E, R>(
   });
 };
 
+/**
+ * Runs `work` as something a restart waits for, named `what` in the drain's answer, and
+ * skips it while draining: a restart would kill it half done.
+ */
+export const unlessDraining = <A, E, R>(what: string, work: Effect.Effect<A, E, R>) =>
+  Effect.suspend(() => {
+    if (drain !== null) return Effect.void;
+    const id = Symbol(what);
+    held.set(id, what);
+    return work.pipe(Effect.asVoid, Effect.ensuring(Effect.sync(() => held.delete(id))));
+  });
+
 const isRejected = Schema.is(OrchestratorCommandRejectedError);
 
 /** The refusal's text when `cause` is one, for callers that would hide it. */
@@ -92,6 +106,7 @@ const status = Effect.fn("drain.status")(function* (requester: string | null) {
   if (uncommitted > 0) {
     waitingFor.push({ kind: "accepting", title: "", what: `${uncommitted} new command(s)` });
   }
+  for (const what of held.values()) waitingFor.push({ kind: "server", title: "", what });
   return {
     idle: waitingFor.length === 0,
     waitingFor,
