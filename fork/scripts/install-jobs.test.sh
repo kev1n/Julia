@@ -34,6 +34,14 @@ check org.example.fork.watchdog \
   'd["ProgramArguments"] == ["/bin/bash", h+"/t3-fork/watchdog.sh"] and d["StandardOutPath"] == h+"/t3-fork/logs/watchdog.log" and "WorkingDirectory" not in d' ||
   fail "without ExternalLauncher the watchdog does not run its script directly"
 
+# The hourly cleanup runs the repo's pruner, installed beside the other job scripts.
+run cleanup
+check org.example.fork.cleanup \
+  'd["ProgramArguments"] == ["/usr/bin/python3", h+"/t3-fork/prune-build-caches.py", "--apply"] and d["StartInterval"] == 3600' ||
+  fail "the cleanup job does not run the installed pruner hourly"
+cmp -s "$here/prune-build-caches.py" "$tmp/t3-fork/prune-build-caches.py" ||
+  fail "the cleanup job does not install the repo's prune-build-caches.py"
+
 mkdir -p "$tmp/Applications/ExternalLauncher.app/Contents/MacOS"
 launcher="$tmp/Applications/ExternalLauncher.app/Contents/MacOS/ExternalLauncher"
 printf '\0t3-deploy\0t3-watchdog\0' > "$launcher"
