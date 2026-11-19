@@ -1014,7 +1014,7 @@ Each series is independent of the packaging and tooling commits.
   copy in full (about 250 GB for 70 GB actually used on one machine).
   `fork/scripts/disk-usage.py <dirs> --context <other dirs> --skip-git` reports what a folder really
   uses and what deleting it would free. `fork/scripts/prune-build-caches.py --apply` (hourly on the
-  build Mac) trims idle checkouts' build output and dependencies, following a symlinked
+  build Mac, installed by `fork/scripts/install-jobs.sh cleanup`) trims idle checkouts' build output and dependencies, following a symlinked
   `~/t3-fork` or `~/.t3/worktrees` and judging low space on the volume that holds them. Never run `pnpm store prune` here: with clones every store
   file has one link, so prune deletes the whole store and the next install downloads it again.
 
