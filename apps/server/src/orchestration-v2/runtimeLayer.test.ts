@@ -5552,24 +5552,27 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
             ),
           ),
         );
-        yield* reactor.sweep;
+        const expectOneWake = Effect.gen(function* () {
+          const thread = yield* orchestrator.getThreadShell(threadId);
+          assert.isUndefined(thread?.pullRequests?.[0]?.watch);
+          const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"]);
+          const wakes = messages.filter((message) => message.notification !== undefined);
+          assert.deepEqual(
+            wakes.map((message) => message.notification?.summary),
+            [mode === "closed" ? "#8: closed, stopped watching" : "#8: merged, stopped watching"],
+          );
+          if (mode !== "closed") {
+            assert.include(wakes[0]?.text, "https://github.com/pingdotgg/t3code/pull/8");
+            assert.include(wakes[0]?.text, "merged");
+          }
+        });
+        yield* reactor.sweep.pipe(Effect.andThen(worker.drain()));
+        yield* expectOneWake;
         // A sync that lands after the read must not wake the thread again.
         if (mode === "merged") yield* mergedSnapshot("after");
         yield* TestClock.adjust("2 minutes");
         yield* reactor.sweep.pipe(Effect.andThen(worker.drain()));
-
-        const thread = yield* orchestrator.getThreadShell(threadId);
-        assert.isUndefined(thread?.pullRequests?.[0]?.watch);
-        const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"]);
-        const wakes = messages.filter((message) => message.notification !== undefined);
-        assert.deepEqual(
-          wakes.map((message) => message.notification?.summary),
-          [mode === "closed" ? "#8: closed, stopped watching" : "#8: merged, stopped watching"],
-        );
-        if (mode !== "closed") {
-          assert.include(wakes[0]?.text, "https://github.com/pingdotgg/t3code/pull/8");
-          assert.include(wakes[0]?.text, "merged");
-        }
+        yield* expectOneWake;
       }),
   );
 
