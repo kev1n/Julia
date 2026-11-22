@@ -47,15 +47,20 @@ expect 1 "an upstream test goes from a file the fork never stripped" dropped-cor
 result skipped settle= core=c1,c2 fork=f1
 echo 'it.skip("x", () => {});' >> core.test.ts && git commit -q --amend -a --no-edit && git tag -f skipped >/dev/null
 expect 1 "a skip is added" skipped
-git checkout -q --detach latest && git commit -q --allow-empty -m 'renamed change' && git tag renamed
+# Same tree as ok, so only the series guard can reject it.
+git checkout -q --detach ok && git commit -q --amend -m 'renamed change' && git tag renamed
 expect 1 "a fork commit is renamed" renamed
 
 # A fork whose main merged a pull request with GitHub's button: the rebase drops the
 # merge commit and keeps the commit it merged, which is not a change to the series.
-git checkout -q --detach base && git checkout -q -b pr && subject='fork change' snapshot pr-head settle= core=c1 fork=f1
+# A fixed date keeps pr-head from being the same commit as before when both land in one second.
+git checkout -q --detach base && git checkout -q -b pr &&
+  GIT_AUTHOR_DATE='1000000000 +0000' GIT_COMMITTER_DATE='1000000000 +0000' subject='fork change' snapshot pr-head settle= core=c1 fork=f1
 git checkout -q --detach base && git merge -q --no-ff pr -m 'Merge pull request #2 from someone/pr' && git tag merged
 expect 0 "a rebase flattens a pull request's merge commit" ok merged
 expect 1 "a rebase that renames the merged commit" renamed merged
+git tag merged-upstream "$(git commit-tree 'ok^{tree}' -p merged -p latest -m 'fix conflicts')"
+expect 1 "the agent merges upstream instead of rebasing" merged-upstream merged
 
 [ "$failures" -eq 0 ] && echo "autofix-guards: ok"
 exit "$failures"

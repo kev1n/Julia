@@ -66,6 +66,8 @@ merged -m 'Merge pull request #4 from someone/alice-example'
 run --commit HEAD && fail "--commit skipped a denylisted branch in a merge subject"
 merged -m 'Merge pull request #5 from someone/pr' -m 'Thanks alice-example'
 run --commit HEAD && fail "--commit skipped a denylisted value in a merge commit's body"
+merged -m 'Merge pull request #6 from someone/pr' -m 'Merge pull request #6 from alice-example/pr'
+run --commit HEAD && fail "--commit skipped a merge-shaped line in a merge commit's body"
 git reset -q --hard "$main"
 GIT_AUTHOR_EMAIL=alice-example@example.com git commit -q --allow-empty -m personal
 run --commit HEAD && fail "--commit missed a denylisted author email"
