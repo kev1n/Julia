@@ -54,6 +54,21 @@ git rm -q fork/owner.txt && git commit -qm 'drop owner'
 run --commit HEAD || fail "--commit flagged a clean commit identity"
 GIT_AUTHOR_NAME=Alice-Example GIT_AUTHOR_EMAIL=1+alice-example@users.noreply.github.com git commit -q --allow-empty -m noreply
 run --commit HEAD || fail "--commit flagged a GitHub noreply identity"
+# GitHub's "Merge pull request" button names the PR author's login, which a public repository shows anyway.
+git checkout -q -b pr && git commit -q --allow-empty -m 'pr change' && git checkout -q -
+merged() { git reset -q --hard "$main" && git merge -q --no-ff pr "$@"; }
+main=$(git rev-parse HEAD)
+merged -m 'Merge pull request #2 from alice-example/pr'
+run --commit HEAD || fail "--commit flagged GitHub's generated merge subject"
+git reset -q --hard "$main" && git commit -q --allow-empty -m 'Merge pull request #3 from alice-example/pr'
+run --commit HEAD && fail "--commit skipped a merge-shaped subject on a commit that is not a merge"
+merged -m 'Merge pull request #4 from someone/alice-example'
+run --commit HEAD && fail "--commit skipped a denylisted branch in a merge subject"
+merged -m 'Merge pull request #5 from someone/pr' -m 'Thanks alice-example'
+run --commit HEAD && fail "--commit skipped a denylisted value in a merge commit's body"
+merged -m 'Merge pull request #6 from someone/pr' -m 'Merge pull request #6 from alice-example/pr'
+run --commit HEAD && fail "--commit skipped a merge-shaped line in a merge commit's body"
+git reset -q --hard "$main"
 GIT_AUTHOR_EMAIL=alice-example@example.com git commit -q --allow-empty -m personal
 run --commit HEAD && fail "--commit missed a denylisted author email"
 

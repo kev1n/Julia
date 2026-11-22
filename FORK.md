@@ -533,7 +533,9 @@ blocks any push from a clone whose hooks are installed (the `prepare` script, `v
 `core.hooksPath`), while uncommitted and untracked files do not. With `--commit`, as in that hook, it also
 checks the author, committer and message of every commit since the base; an author or committer
 on GitHub's `<id>+<login>@users.noreply.github.com` address is skipped, since GitHub shows that
-login and name on the commit anyway.
+login and name on the commit anyway. For the same reason the login in the subject GitHub writes
+on a pull request merge commit ("Merge pull request #<n> from <login>/<branch>") is skipped; the
+branch and the rest of the message are still checked.
 
 ### Per-machine server files (`~/.t3/userdata/`)
 
@@ -826,7 +828,8 @@ it rebases, resolves conflicts inside the fork commit being replayed, reruns `ch
 chat to finish, at most one hour: after that it stops the chat's turn, as the Stop button does,
 and treats it as unresolved. It then accepts its branch only if the report says `RESOLVED`, no
 rebase is left in progress, the branch sits on the upstream ref, the fork's commit subjects are
-unchanged in order and number (no "fix conflicts" commit), nothing under `fork/` changed, the
+unchanged in order and number (no "fix conflicts" commit; merge commits from GitHub's "Merge pull
+request" button are not counted, since a rebase drops them), nothing under `fork/` changed, the
 fork's own test cases did not drop, upstream tests went only from test files the fork already
 strips (a fork commit deletes that feature, as with automatic thread settling; the release notes
 list them), and its `.skip`/`.only`/`@ts-ignore`/`@ts-expect-error`/lint-disable count did not

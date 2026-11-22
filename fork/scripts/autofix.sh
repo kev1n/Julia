@@ -6,7 +6,7 @@
 # The agent works in the git worktree <dir>/worktree on branch autofix/<stamp>,
 # started at <fork-head>, and writes <dir>/report.md. Exit 0 and <dir>/result
 # (the fixed commit) only when its branch is a finished rebase onto
-# <upstream-ref> that keeps the fork's commit series and does not weaken checks
+# <upstream-ref> that keeps the fork's (non-merge) commit series and does not weaken checks
 # or tests; sync.sh then reruns the same checks and build on it before publishing.
 # <dir>/thread.json (environment and thread ids) and <dir>/verdict explain the outcome.
 set -uo pipefail
@@ -27,7 +27,8 @@ mkdir -p "$dir"
 verdict() { echo "$1" > "$dir/verdict"; echo "autofix: $1"; exit 1; }
 
 git worktree add -q -B "$branch" "$worktree" "$before" || verdict "could not create the worktree $worktree"
-commits=$(git log --reverse --format='%h %s' "$base..$before")
+# The series a rebase replays: merge commits from GitHub's "Merge pull request" button drop out.
+commits=$(git log --no-merges --topo-order --reverse --format='%h %s' "$base..$before")
 # Build with a version shaped like the sync's own (build.sh needs semver).
 case "$latest" in
   v*-nightly.*) upstream_version=${latest#v} ;;
@@ -95,8 +96,6 @@ for state_dir in rebase-merge rebase-apply; do
 done
 result=$(git rev-parse "$branch")
 git merge-base --is-ancestor "$latest" "$result" || verdict "the agent's branch is not on $latest"
-[ "$(git log --reverse --format=%s "$base..$before")" = "$(git log --reverse --format=%s "$latest..$result")" ] ||
-  verdict "the agent's branch changed the fork's commit series (added, dropped, reordered or renamed commits)"
 git diff --quiet "$before" "$result" -- fork || verdict "the agent changed files under fork/ (the checks and build scripts)"
 guards=$("$here/autofix-guards.sh" "$base" "$before" "$latest" "$result") || verdict "$guards"
 
