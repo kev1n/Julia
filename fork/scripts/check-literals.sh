@@ -13,7 +13,10 @@
 # GitHub's noreply address (<id>+<login>@users.noreply.github.com) is skipped, name
 # included: that address is the documented way to publish commits under a GitHub
 # account, whose login and name GitHub shows on every commit anyway. Any other
-# identity is checked in full, and a noreply address in a message is dropped.
+# identity is checked in full, and a noreply address in a message is dropped. On a merge
+# commit, the login in GitHub's generated subject "Merge pull request #<n> from
+# <login>/<branch>" is dropped too (GitHub shows it on the pull request); the rest of
+# that subject and every other line of the message are checked.
 #   fork/scripts/check-literals.sh [--commit <commit>] [upstream-base-ref]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -38,11 +41,12 @@ added=$(
       !header && /^\+/ { print file ":" line ":" substr($0, 2); line++ }'
     [ -n "$commit" ] || git ls-files --others --exclude-standard -z | xargs -0 grep -nHI '' -- 2>/dev/null || true
     # Each commit's identities and message as <sha>:0:<text>, so they match like lines.
-    [ -z "$commit" ] || git log --no-color --format='%x1e%H%n%x1f%an <%ae>%n%x1f%cn <%ce>%n%B' "$base..$commit" |
+    [ -z "$commit" ] || git log --no-color --format='%x1e%H %P%n%x1f%an <%ae>%n%x1f%cn <%ce>%n%B' "$base..$commit" |
       awk -v noreply='<[0-9]+[+][A-Za-z0-9-]+@users[.]noreply[.]github[.]com>' '
-        index($0, "\036") == 1 { sha = substr($0, 2); next }
+        index($0, "\036") == 1 { merge = split(substr($0, 2), ids, " ") > 2; sha = ids[1]; subject = 1; next }
         index($0, "\037") == 1 { if ($0 !~ noreply "$") print sha ":0:" substr($0, 2); next }
-        { gsub(substr(noreply, 2, length(noreply) - 2), ""); print sha ":0:" $0 }'
+        subject && merge && /^Merge pull request #[0-9]+ from [A-Za-z0-9-]+\/[^ ]+$/ { sub(/ from [A-Za-z0-9-]+\//, " from ") }
+        { subject = 0; gsub(substr(noreply, 2, length(noreply) - 2), ""); print sha ":0:" $0 }'
   }
 )
 found=0

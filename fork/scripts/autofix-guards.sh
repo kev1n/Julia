@@ -1,14 +1,22 @@
 #!/bin/bash
-# The test and weakening guards autofix.sh applies to an auto-fix branch.
+# The series, test and weakening guards autofix.sh applies to an auto-fix branch.
 #   fork/scripts/autofix-guards.sh <base> <before> <latest> <result>
 # <before> is the fork on upstream <base>; <result> is the agent's rebase of it onto <latest>.
-# Exit 1 with the reason on stdout when the branch loses fork tests, drops upstream tests
-# outside the files where the fork already removes upstream tests, or adds skips, focus,
-# type suppressions or lint disables. Exit 0, printing the upstream tests it dropped, if any.
+# Exit 1 with the reason on stdout when the branch changes the fork's commit series, loses
+# fork tests, drops upstream tests outside the files where the fork already removes upstream
+# tests, or adds skips, focus, type suppressions or lint disables. Exit 0, printing the
+# upstream tests it dropped, if any.
 set -uo pipefail
 base=${1:?base} before=${2:?before} latest=${3:?latest} result=${4:?result}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+# The fork's commit series is its non-merge commits in the order a rebase replays them:
+# a rebase drops the merge commits GitHub's "Merge pull request" button adds to the fork.
+# The result is a plain rebase, so a merge commit on it is a change to the series.
+series() { git log --topo-order --reverse --format=%s "$@"; }
+[ "$(series --no-merges "$base..$before")" = "$(series "$latest..$result")" ] ||
+  { echo "the agent's branch changed the fork's commit series (added, dropped, reordered or renamed commits)"; exit 1; }
 
 # One line per test case, "<file>:<line text>", sorted so comm treats repeats as a multiset.
 tests() {
