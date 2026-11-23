@@ -483,6 +483,17 @@ it.effect("lets the writer commit while a read-only transaction is open", () =>
   ),
 );
 
+it.effect("keeps reader temp storage in memory", () =>
+  withReaderClient((sql) =>
+    Effect.gen(function* () {
+      const rows = yield* sql<{ temp_store: number }>`PRAGMA temp_store`.pipe(
+        SqliteClient.readOnly,
+      );
+      assert.equal(rows[0]?.temp_store, 2);
+    }),
+  ),
+);
+
 it.effect("serves another read while a read-only transaction is open", () =>
   withReaderClient((sql) =>
     Effect.gen(function* () {
