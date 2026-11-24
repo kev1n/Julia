@@ -455,6 +455,10 @@
       "types": "./src/accountChoice.ts",
       "import": "./src/accountChoice.ts"
     },
+    "./forkTelemetry": {
+      "types": "./src/forkTelemetry.ts",
+      "import": "./src/forkTelemetry.ts"
+    },
     "./usageLimits": {
       "types": "./src/usageLimits.ts",
       "import": "./src/usageLimits.ts"

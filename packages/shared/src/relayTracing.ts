@@ -10,6 +10,8 @@ import * as Tracer from "effect/Tracer";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { OtlpSerialization, OtlpTracer } from "effect/observability";
 
+import { sendsTelemetry } from "./forkTelemetry.ts";
+
 export interface RelayClientTracingConfig {
   readonly tracesUrl: string;
   readonly tracesDataset: string;
@@ -168,7 +170,7 @@ export function layer(
   resource: RelayClientTracingResource,
   options?: { readonly isEnabled?: () => boolean },
 ): Layer.Layer<never, never, HttpClient.HttpClient> {
-  if (config === null) {
+  if (config === null || !sendsTelemetry()) {
     return Layer.succeed(RelayClientTracer, Option.none());
   }
 

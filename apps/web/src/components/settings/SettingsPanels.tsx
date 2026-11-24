@@ -2472,10 +2472,9 @@ export function AboutSettingsPanel() {
         <SettingsRow
           {...setting("privacy-policy")}
           description={
+            // Fork: nothing is collected (FORK.md, No telemetry).
             telemetryOff === undefined
-              ? gt(
-                  "How we handle your data, including the pseudonymous product usage data Julia collects.",
-                )
+              ? undefined
               : gt("How we handle your data. {telemetryOff}", { telemetryOff })
           }
           control={
