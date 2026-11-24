@@ -474,6 +474,16 @@ same key, so it installs over the old one and keeps the pairings.
 - Manual: `fork/scripts/build-mobile.sh build <version> <out> ~/t3-fork/out/mobile` then
   `fork/scripts/build-mobile.sh publish <out> ~/t3-fork/out/mobile`.
 
+**No telemetry** (`packages/shared/src/forkTelemetry.ts`, `apps/server/src/fork/noAnalytics.ts`,
+`apps/mobile/src/fork/appConfig.ts`). No build sends usage or diagnostic data to T3 Code, PostHog
+or Axiom, whatever the environment variables, settings or managed policy say: the server drops
+product events where they are recorded, relay connection traces are never exported (server, web,
+desktop and phone), and the phone's crash reports and startup timings have no endpoint and are
+never dispatched, so its **Send crash reports** switch is gone. The Welcome page and Settings >
+About > Legal no longer say usage data is collected. Your own OpenTelemetry export (Settings >
+Maintenance > Diagnostics, `T3CODE_OTLP_*`, `OTEL_EXPORTER_OTLP_*`), provider CLI update checks,
+T3 Connect and **Publish agent activity** work as upstream.
+
 **Packaging** (`apps/desktop/src/fork/`, `fork/scripts/`). The desktop app is **Julia**
 (`desktop_bundle_id`) with its own Chromium profile
 (`~/Library/Application Support/<desktop_package_name>`) and state (`~/<desktop_home_dirname>`),
@@ -729,6 +739,14 @@ git diff --stat <upstream-tag>...<fork_branch> -- . ':(exclude)FORK.md' ':(exclu
   host (bundling `libatomic.so.1` with `ldd`, `dpkg-query` and `patchelf`, and GNU tar's
   `--hard-dereference`), so a Linux machine running it needs the `libatomic1` package (Linux
   machines, below).
+- `apps/server/src/server.ts`: provides `fork/noAnalytics.ts` instead of `AnalyticsService.layer`
+  (no telemetry). `packages/shared/src/relayTracing.ts`: `layer` exports nothing unless
+  `forkTelemetry.ts` allows it (`packages/shared/package.json`: its export); tests in
+  `apps/server/src/cloud/relayTracing.test.ts`, `apps/web/src/lib/runtime.test.ts` and
+  `apps/mobile/src/features/observability/tracing.test.ts`.
+  `apps/mobile/src/features/observability/observe.ts`: crash reporting is unavailable the same way.
+  `apps/web/src/components/onboarding/WelcomePage.tsx`: its usage-data notice is removed;
+  `apps/web/src/components/settings/SettingsPanels.tsx`: so is the privacy policy row's.
 
 Commit series on the fork branch (oldest first), one series per feature so each can be dropped or
 proposed on its own: free disk + Auto (2 commits), pictures (1), Claude tier + Usage by account
@@ -741,7 +759,7 @@ then Machines (1; adds total disk to the free disk commit's field and owner), th
 machine pickers (1), account limits in the model pickers (1), then Auto's account on the phone and
 in scheduled runs (1; moves the account rule to `packages/shared`), then limited accounts on
 desktop and the Codex default (1), then providers on every machine (1), then settled threads
-offloaded (1).
+offloaded (1), then no telemetry (1).
 
 ## Sync, build, deploy
 
@@ -1071,3 +1089,7 @@ Each series is independent of the packaging and tooling commits.
   native (Electron), so its Move items show the reading taken as it opens instead of a live one;
   opening it waits for that reading (a fresh sample takes the server about 200 ms of CPU
   measuring, at most the existing 5-second query timeout for a server that does not answer).
+- No telemetry cuts product analytics where the server provides the service rather than inside
+  `AnalyticsService.ts`, so upstream's delivery tests still describe upstream's code unchanged;
+  the fork never builds that layer. `docs/user/telemetry.md` stays upstream's; this file's No
+  telemetry entry is the fork's account.
