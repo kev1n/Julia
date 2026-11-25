@@ -55,7 +55,7 @@ export function groupModelSubscriptions<T>(
 /** Preferred starting models, independent of account order or catalog defaults. */
 export function defaultModelPriority(catalog: string, model: string): number {
   if (catalog === "claudeAgent" && model === "claude-opus-5-5") return 0;
-  if (catalog === "codex" && model === "gpt-6.1-sol") return 1;
+  if (catalog === "codex" && model === "gpt-6.2-sol") return 1;
   if (catalog === "codex" && model === "gpt-6-astra") return 2;
   return 3;
 }

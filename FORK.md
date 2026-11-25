@@ -32,7 +32,7 @@ that starts a new thread moves off its saved account when that account is limite
 (`apps/server/src/fork/accountWithLimitLeft.ts`). A scheduled task bound to a thread keeps the
 thread's account.
 
-**Codex default** (`apps/server/src/fork/codexDefaults.ts`). Codex's catalog marks GPT-6.1-Sol as
+**Codex default** (`apps/server/src/fork/codexDefaults.ts`). Codex's catalog marks GPT-6.2-Sol as
 its default model and High as that model's default reasoning, so a new Codex chat on any
 client starts there. A model you already chose for Codex in a draft is kept.
 

@@ -375,6 +375,18 @@ describe("provider enabled defaults", () => {
   });
 });
 
+describe("ServerSettings model defaults", () => {
+  it("uses the current Sol for failover and sync auto-fix without changing saved choices", () => {
+    const defaults = decodeServerSettings({});
+    expect(defaults.limitFailoverModelSelections[1]?.model).toBe("gpt-6.2-sol");
+    expect(defaults.syncAutofixModelSelections[1]?.model).toBe("gpt-6.2-sol");
+    const saved = [{ instanceId: "codex", model: "gpt-6.1-sol" }];
+    expect(
+      decodeServerSettings({ limitFailoverModelSelections: saved }).limitFailoverModelSelections,
+    ).toEqual(saved);
+  });
+});
+
 describe("ServerSettings worktree defaults", () => {
   it("defaults the thread env mode to inherit and keeps stored values", () => {
     expect(decodeServerSettings({}).defaultThreadEnvMode).toBeNull();
