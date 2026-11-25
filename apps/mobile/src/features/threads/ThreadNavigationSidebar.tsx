@@ -465,6 +465,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             snoozeWakeLabelText={item.snoozeWakeLabelText}
             timeLabel={item.timeLabel}
             // A project header already names grouped rows; pins sit outside the groups.
+            folder={groupedByProject}
             project={
               groupedByProject && !item.item.pinned ? null : (projectByKey.get(scopeKey) ?? null)
             }
