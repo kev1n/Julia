@@ -572,6 +572,7 @@ export function HomeScreen(props: HomeScreenProps) {
         snoozePresetMinute={item.snoozePresetMinute ?? ""}
         snoozeWakeLabelText={item.snoozeWakeLabelText}
         timeLabel={item.timeLabel}
+        folder={groupedByProject}
         showTrailingDivider={item.showTrailingDivider}
         // A project header already names grouped rows; pins sit outside the groups.
         project={
