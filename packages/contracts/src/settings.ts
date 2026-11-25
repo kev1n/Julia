@@ -1539,7 +1539,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(
       Effect.succeed([
         { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus-5-5" },
-        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" },
+        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.2-sol" },
       ]),
     ),
   ),
@@ -1556,7 +1556,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(
       Effect.succeed([
         { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus-5-5" },
-        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1-sol" },
+        { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.2-sol" },
       ]),
     ),
   ),

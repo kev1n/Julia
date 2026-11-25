@@ -138,7 +138,7 @@ describe("defaultModelPriority", () => {
     const models = [
       { catalog: "codex", model: "gpt-6-astra" },
       { catalog: "claudeAgent", model: "claude-sonnet-5-5" },
-      { catalog: "codex", model: "gpt-6.1-sol" },
+      { catalog: "codex", model: "gpt-6.2-sol" },
       { catalog: "claudeAgent", model: "claude-opus-5-5" },
     ];
     expect(
@@ -148,11 +148,12 @@ describe("defaultModelPriority", () => {
             defaultModelPriority(a.catalog, a.model) - defaultModelPriority(b.catalog, b.model),
         )
         .map(({ model }) => model),
-    ).toEqual(["claude-opus-5-5", "gpt-6.1-sol", "gpt-6-astra", "claude-sonnet-5-5"]);
+    ).toEqual(["claude-opus-5-5", "gpt-6.2-sol", "gpt-6-astra", "claude-sonnet-5-5"]);
   });
   it("does not pin a same-named model from a different catalog", () => {
     expect(defaultModelPriority("acpRegistry:custom", "claude-opus-5-5")).toBe(3);
-    expect(defaultModelPriority("cursor", "gpt-6.1-sol")).toBe(3);
+    expect(defaultModelPriority("codex", "gpt-6.1-sol")).toBe(3);
+    expect(defaultModelPriority("cursor", "gpt-6.2-sol")).toBe(3);
   });
 });
 
@@ -164,7 +165,7 @@ describe("chooseNewChatModelSubscription", () => {
   });
   const sol = (id: string, used: number) => ({
     ...subscription(id, used),
-    model: "gpt-6.1-sol",
+    model: "gpt-6.2-sol",
   });
   const selection = { instanceId: ProviderInstanceId.make("claudeA"), model: "claude-opus-5-5" };
 
@@ -181,7 +182,7 @@ describe("chooseNewChatModelSubscription", () => {
       [],
       now,
     );
-    expect(choice?.model).toBe("gpt-6.1-sol");
+    expect(choice?.model).toBe("gpt-6.2-sol");
     expect(choice?.value).toBe("sol-room");
   });
 

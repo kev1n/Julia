@@ -233,7 +233,7 @@ describe("resolveNewChatModelSelection", () => {
       windows: [{ id: "five_hour", kind: "session" as const, label: "Session", usedPercent }],
     },
   });
-  const codex = provider({ instanceId: "codex", models: ["gpt-6.1-sol", "gpt-6-astra"] });
+  const codex = provider({ instanceId: "codex", models: ["gpt-6.2-sol", "gpt-6-astra"] });
 
   it("falls back from two exhausted Opus accounts to Sol without Claude options", () => {
     expect(
@@ -243,7 +243,7 @@ describe("resolveNewChatModelSelection", () => {
         [claude("claude_a", 100), claude("claude_b", 100), codex],
         now,
       ),
-    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6.1-sol" });
+    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6.2-sol" });
   });
 
   it("preserves model options when another compatible account has capacity", () => {
@@ -261,7 +261,7 @@ describe("resolveNewChatModelSelection", () => {
     const settings = {
       ...DEFAULT_UNIFIED_SETTINGS,
       providerModelPreferences: {
-        [codex.instanceId]: { hiddenModels: ["gpt-6.1-sol"], modelOrder: [] },
+        [codex.instanceId]: { hiddenModels: ["gpt-6.2-sol"], modelOrder: [] },
       },
     };
     expect(

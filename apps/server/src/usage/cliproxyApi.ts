@@ -2,6 +2,7 @@ import {
   ProviderDriverKind,
   UsageLimitSourceError,
   type ProviderConsumeResetCreditResult,
+  type ServerProviderUsageWindow,
   type UsageLimitSourceAccount,
   type UsageLimitSourceConfig,
 } from "@t3tools/contracts";
@@ -36,6 +37,22 @@ const AuthFile = Schema.Struct({
   provider: Schema.String,
   email: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
+  project_id: Schema.optional(Schema.String),
+  quota: Schema.optional(
+    Schema.Struct({
+      observed_at: Schema.String,
+      signals: Schema.Record(Schema.String, Schema.String),
+    }),
+  ),
+  cooldowns: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        scope: Schema.String,
+        model_key: Schema.optional(Schema.String),
+        retry_at: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
   id_token: Schema.optional(
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),
@@ -202,6 +219,59 @@ interface HubProvider {
     readonly call: HubCall;
     readonly checkedAt: string;
   }) => Effect.Effect<HubReading, UsageLimitSourceError | Schema.SchemaError>;
+}
+
+function claudeQuotaSignals(account: AuthFile) {
+  if (account.provider !== "claude" || !account.quota) return undefined;
+  const signals = account.quota.signals;
+  const window = (key: string) => {
+    const raw = signals[`Anthropic-Ratelimit-Unified-${key}-Utilization`];
+    const utilization = raw?.trim() ? Number(raw) * 100 : Number.NaN;
+    if (!Number.isFinite(utilization) || utilization < 0 || utilization > 100) return null;
+    const reset = Number(signals[`Anthropic-Ratelimit-Unified-${key}-Reset`]);
+    const resetsAt =
+      Number.isFinite(reset) && reset > 0 ? DateTime.make(reset * 1000) : Option.none();
+    return {
+      utilization,
+      resets_at: Option.isSome(resetsAt) ? DateTime.formatIso(resetsAt.value) : null,
+    };
+  };
+  const five_hour = window("5h");
+  const seven_day = window("7d");
+  if (!five_hour && !seven_day) return undefined;
+  const observedAt = DateTime.make(account.quota.observed_at);
+  if (Option.isNone(observedAt)) return undefined;
+  return claudeUsageResponseToLimits({
+    checkedAt: DateTime.formatIso(observedAt.value),
+    response: { rate_limits_available: true, rate_limits: { five_hour, seven_day } },
+  }).limits;
+}
+
+export const HUB_COOLDOWN_WINDOW_PREFIX = "hub_cooldown:";
+
+function routingCooldowns(
+  account: AuthFile,
+  now: number,
+): ReadonlyArray<ServerProviderUsageWindow> {
+  return (account.cooldowns ?? []).flatMap((cooldown) => {
+    const retryAt = cooldown.retry_at ? DateTime.make(cooldown.retry_at) : Option.none();
+    if (Option.isNone(retryAt) || DateTime.toEpochMillis(retryAt.value) <= now) return [];
+    if (
+      cooldown.scope !== "credential" &&
+      (cooldown.scope !== "model" || !cooldown.model_key?.trim())
+    )
+      return [];
+    return [
+      {
+        id: `${HUB_COOLDOWN_WINDOW_PREFIX}${cooldown.scope}:${cooldown.model_key ?? "all"}`,
+        kind: "other" as const,
+        label: "Routing cooldown",
+        usedPercent: 100,
+        resetsAt: DateTime.formatIso(retryAt.value),
+        ...(cooldown.scope === "model" ? { modelScope: cooldown.model_key! } : {}),
+      },
+    ];
+  });
 }
 
 const listedIdentity = (account: AuthFile) => ({
@@ -446,18 +516,32 @@ export const makeCliproxyApi = Effect.gen(function* () {
       Effect.catch((error) =>
         Effect.succeed({
           ...listedIdentity(account),
-          usageLimits: makeUnavailableUsageLimits({
-            checkedAt,
-            reason: "probeFailed",
-            // Source-error details are already credential-free (status codes only).
-            message: isUsageLimitSourceError(error)
-              ? error.detail
-              : "The hub could not read this account's usage.",
-          }),
+          usageLimits:
+            claudeQuotaSignals(account) ??
+            makeUnavailableUsageLimits({
+              checkedAt,
+              reason: "probeFailed",
+              // Source-error details are already credential-free (status codes only).
+              message: isUsageLimitSourceError(error)
+                ? error.detail
+                : "The hub could not read this account's usage.",
+            }),
         }),
       ),
     );
-    return { id: account.id, driver: provider.driver, ...reading };
+    const cooldowns = routingCooldowns(account, Date.parse(checkedAt));
+    return {
+      id: account.id,
+      driver: provider.driver,
+      ...reading,
+      usageLimits:
+        cooldowns.length === 0
+          ? reading.usageLimits
+          : {
+              ...reading.usageLimits,
+              windows: [...reading.usageLimits.windows, ...cooldowns],
+            },
+    };
   });
 
   const readAccounts = Effect.fn("CliproxyApi.readAccounts")(function* (

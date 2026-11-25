@@ -360,10 +360,10 @@ describe("linkedEnvironmentNames", () => {
         [unsaved, "Office box"],
       ]),
     );
-    // A fleet machine needs no link, so an expired one does not hide it.
+    // Expired links are filtered by the server; fleet membership needs no link.
     expect(
       linkedEnvironmentNames({
-        links: [{ environmentId: mini, label: "mini", status: "expired" }],
+        links: [],
         environments: [{ environmentId: mini, label: "Mac mini" }],
         fleet: [
           { environmentId: mini, label: "mini" },

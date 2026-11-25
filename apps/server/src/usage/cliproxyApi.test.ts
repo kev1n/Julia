@@ -55,6 +55,8 @@ function fixture(
       email?: string;
       disabled?: boolean;
       project_id?: string;
+      quota?: { observed_at: string; signals: Record<string, string> };
+      cooldowns?: Array<{ scope: string; model_key?: string; retry_at: string; reason: string }>;
       id_token?: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
     }>;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
@@ -365,6 +367,97 @@ describe("CLIProxyAPI built-in management API", () => {
       expect(result[1]?.usageLimits.windows[0]?.usedPercent).toBe(12);
       expect(encodeJson(result)).not.toContain("do-not-publish");
     }),
+  );
+
+  it.effect("retains proxy quota signals when Claude refuses its usage probe", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-25T02:00:00Z"));
+      const test = fixture({
+        accounts: [
+          {
+            ...accounts[0]!,
+            provider: "claude",
+            quota: {
+              observed_at: "2026-11-25T01:59:00Z",
+              signals: {
+                "Anthropic-Ratelimit-Unified-5h-Utilization": "0.2",
+                "Anthropic-Ratelimit-Unified-5h-Reset": "1795582800",
+                "Anthropic-Ratelimit-Unified-7d-Utilization": "1.0",
+                "Anthropic-Ratelimit-Unified-7d-Reset": "1795611600",
+              },
+            },
+            cooldowns: [
+              {
+                scope: "model",
+                model_key: "claude-opus-5-5",
+                reason: "quota",
+                retry_at: "2026-11-25T13:00:02Z",
+              },
+            ],
+          },
+        ],
+        upstream: () => ({ status: 429, body: { error: "do-not-publish" } }),
+      });
+      const api = yield* test.api;
+      const {
+        accounts: [account],
+      } = yield* api.readAccounts(config);
+      expect(account?.usageLimits.unavailable).toBeUndefined();
+      expect(account?.usageLimits.windows).toMatchObject([
+        { id: "five_hour", usedPercent: 20 },
+        { id: "seven_day", usedPercent: 100, resetsAt: "2026-11-25T13:00:00.000Z" },
+        { usedPercent: 100, modelScope: "claude-opus-5-5", resetsAt: "2026-11-25T13:00:02.000Z" },
+      ]);
+      expect(encodeJson(account)).not.toContain("do-not-publish");
+    }),
+  );
+
+  it.effect(
+    "reports routing cooldowns separately from fresh upstream quota and drops expired ones",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-25T02:00:00Z"));
+        const test = fixture({
+          accounts: [
+            {
+              ...accounts[0]!,
+              provider: "claude",
+              cooldowns: [
+                {
+                  scope: "credential",
+                  reason: "credential_quota",
+                  retry_at: "2026-11-25T03:00:00Z",
+                },
+                {
+                  scope: "model",
+                  model_key: "claude-fable-5-2",
+                  reason: "quota",
+                  retry_at: "2026-11-25T01:00:00Z",
+                },
+                {
+                  scope: "model",
+                  model_key: "claude-opus-5-5",
+                  reason: "quota",
+                  retry_at: "2026-11-25T01:00:00Z",
+                },
+              ],
+            },
+          ],
+          upstream: () => ({
+            status: 200,
+            body: { seven_day: { utilization: 20, resets_at: null } },
+          }),
+        });
+        const api = yield* test.api;
+        const {
+          accounts: [account],
+        } = yield* api.readAccounts(config);
+        expect(account?.usageLimits.windows).toMatchObject([
+          { id: "seven_day", usedPercent: 20 },
+          { usedPercent: 100, resetsAt: "2026-11-25T03:00:00.000Z" },
+        ]);
+        expect(account?.usageLimits.windows).toHaveLength(2);
+      }),
   );
 
   it.effect("maps Claude scoped windows without a scheduler plugin", () =>

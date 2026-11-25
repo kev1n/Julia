@@ -253,6 +253,7 @@ it.effect("reads a management key from its secret provider", () => {
 
 it.effect("keeps an account's last good reading when the hub's next read of it is refused", () => {
   let refused = true;
+  let coolingDown = false;
   let workspace = "account-a";
   let listsIdentity = true;
   const readAccount = Effect.gen(function* () {
@@ -272,6 +273,10 @@ it.effect("keeps an account's last good reading when the hub's next read of it i
     expect(good?.windows.map((window) => window.usedPercent)).toEqual([78]);
     expect(good?.unavailable).toBeUndefined();
     refused = true;
+    expect(yield* read).toEqual(good);
+    coolingDown = true;
+    expect((yield* read)?.windows.map((window) => window.usedPercent)).toEqual([78, 100]);
+    coolingDown = false;
     expect(yield* read).toEqual(good);
     // The same auth file now holds another login, whose reading is unknown.
     workspace = "account-b";
@@ -315,6 +320,9 @@ it.effect("keeps an account's last good reading when the hub's next read of it i
                       id: "first.json",
                       auth_index: "a",
                       provider: "codex",
+                      cooldowns: coolingDown
+                        ? [{ scope: "credential", retry_at: "2099-01-01T00:00:00Z" }]
+                        : [],
                       ...(listsIdentity
                         ? {
                             email: "first@example.com",

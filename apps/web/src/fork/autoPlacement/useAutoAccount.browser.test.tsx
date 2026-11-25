@@ -44,7 +44,7 @@ const opus: ModelSelection = {
 const accounts = (used?: number) => [
   provider("claudeA", "claudeAgent", opus.model, used),
   provider("claudeB", "claudeAgent", opus.model, used),
-  provider("codex", "codex", "gpt-6.1-sol", 20),
+  provider("codex", "codex", "gpt-6.2-sol", 20),
 ];
 interface ComposerControls {
   readonly observed: ModelSelection;
@@ -131,12 +131,12 @@ describe("new-chat quota fallback", () => {
       await using screen = await render(
         <Composer probe={probe} auto={auto} providers={accounts(100)} />,
       );
-      expect(probe.observed?.model).toBe("gpt-6.1-sol");
+      expect(probe.observed?.model).toBe("gpt-6.2-sol");
       await act(() => probe.manualPick(opus));
       await screen.rerender(<Composer probe={probe} auto={auto} providers={accounts(99)} />);
       expect(probe.observed).toBe(opus);
       await act(() => probe.newChat());
-      expect(probe.observed?.model).toBe("gpt-6.1-sol");
+      expect(probe.observed?.model).toBe("gpt-6.2-sol");
     },
   );
 
@@ -147,7 +147,7 @@ describe("new-chat quota fallback", () => {
     );
     expect(probe.observed).toBe(opus);
     await screen.rerender(<Composer probe={probe} auto={false} providers={accounts(100)} />);
-    expect(probe.observed?.model).toBe("gpt-6.1-sol");
+    expect(probe.observed?.model).toBe("gpt-6.2-sol");
   });
 
   it("does not change an existing conversation", async () => {

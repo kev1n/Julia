@@ -1,11 +1,11 @@
 /**
- * Fork: Codex defaults to GPT-6.1-Sol at High reasoning. The model
+ * Fork: Codex defaults to GPT-6.2-Sol at High reasoning. The model
  * goes first in the default preference (so the catalog marks it default) and
  * its High effort is marked default; every client picks both from the catalog.
  */
 import { PREFERRED_DEFAULT_CODEX_MODELS } from "@t3tools/contracts";
 
-const FORK_CODEX_MODEL = "gpt-6.1-sol";
+const FORK_CODEX_MODEL = "gpt-6.2-sol";
 
 export const FORK_PREFERRED_DEFAULT_CODEX_MODELS: ReadonlyArray<string> = [
   FORK_CODEX_MODEL,

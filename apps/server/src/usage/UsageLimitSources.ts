@@ -33,7 +33,7 @@ import * as SecretResolverLayer from "../secrets/SecretResolver.ts";
 import { resolveSettingsSecrets } from "../secrets/settingsSecretValue.ts";
 import * as Settings from "../serverSettings.ts";
 import { windowLimitsModel } from "../provider/claudeUsageLimits.ts";
-import { makeCliproxyApi } from "./cliproxyApi.ts";
+import { HUB_COOLDOWN_WINDOW_PREFIX, makeCliproxyApi } from "./cliproxyApi.ts";
 
 const decodeHttpQuotaJson = Schema.decodeUnknownEffect(Schema.fromJsonString(HttpQuotaResponse));
 const decodeHttpQuotaResponse = Effect.fn("UsageLimitSources.decodeHttpQuotaResponse")(function* (
@@ -101,7 +101,7 @@ function keepLastGoodReadings(
     return {
       ...source,
       accounts: source.accounts.map((account) => {
-        if (account.usageLimits.unavailable?.reason !== "probeFailed") return account;
+        const failed = account.usageLimits.unavailable?.reason === "probeFailed";
         // Without a listed login, a reused auth file name cannot be told apart from the old one.
         if (account.email === undefined && account.workspaceId === undefined) return account;
         const last = before.accounts.find(
@@ -114,8 +114,27 @@ function keepLastGoodReadings(
             candidate.workspaceId === account.workspaceId,
         );
         if (!last || last.usageLimits.unavailable) return account;
-        // Only the reading is lent; an unread model list stays unknown.
-        return { ...last, models: account.models };
+        if (
+          !failed &&
+          Date.parse(account.usageLimits.checkedAt) >= Date.parse(last.usageLimits.checkedAt)
+        )
+          return account;
+        // Quota can be cached, but routing cooldowns always follow the current hub snapshot.
+        return {
+          ...last,
+          models: account.models,
+          usageLimits: {
+            ...last.usageLimits,
+            windows: [
+              ...last.usageLimits.windows.filter(
+                (window) => !window.id.startsWith(HUB_COOLDOWN_WINDOW_PREFIX),
+              ),
+              ...account.usageLimits.windows.filter((window) =>
+                window.id.startsWith(HUB_COOLDOWN_WINDOW_PREFIX),
+              ),
+            ],
+          },
+        };
       }),
     };
   });

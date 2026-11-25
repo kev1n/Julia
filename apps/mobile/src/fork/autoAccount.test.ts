@@ -64,7 +64,7 @@ describe("withAutoAccount", () => {
 
   it("falls back to Sol when both Opus accounts are exhausted, without carrying Claude options", () => {
     const codex = {
-      ...account("codex", 30, ["gpt-6.1-sol", "gpt-6-astra"]),
+      ...account("codex", 30, ["gpt-6.2-sol", "gpt-6-astra"]),
       driver: ProviderDriverKind.make("codex"),
     };
     expect(
@@ -73,7 +73,7 @@ describe("withAutoAccount", () => {
         [account("claudeA", 100), account("claudeB", 100), codex],
         NOW,
       ),
-    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6.1-sol" });
+    ).toEqual({ instanceId: codex.instanceId, model: "gpt-6.2-sol" });
   });
 
   it("can use a user-pinned model when the preferred models have no capacity", () => {
