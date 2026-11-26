@@ -76,7 +76,7 @@ describe("LocalApi", () => {
     const items = [{ id: "rename", label: "Rename" }] as const;
 
     await expect(createLocalApi().contextMenu.show(items, { x: 4, y: 5 })).resolves.toBe("rename");
-    expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 });
+    expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 }, undefined);
   });
 
   it("fails closed in a browser when no themed host is available", async () => {

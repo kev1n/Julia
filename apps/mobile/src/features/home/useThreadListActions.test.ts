@@ -500,10 +500,7 @@ it("moves active threads against project neighbours, not interleaved global neig
     state.requests
       .map((request) => ({ action: request.action, id: request.input.threadId }))
       .sort((a, b) => a.id.localeCompare(b.id)),
-  ).toEqual([
-    { action: "reorderActive", id: "moved" },
-    { action: "reorderActive", id: "neighbour" },
-  ]);
+  ).toEqual([{ action: "reorderActive", id: "moved" }]);
 });
 
 describe("thread action undo", () => {

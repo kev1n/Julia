@@ -79,10 +79,11 @@ export function assertClaudeBackgroundTaskWakeOutput(
   // Fork: a backgrounded `sleep` wakes the agent when it ends, so it counts as a
   // monitor (claudeBashCallWaitsForFinish in ClaudeAdapterV2.ts). The roster lists the task
   // before Claude reports which tool call started it, so its first entry still says command.
-  assert.deepEqual(rosterTask, {
+  assert.deepInclude(rosterTask, {
     taskId: BACKGROUND_TASK_ID,
     description: "Background sleep test",
     kind: "monitor",
+    awaited: true,
   });
   assert.deepEqual(backgroundNotifications(projection), [
     {

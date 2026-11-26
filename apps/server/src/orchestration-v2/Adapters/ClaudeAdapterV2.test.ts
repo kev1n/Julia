@@ -16622,7 +16622,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       });
     assert.isTrue(waits("gh pr checks 17 --watch"));
     assert.isTrue(waits("gh run watch 123 --exit-status"));
-    assert.isTrue(waits("sleep 300 && gh pr view 17"));
+    assert.isTrue(waits("sleep 300; date"));
+    assert.isFalse(waits("sleep 5 && npm run dev"));
     assert.isTrue(waits("until gh pr checks 17 >/dev/null; do sleep 30; done"));
     assert.isTrue(waits("while kill -0 4242; do sleep 5; done"));
     assert.isFalse(waits("gh pr checks 17 --watch", false));

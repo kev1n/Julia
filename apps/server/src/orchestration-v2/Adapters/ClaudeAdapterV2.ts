@@ -4307,7 +4307,6 @@ const CLAUDE_FINITE_WAIT_COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
   /\bgh\s+pr\s+checks\b[^\n;|&]*--watch\b/u,
   /\bgh\s+run\s+watch\b/u,
   /\bkubectl\s+(?:wait|rollout\s+status)\b/u,
-  /^\s*sleep\s+\d/u,
   /\buntil\b[\s\S]*\bdo\b[\s\S]*\bsleep\b/u,
   /\bwhile\s+(?!true\b|:\s*;)[\s\S]*\bdo\b[\s\S]*\bsleep\b/u,
 ];
@@ -4324,7 +4323,8 @@ export function claudeBashCallWaitsForFinish(toolUse: {
   return (
     Reflect.get(toolUse.input, "run_in_background") === true &&
     typeof command === "string" &&
-    CLAUDE_FINITE_WAIT_COMMAND_PATTERNS.some((pattern) => pattern.test(command))
+    (isClaudeSleepTimer(command) ||
+      CLAUDE_FINITE_WAIT_COMMAND_PATTERNS.some((pattern) => pattern.test(command)))
   );
 }
 

@@ -95,14 +95,17 @@ import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
 // The real restore runs over each harness's git, project and file system; no setup script.
-const layerWorktreeRestore = <R, E>(dependencies: Layer.Layer<R, E>) =>
+const layerWorktreeRestore = <R, E>(
+  dependencies: Layer.Layer<R, E>,
+  runSetup?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]["runForThread"],
+) =>
   WorktreeRestore.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         dependencies,
         Path.layer,
         Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
-          runForThread: () => Effect.succeed({ status: "no-script" } as never),
+          runForThread: runSetup ?? (() => Effect.succeed({ status: "no-script" } as never)),
         }),
       ),
     ),
@@ -1441,6 +1444,7 @@ function makeLocalCommandHarness(input: {
         restoreDependencies,
         layerWorktreeRestore(
           Layer.merge(restoreDependencies, layerWorktreeLocation(input.worktreesDir)),
+          input.runSetup,
         ),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getForkSourceRunIds: () => Effect.succeed(parentRecords.runs.map((run) => run.id)),
@@ -2180,8 +2184,12 @@ effectIt.effect.each([
       worktreePath,
       fileSystem,
       failReadsAfterRunning: true,
-      runSetup: () =>
-        withWorkspaceLease(worktreePath, Deferred.succeed(setupStarted, undefined)).pipe(
+      // Fork: WorktreeRestore runs setup under the lease it already holds and says so.
+      runSetup: (setup) =>
+        (setup.workspaceLeaseHeld === true
+          ? Deferred.succeed(setupStarted, undefined)
+          : withWorkspaceLease(worktreePath, Deferred.succeed(setupStarted, undefined))
+        ).pipe(
           Effect.as({
             status: "started",
             scriptId: "setup",
@@ -2215,11 +2223,12 @@ effectIt.effect.each([
     expect(harness.open).toHaveBeenCalledTimes(failed ? 0 : 1);
     if (failed) {
       expect(harness.projection().turnItems).toMatchObject([
+        // Fork: WorktreeRestore reports the failed setup as a failed restore.
         {
           type: "error",
-          title: "Couldn't set up restored workspace",
+          title: "Couldn't recreate thread workspace",
           failure: {
-            message: `Setup script exited with ${input.exitCode} in '${worktreePath}'.`,
+            message: `Could not restore the worktree at ${worktreePath}: the setup script "Setup" exited with ${input.exitCode}`,
           },
         },
       ]);

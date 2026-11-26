@@ -118,6 +118,7 @@ export function useMoveThread(threadRef: ScopedThreadRef | null) {
         messages: (detail?.messages ?? []).map(({ role, text }) => ({ role, text })),
         threadId: ThreadId.make(uuidv4()),
         messageId: MessageId.make(uuidv4()),
+        // oxlint-disable-next-line react/purity -- runs in the move handler, not during render
         now: Date.now(),
         creationSource: "mobile",
         receive: async (input) => {

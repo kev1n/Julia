@@ -242,9 +242,7 @@ export const makeRestoreMissingWorktree = Effect.gen(function* () {
               ? cause
               : new WorktreeRecreateError({ worktreePath, branch, cause }),
           ),
-          Effect.flatMap(() =>
-            recreated ? recreatedFor(thread, worktreePath) : Effect.succeed(undefined),
-          ),
+          Effect.flatMap(() => (recreated ? recreatedFor(thread, worktreePath) : Effect.undefined)),
         );
     }
     const exists = yield* fileSystem.exists(worktreePath).pipe(Effect.orElseSucceed(() => true));

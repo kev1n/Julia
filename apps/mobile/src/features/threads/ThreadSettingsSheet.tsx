@@ -2,6 +2,7 @@ import {
   getPromptControlledTraits,
   getTraitSelectChange,
 } from "@t3tools/client-runtime/model-traits";
+import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/providerUpdateRequiredModels";
 import { T, useGT, useMessages } from "gt-react-native";
 import * as Dialog from "../../components/ui/Dialog";
 import { createV5StackNavigator as createNativeStackNavigator } from "../../native/createV5StackNavigator";
@@ -885,7 +886,7 @@ function useThreadSettingsCatalogItems(
   // Favorites list only selectable models, so it never explains gated ones.
   // Accounts of one provider share a notice, so each text appears once.
   const notices = new Map<string, ThreadSettingsCatalogItem>();
-  if (providerFilter !== FAVORITES_PROVIDER_FILTER) {
+  if (!favoritesOnly) {
     for (const group of providerGroups) {
       if (
         !group.updateRequired ||

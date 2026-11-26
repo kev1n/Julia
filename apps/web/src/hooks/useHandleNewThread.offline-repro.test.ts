@@ -129,6 +129,7 @@ vi.mock("~/state/queries", () => ({ useProjectPathSearch: () => null }));
 vi.mock("../state/olderSettledShelf", () => ({ readUnloadedThreadCount: () => 0 }));
 
 import { useNewThreadHandler } from "./useHandleNewThread";
+import { readPendingWorkspaceDefault } from "../lib/draftWorkspaceDefaults";
 import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { getProjectFileQueryAtom } from "../components/files/projectFilesQueryState";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -444,10 +445,13 @@ describe("offline source New Thread", () => {
     Effect.gen(function* () {
       yield* setup("connected");
       yield* Effect.promise(() => open());
-      expect(
-        useComposerDraftStore.getState().getDraftSessionByLogicalProjectKey(repo.canonicalKey)
-          ?.envMode,
-      ).toBe("worktree");
+      const draft = () =>
+        useComposerDraftStore.getState().getDraftSessionByLogicalProjectKey(repo.canonicalKey);
+      // t3.json is read after the draft opens; its default lands when the read settles.
+      yield* Effect.promise(
+        () => readPendingWorkspaceDefault(draft()!.draftId) ?? Promise.resolve(),
+      );
+      expect(draft()?.envMode).toBe("worktree");
     }),
   );
   it.effect("terminal offline state returns fallback and opens the draft", () =>

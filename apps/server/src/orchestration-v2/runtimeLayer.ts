@@ -402,7 +402,7 @@ const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
       layerThreadManagementProvided,
       ProjectionStore.layer,
       layerProjectionMaintenanceProvided,
-      layerProviderAdapterRegistryProvided,
+      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
     ),
   ),
 );

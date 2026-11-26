@@ -7,7 +7,7 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 export const layer = Layer.succeed(
   AnalyticsService.AnalyticsService,
   AnalyticsService.AnalyticsService.of({
-    record: Effect.fn("noAnalytics.record")(() => Effect.void),
+    record: Effect.fn("noAnalytics.record")(() => Effect.succeed(false)),
     flush: Effect.void,
     recordOwners: Effect.fn("noAnalytics.recordOwners")(() => Effect.void),
   }),

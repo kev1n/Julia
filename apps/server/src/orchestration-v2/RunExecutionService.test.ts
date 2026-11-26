@@ -3387,7 +3387,7 @@ it.effect("completes a finished run when its ownership check cannot be read", ()
         ),
       events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
     });
-    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:completed", "pull-requests-refreshed"]);
   }),
 );
 
@@ -3709,7 +3709,7 @@ it.effect("does not interrupt an ended provider when its terminal write fails", 
     });
     assert.equal(yield* Ref.get(interrupts), 0);
     // Fork: the retry settles the run with the terminal it saw.
-    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:completed", "pull-requests-refreshed"]);
   }),
 );
 
@@ -4191,7 +4191,7 @@ it.effect("completes a run that saw its turn end but could not write it at first
     yield* Deferred.await(firstWriteFailed);
     yield* TestClock.adjust("1 second");
     const { observed } = yield* Fiber.join(capture);
-    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:completed", "pull-requests-refreshed"]);
   }),
 );
 
